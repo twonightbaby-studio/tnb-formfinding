@@ -1344,6 +1344,7 @@ function rowToVote(r) { return { stars: r.stars, v: r.v, off: r.off || [], n: r.
 async function loadVotes() {
   const { data, error } = await sb.from("atelier_votes").select("id,user_id,v,stars,off,n,created_at").order("created_at", { ascending: false }).limit(3000);
   if (error) { setSync("offline"); mergeVotes(); return; }
+  setSync();
   dbVotes = {};
   for (const r of data) dbVotes[r.user_id === me ? r.id : r.id + "|" + r.user_id] = rowToVote(r);
   mergeVotes();
