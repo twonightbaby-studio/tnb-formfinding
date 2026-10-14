@@ -1,4 +1,4 @@
-# TNB Formfinding — Atelier Bonhommes
+# TNB Formfinding
 
 Générateur d’étoiles à six branches déformées, qui apprend des votes « bonhomme / non » de chaque personne connectée.
 
