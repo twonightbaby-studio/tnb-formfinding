@@ -248,7 +248,8 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
 .progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
 .fav-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
 .fav-head { flex-wrap: wrap; }
-.fav-head .btn { margin-left: auto; }
+.fav-exports { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fav-exports .lab { margin-right: 2px; }
 .fav-head h2 { margin: 0; font-family: var(--f-main); font-weight: 400; font-size: 28px; }
 #fav-empty { margin: 0 0 14px; }
 .dock .btn[aria-pressed=true] { background: var(--press); }
@@ -407,7 +408,7 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
     </div>
   </section>
   <section class="board" id="fav-view" hidden>
-    <div class="fav-head"><h2>Mes favoris</h2><span class="counter" id="fav-count"></span><button class="btn line" id="fav-export" type="button" hidden>Exporter le tableau (CSV)</button></div>
+    <div class="fav-head"><h2>Mes favoris</h2><span class="counter" id="fav-count"></span><span class="fav-exports" id="fav-exports" hidden><span class="lab">Exporter</span><button class="btn line" id="fav-png" type="button" title="Un PNG par favori, avec l'effet de rendu choisi (ZIP)">PNG</button><button class="btn line" id="fav-svg" type="button" title="Un SVG vectoriel par favori, forme en noir (ZIP)">SVG</button><button class="btn line" id="fav-export" type="button" title="Tableau de tous les réglages">Tableau CSV</button></span></div>
     <p class="hint" id="fav-empty" hidden>Aucun favori pour l'instant. Clique sur une création (ou ✓) pour l'ajouter ici.</p>
     <div class="grid" id="fav-grid"></div>
   </section>
@@ -2355,7 +2356,7 @@ async function renderFavs() {
   const empty = document.getElementById("fav-empty");
   empty.hidden = list.length > 0;
   empty.textContent = (typeof votesLoaded !== "undefined" && !votesLoaded) ? "Chargement de tes favoris…" : "Aucun favori pour l'instant. Clique sur une création (ou ✓) pour l'ajouter ici.";
-  document.getElementById("fav-export").hidden = !list.length;
+  document.getElementById("fav-exports").hidden = !list.length;
   grid.replaceChildren(...list.map((sc, i) => {
     const card = document.createElement("div"); card.className = "card";
     const b = document.createElement("button"); b.className = "spec";
@@ -2384,6 +2385,56 @@ function exportFavs() {
   const csv = "\ufeff" + rows.map(r => r.map(cell).join(";")).join("\r\n");
   offerBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `formfinding_favoris_${new Date().toISOString().slice(0, 10)}.csv`);
 }
+/* Export groupé des favoris en ZIP (sans compression : les PNG le sont déjà) */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const now = new Date(), dosT = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1), dosD = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  for (const f of files) {
+    const nm = enc.encode(f.name), d = f.data, crc = crc32(d);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, dosT, true); h.setUint16(12, dosD, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true);
+    h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), nm, d);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, dosT, true); c.setUint16(14, dosD, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true);
+    c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    central.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + d.length;
+  }
+  const cs = central.reduce((a, b) => a + b.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cs, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: "application/zip" });
+}
+let exportingFavs = false;
+async function exportFavImages(kind) {
+  const list = favScenes(); if (exportingFavs || !list.length) return;
+  exportingFavs = true;
+  const cnt = document.getElementById("fav-count"), before = cnt.textContent, files = [], enc = new TextEncoder(), cv = document.createElement("canvas");
+  document.querySelectorAll("#fav-exports .btn").forEach(b => b.disabled = true);
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const sc = list[i], name = `favori_${String(i + 1).padStart(3, "0")}`;
+      if (kind === "png") {
+        const T = 1000; paint(cv, finish(renderSceneMask(sc, T).mask, T, sc.stars[0].seed), T);
+        const b = await new Promise(r => cv.toBlob(r, "image/png"));
+        files.push({ name: name + ".png", data: new Uint8Array(await b.arrayBuffer()) });
+      } else {
+        const N = 600, m = maskPosts(renderSceneMask(sc, N).mask, N, mulberry(sc.stars[0].seed ^ 0x5bd1e995));
+        files.push({ name: name + ".svg", data: enc.encode(traceSVG(m, N)) });
+      }
+      cnt.textContent = `Préparation ${i + 1} / ${list.length}…`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+    await offerBlob(makeZip(files), `formfinding_favoris_${kind}_${new Date().toISOString().slice(0, 10)}.zip`);
+  } finally {
+    cnt.textContent = before; exportingFavs = false;
+    document.querySelectorAll("#fav-exports .btn").forEach(b => b.disabled = false);
+  }
+}
 function refreshFavs() {
   if (view !== "favs") return;
   const sig = myFavEntries().map(([k]) => k).sort().join(",");
@@ -2405,6 +2456,8 @@ function setupFocus() {
   document.getElementById("d-board").onclick = () => setView(view === "board" ? "focus" : "board");
   document.getElementById("d-favs").onclick = () => setView(view === "favs" ? "focus" : "favs");
   document.getElementById("fav-export").onclick = exportFavs;
+  document.getElementById("fav-png").onclick = () => exportFavImages("png");
+  document.getElementById("fav-svg").onclick = () => exportFavImages("svg");
   document.getElementById("d-expand").onclick = () => { if (current[focusIdx]) openModal(current[focusIdx], focusIdx); };
   document.getElementById("done-regen").onclick = () => newSeries();
   document.addEventListener("keydown", e => {
