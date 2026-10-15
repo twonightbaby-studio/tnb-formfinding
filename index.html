@@ -247,6 +247,8 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
 .progress { height: 4px; border-radius: 2px; background: var(--press); overflow: hidden; }
 .progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
 .fav-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
+.fav-head { flex-wrap: wrap; }
+.fav-head .btn { margin-left: auto; }
 .fav-head h2 { margin: 0; font-family: var(--f-main); font-weight: 400; font-size: 28px; }
 #fav-empty { margin: 0 0 14px; }
 .dock .btn[aria-pressed=true] { background: var(--press); }
@@ -405,7 +407,7 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
     </div>
   </section>
   <section class="board" id="fav-view" hidden>
-    <div class="fav-head"><h2>Mes favoris</h2><span class="counter" id="fav-count"></span></div>
+    <div class="fav-head"><h2>Mes favoris</h2><span class="counter" id="fav-count"></span><button class="btn line" id="fav-export" type="button" hidden>Exporter le tableau (CSV)</button></div>
     <p class="hint" id="fav-empty" hidden>Aucun favori pour l'instant. Clique sur une création (ou ✓) pour l'ajouter ici.</p>
     <div class="grid" id="fav-grid"></div>
   </section>
@@ -1414,13 +1416,13 @@ function updateAuthUI() {
   document.getElementById("login-top").textContent = me ? myName.split("@")[0] : "Connexion";
 }
 
+let votesLoaded = false;
 async function connect() {
   setupAuthUI();
-  if (!window.supabase) { setSync(); mergeVotes(); return; }
+  if (!window.supabase) { votesLoaded = true; setSync(); mergeVotes(); return; }
   sb = window.supabase.createClient(SB_URL, SB_KEY);
+  // Une seule source pour la session : l'événement initial suffit (pas d'appel concurrent qui bloque la session)
   sb.auth.onAuthStateChange((_ev, session) => { setTimeout(() => applySession(session), 0); });
-  const { data } = await sb.auth.getSession();
-  await applySession(data.session);
 }
 
 let lastUid;
@@ -1429,25 +1431,27 @@ async function applySession(session) {
   if (uid === lastUid) return;
   lastUid = uid; me = uid; myName = u?.email || ""; canWrite = !!uid; isOwner = false;
   updateAuthUI(); setSync();
+  if (uid) await uploadLocalVotes();
+  await loadVotes();
   if (uid) {
-    await uploadLocalVotes();
     sb.rpc("atelier_log_visit").then(() => {}, () => {});
     const { data } = await sb.rpc("atelier_is_admin");
     isOwner = !!data;
   }
   document.getElementById("logs-box").hidden = !isOwner;
-  await loadVotes();
   if (isOwner) loadLogs();
 }
 
 function rowToVote(r) { return { stars: r.stars, v: r.v, off: r.off || [], n: r.n, by: r.user_id, t: Date.parse(r.created_at) }; }
 async function loadVotes() {
   const { data, error } = await sb.from("atelier_votes").select("id,user_id,v,stars,off,n,created_at").order("created_at", { ascending: false }).limit(3000);
-  if (error) { setSync("offline"); mergeVotes(); return; }
+  if (error) { votesLoaded = true; setSync("offline"); mergeVotes(); return; }
   setSync();
   dbVotes = {};
   for (const r of data) dbVotes[r.user_id === me ? r.id : r.id + "|" + r.user_id] = rowToVote(r);
+  votesLoaded = true;
   mergeVotes();
+  if (typeof view !== "undefined" && view === "favs") renderFavs();
 }
 
 /* Votes faits avant de se connecter : rattachés au compte à la connexion */
@@ -2339,7 +2343,7 @@ function favScenes() {
     const id = key.split("|")[0], n = v.stars.length;
     const r = mulberry([...id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261));
     const pos = v.stars.every(st => st.x != null) ? null : layout(n, 0.5, r);
-    return { id, off: v.off || [], stars: v.stars.map((st, k) => ({
+    return { id, t: v.t, off: v.off || [], stars: v.stars.map((st, k) => ({
       g: st.g, seed: st.seed ?? Math.floor(r() * 2 ** 31),
       x: st.x ?? pos[k].x, y: st.y ?? pos[k].y, s: st.s ?? pos[k].s })) };
   });
@@ -2348,7 +2352,10 @@ async function renderFavs() {
   const list = favScenes(), grid = document.getElementById("fav-grid"), token = ++favToken, T = cssT();
   favSig = myFavEntries().map(([k]) => k).sort().join(",");
   document.getElementById("fav-count").textContent = list.length ? `${list.length} favori${list.length > 1 ? "s" : ""}` : "";
-  document.getElementById("fav-empty").hidden = list.length > 0;
+  const empty = document.getElementById("fav-empty");
+  empty.hidden = list.length > 0;
+  empty.textContent = (typeof votesLoaded !== "undefined" && !votesLoaded) ? "Chargement de tes favoris…" : "Aucun favori pour l'instant. Clique sur une création (ou ✓) pour l'ajouter ici.";
+  document.getElementById("fav-export").hidden = !list.length;
   grid.replaceChildren(...list.map((sc, i) => {
     const card = document.createElement("div"); card.className = "card";
     const b = document.createElement("button"); b.className = "spec";
@@ -2361,6 +2368,21 @@ async function renderFavs() {
     if (token !== favToken) return;
     const sc = list[i]; paint(sc.canvas, finish(renderSceneMask(sc, T).mask, T, sc.stars[0].seed), T);
   }
+}
+/* Tableau des favoris : une ligne par étoile, avec tous ses réglages (CSV lisible par Excel en français) */
+function exportFavs() {
+  const list = favScenes(); if (!list.length) return;
+  const BPN = { ang: "angle", len: "longueur", ep: "épaisseur", bout: "bout", courb: "courbure", ond: "ondulation" };
+  const geneName = G => { const m = G.k.match(/^b(\d)([a-z]+)$/); return m ? `${G.lab} – ${BPN[m[2]] || m[2]}` : G.lab; };
+  const num = v => v == null || v === "" || isNaN(v) ? "" : String(Math.round(v * 1000) / 1000).replace(".", ",");
+  const cell = v => { const t = String(v); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const rows = [["Favori", "Identifiant", "Date du vote", "Étoiles dans la scène", "Étoile", "Taille", "Position x", "Position y", "Graine", "Déformations désactivées", ...GENES.map(geneName)]];
+  list.forEach((sc, i) => sc.stars.forEach((st, k) => rows.push([
+    i + 1, sc.id, sc.t ? new Date(sc.t).toLocaleString("fr-FR") : "", sc.stars.length, k + 1,
+    num(st.s), num(st.x), num(st.y), st.seed, (sc.off || []).map(f => FAMS[f] || f).join(", "),
+    ...GENES.map((_, j) => num(st.g[j]))])));
+  const csv = "\ufeff" + rows.map(r => r.map(cell).join(";")).join("\r\n");
+  offerBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `formfinding_favoris_${new Date().toISOString().slice(0, 10)}.csv`);
 }
 function refreshFavs() {
   if (view !== "favs") return;
@@ -2382,6 +2404,7 @@ function setupFocus() {
   document.getElementById("d-next").onclick = () => showFocus(focusIdx + 1, 1);
   document.getElementById("d-board").onclick = () => setView(view === "board" ? "focus" : "board");
   document.getElementById("d-favs").onclick = () => setView(view === "favs" ? "focus" : "favs");
+  document.getElementById("fav-export").onclick = exportFavs;
   document.getElementById("d-expand").onclick = () => { if (current[focusIdx]) openModal(current[focusIdx], focusIdx); };
   document.getElementById("done-regen").onclick = () => newSeries();
   document.addEventListener("keydown", e => {
