@@ -850,7 +850,9 @@ function fitLogistic(X, y, w) {
 const predict = (mdl, f) => { let z = mdl.b; for (let j = 0; j < f.length; j++) z += mdl.W[j] * f[j]; return 1 / (1 + Math.exp(-z)); };
 const score = g => M.w ? predict({ W: M.w, b: M.b }, features(g, new Set(S.off))) : null;
 
-function train() {
+let trainTok = 0;
+async function train() {
+  const tok = ++trainTok;
   const K = 3, user = [];
   for (const vt of Object.values(votes)) {
     const off = new Set(vt.off || []), n = vt.stars.length;
@@ -881,7 +883,8 @@ function train() {
   if (nYes >= 2 && nNo >= 2) {
     const all = user.concat(autoRejects.slice(-300).map(r => ({ g: r.g, y: 0, w: 0.3, off: r.off })));
     const X = all.map(s => features(s.g, s.off)), y = all.map(s => s.y), w = all.map(s => s.w);
-    const mdl = fitLogistic(X, y, w);
+    const mdl = await fitAsync(X, y, w);
+    if (tok !== trainTok) return;
     M.w = mdl.W; M.b = mdl.b;
     // précision estimée par validation croisée (4 plis) sur les votes
     const nMine = user.filter(s => s.mine).length;
@@ -889,13 +892,14 @@ function train() {
     else if (nMine >= 12) {
       M.accN = nMine;
       let ok = 0, tot = 0;
-      for (let f = 0; f < 4; f++) {
+      const folds = [0, 1, 2, 3].map(f => {
         const tr = [], te = [];
         user.forEach((s, i) => (i % 4 === f && s.mine ? te : tr).push(s));
-        if (!tr.some(s => s.y) || !tr.some(s => !s.y)) continue;
-        const m2 = fitLogistic(tr.map(s => features(s.g, s.off)), tr.map(s => s.y), tr.map(s => s.w));
-        for (const s of te) { ok += ((predict(m2, features(s.g, s.off)) > 0.5) === !!s.y) ? 1 : 0; tot++; }
-      }
+        return { tr, te };
+      }).filter(({ tr }) => tr.some(s => s.y) && tr.some(s => !s.y));
+      const models = await Promise.all(folds.map(({ tr }) => fitAsync(tr.map(s => features(s.g, s.off)), tr.map(s => s.y), tr.map(s => s.w))));
+      if (tok !== trainTok) return;
+      folds.forEach(({ te }, q) => { for (const s of te) { ok += ((predict(models[q], features(s.g, s.off)) > 0.5) === !!s.y) ? 1 : 0; tot++; } });
       M.acc = tot ? ok / tot : null;
     } else M.acc = null;
   } else { M.w = null; M.acc = null; }
@@ -1010,7 +1014,7 @@ let styleVer = 0;
    ===================================================================== */
 const RW = { pool: [], busy: [], next: 0, id: 0, wait: new Map(), ok: false };
 function workerSource() {
-  const fns = [mulberry, gauss, hash2, vnoise, fbm, blurPass, boxBlur, renderStar, countBranches, renderSceneMask, upMask, renderSceneFast];
+  const fns = [mulberry, gauss, hash2, vnoise, fbm, blurPass, boxBlur, renderStar, countBranches, renderSceneMask, upMask, renderSceneFast, fitLogistic];
   return [
     '"use strict";',
     "const TAU = Math.PI * 2;",
@@ -1023,6 +1027,7 @@ function workerSource() {
     ...fns.map(f => f.toString()),
     "onmessage = e => { const d = e.data; try {",
     '  if (d.op === "branches") { postMessage({ id: d.id, branches: renderStar(d.g, d.seed, d.T, true).branches }); return; }',
+    '  if (d.op === "fit") { const m = fitLogistic(d.X, d.y, d.w); postMessage({ id: d.id, W: m.W, b: m.b }); return; }',
     '  const mask = d.op === "fast" ? renderSceneFast(d.scene, d.T) : renderSceneMask(d.scene, d.T).mask;',
     "  postMessage({ id: d.id, mask }, [mask.buffer]);",
     "} catch (err) { postMessage({ id: d.id, error: String(err) }); } };",
@@ -1056,6 +1061,10 @@ const plainScene = sc => ({ stars: sc.stars.map(s => ({ g: s.g, seed: s.seed, x:
 async function maskAsync(scene, T) {
   const r = await workerCall({ op: "fast", scene: plainScene(scene), T });
   return r ? r.mask : renderSceneFast(scene, T);
+}
+async function fitAsync(X, y, w) {
+  const r = await workerCall({ op: "fit", X, y, w });
+  return r ? { W: r.W, b: r.b } : fitLogistic(X, y, w);
 }
 async function branchesAsync(g, seed, T) {
   const r = await workerCall({ op: "branches", g, seed, T });
