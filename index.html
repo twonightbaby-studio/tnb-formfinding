@@ -342,6 +342,9 @@ body.share-mode.idle .fade-ui { opacity: 1; }
         <div class="field t-libre"><label class="lab" for="t-ecart">Écart de tailles <output id="t-ecart-o"></output></label><input type="range" id="t-ecart" min="0" max="1" step="0.05"></div>
         <div class="field t-libre"><label class="lab" for="t-rot">Rotation au hasard <output id="t-rot-o"></output></label><input type="range" id="t-rot" min="0" max="180" step="5"></div>
         <button class="btn line t-libre" id="t-shuffle" type="button">Rebattre</button>
+        <div class="field"><label class="lab" for="t-eclat">Éclat des motifs</label><select id="t-eclat"><option value="uniforme">Uniforme</option><option value="aleatoire">Aléatoire, motif par motif</option><option value="scintille">Quelques-uns scintillent</option></select></div>
+        <div class="field t-scint"><label class="lab" for="t-scint">Part qui scintille <output id="t-scint-o"></output></label><input type="range" id="t-scint" min="0.02" max="0.5" step="0.02"></div>
+        <div class="field t-halo"><label class="lab" for="t-halo">Halo <output id="t-halo-o"></output></label><input type="range" id="t-halo" min="0" max="1" step="0.05"></div>
         <div class="field"><label class="lab" for="t-cell">Taille de la grille <output id="t-cell-o"></output></label><input type="range" id="t-cell" min="5" max="30" step="1"></div>
         <div class="field"><label class="lab" for="t-douceur">Douceur <output id="t-douceur-o"></output></label><input type="range" id="t-douceur" min="0" max="1" step="0.05"></div>
         <div class="field"><label class="lab" for="t-voile">Voile lumineux <output id="t-voile-o"></output></label><input type="range" id="t-voile" min="0" max="1" step="0.05"></div>
@@ -850,7 +853,7 @@ const S = Object.assign({
   styles: Object.fromEntries(Object.keys(STYLES).map(k => [k, { on: false, k: 1 }])),
 }, store.get("atelier-reglages", {}));
 for (const k of Object.keys(STYLES)) S.styles[k] = S.styles[k] || { on: false, k: 1 };
-S.trame = Object.assign({ motif: "carre", dispo: "grille", ecart: 0.6, rot: 180, graine: 1, cell: 12, douceur: 0.45, voile: 0.35, fg: "#8fd0ff", bg: "#04060b", source: "forme", flux: 0.6, custom: null }, S.trame || {});
+S.trame = Object.assign({ motif: "carre", dispo: "grille", ecart: 0.6, rot: 180, graine: 1, eclat: "uniforme", scint: 0.12, halo: 0.6, cell: 12, douceur: 0.45, voile: 0.35, fg: "#8fd0ff", bg: "#04060b", source: "forme", flux: 0.6, custom: null }, S.trame || {});
 const saveS = () => store.set("atelier-reglages", S);
 
 /* =====================================================================
@@ -2453,7 +2456,7 @@ function trameStamps() {
 
 /* Dessine une trame sur ctx (W x H) à partir d'un champ d'intensité fw x fh (0..1). */
 const trameVeil = document.createElement("canvas");
-function drawTrame(ctx, W, H, field, fw, fh, flowing = false) {
+function drawTrame(ctx, W, H, field, fw, fh, flowing = false, time = null) {
   const st = S.trame, bg = hexRGB(st.bg);
   ctx.save();
   ctx.fillStyle = `rgb(${bg})`; ctx.fillRect(0, 0, W, H);
@@ -2478,14 +2481,17 @@ function drawTrame(ctx, W, H, field, fw, fh, flowing = false) {
     const ix = Math.floor(fx), iy = Math.floor(fy), ax = fx - ix, ay = fy - iy, j = iy * fw + ix;
     return (field[j] * (1 - ax) + field[j + 1] * ax) * (1 - ay) + (field[j + fw] * (1 - ax) + field[j + fw + 1] * ax) * ay;
   };
-  if (st.dispo === "libre") { drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing); ctx.restore(); return; }
+  if (st.dispo === "libre") { drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing, time); ctx.restore(); return; }
   const ox = (W % cell) / 2, oy = (H % cell) / 2;
+  let idx = 0;
   for (let y = oy + cell / 2; y < H; y += cell) for (let x = ox + cell / 2; x < W; x += cell) {
+    idx++;
     const v = sample(x, y);
     const s = cell * 1.12 * Math.pow(clamp((v - 0.05) / 0.95, 0, 1), 0.85);
     if (s < 0.6) continue;
-    ctx.drawImage(stamps[Math.min(STAMP_LEVELS - 1, Math.floor(v * STAMP_LEVELS))], x - s / 2, y - s / 2, s, s);
+    stampWithEclat(ctx, stamps, v, idx, time, () => ctx.drawImage(ctx._stamp, x - s / 2, y - s / 2, s, s), s);
   }
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   ctx.restore();
 }
 
@@ -2544,7 +2550,28 @@ function flowField(scene, W, H, time) {
 }
 function drawFlowFrame(ctx, W, H, scene, time) {
   const { field, fw, fh } = flowField(scene, W, H, time % FLOW_LOOP);
-  drawTrame(ctx, W, H, field, fw, fh, true);
+  drawTrame(ctx, W, H, field, fw, fh, true, time % FLOW_LOOP);
+}
+
+/* Éclat par motif : uniforme, aléatoire, ou une part qui scintille (halo ;
+   en animation, chaque étoile choisie clignote à son rythme, en boucle parfaite) */
+function hash01(n) { let x = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b); x ^= x >>> 13; x = Math.imul(x, 0xc2b2ae35); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
+function stampWithEclat(ctx, stamps, v, idx, time, draw, s) {
+  const st = S.trame, mode = st.eclat || "uniforme";
+  let lvl = Math.min(STAMP_LEVELS - 1, Math.floor(v * STAMP_LEVELS)), a = 1, glow = 0;
+  if (mode !== "uniforme") {
+    const h1 = hash01(idx * 2654435 + (st.graine || 1) * 97), h2 = hash01(idx * 40503 + 7 + (st.graine || 1));
+    if (mode === "aleatoire") { a = 0.22 + 0.78 * h1; if (h1 > 0.9) { glow = (h1 - 0.9) * 10 * 0.6; lvl = STAMP_LEVELS - 1; } }
+    else if (h2 < st.scint) {
+      let k = 1;
+      if (time != null) { const f = 1 + Math.floor(h1 * 3); k = Math.pow(Math.max(0, Math.sin(TAU * (time / FLOW_LOOP * f + h1 * 7.3))), 3); }
+      a = 0.5 + 0.5 * k; glow = k; if (k > 0.35) lvl = STAMP_LEVELS - 1;
+    } else a = 0.5;
+  }
+  ctx.globalAlpha = a;
+  if (glow > 0.02 && st.halo > 0) { ctx.shadowColor = `rgba(${trameColor(1).join(",")},${Math.min(1, 0.4 + 0.6 * glow)})`; ctx.shadowBlur = Math.max(2, s * 0.9 * st.halo * glow); }
+  else ctx.shadowBlur = 0;
+  ctx._stamp = stamps[lvl]; draw();
 }
 
 /* Disposition libre : on range des motifs de tailles et d'orientations
@@ -2596,7 +2623,7 @@ function packStamps(W, H, cell, free, seed) {
   return out;
 }
 const libreCache = { key: "", list: null };
-function drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing) {
+function drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing, time) {
   const st = S.trame;
   let list;
   if (flowing) {
@@ -2608,14 +2635,16 @@ function drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing) {
     list = packStamps(W, H, cell, (x, y) => ed[clamp(Math.floor(y / H * fh), 0, fh - 1) * fw + clamp(Math.floor(x / W * fw), 0, fw - 1)] * kx, st.graine);
   }
   const base = ctx.getTransform();
+  let idx = 0;
   for (const o of list) {
+    idx++;
     const v = sample(o.x, o.y);
     let s = 2 * o.r;
     if (flowing) { s *= 1.05 * Math.pow(clamp((v - 0.05) / 0.95, 0, 1), 0.85); if (s < 0.6) continue; }
     ctx.setTransform(base); ctx.translate(o.x, o.y); ctx.rotate(o.a);
-    ctx.drawImage(stamps[Math.min(STAMP_LEVELS - 1, Math.floor(Math.max(v, 0.6) * STAMP_LEVELS))], -s / 2, -s / 2, s, s);
+    stampWithEclat(ctx, stamps, Math.max(v, 0.6), idx, time, () => ctx.drawImage(ctx._stamp, -s / 2, -s / 2, s, s), s);
   }
-  ctx.setTransform(base);
+  ctx.setTransform(base); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 }
 
 function setupTrame() {
@@ -2659,6 +2688,11 @@ function setupTrame() {
   bind("t-dispo", "dispo", v => v);
   const showLibre = () => document.querySelectorAll(".t-libre").forEach(el => el.hidden = S.trame.dispo !== "libre");
   document.getElementById("t-dispo").addEventListener("change", showLibre); showLibre();
+  bind("t-eclat", "eclat", v => v);
+  bind("t-scint", "scint", v => Math.round(v * 100) + " %");
+  bind("t-halo", "halo", v => Math.round(v * 100) + " %");
+  const showEclat = () => { document.querySelectorAll(".t-scint").forEach(el => el.hidden = S.trame.eclat !== "scintille"); document.querySelectorAll(".t-halo").forEach(el => el.hidden = S.trame.eclat === "uniforme"); };
+  document.getElementById("t-eclat").addEventListener("change", showEclat); showEclat();
   document.getElementById("t-shuffle").onclick = () => { S.trame.graine = (S.trame.graine || 1) + 1; saveS(); libreCache.key = ""; if (S.preset === "trame") redrawStyles(); };
   document.getElementById("t-apply").onclick = () => { S.preset = "trame"; saveS(); updateFxButton(); redrawStyles(); };
   refresh();
