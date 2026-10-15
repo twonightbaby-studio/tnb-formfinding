@@ -4514,7 +4514,7 @@ body.world { overflow: hidden; }
 <nav id="w-bubbles" aria-label="Raccourcis">
   <button class="w-bub w-glass-ui" id="w-b-coll" title="Ma collection" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg></button>
   <button class="w-bub w-glass-ui mid" id="w-b-prof" title="Profil (appui long : couper / remettre les sons)" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.6"/><path d="M5 20c1.2-3.6 3.8-5.4 7-5.4s5.8 1.8 7 5.4"/></svg></button>
-  <button class="w-bub w-glass-ui" id="w-b-new" title="Créer une nouvelle série"><svg viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg></button>
+  <button class="w-bub w-glass-ui" id="w-b-new" title="Ouvrir la série en cours (déjà ouverte : nouvelle série)"><svg viewBox="0 0 24 24"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/></svg></button>
 </nav>`;
   document.body.append(el);
   WORLD.el = el; WORLD.cv = el.querySelector("#w-cv"); WORLD.ctx = WORLD.cv.getContext("2d");
@@ -4560,11 +4560,13 @@ function wZoomAt(sx, sy, f) {
 function wCheckActive() {
   const c = WORLD.cam; let act = null;
   for (const i of wIslands()) {
+    if (i.k === "connexions" && !WORLD.series) continue;   // l'îlot central se parcourt librement ; la série s'ouvre par la bulle
     const d = Math.hypot(c.x - i.x, c.y - i.y);
     if (d < i.r * 0.4 && c.z >= wFit(i) * 0.78) act = i;
   }
   if (act !== WORLD.active) {
     const prev = WORLD.active; WORLD.active = act;
+    if (!act) WORLD.series = false;
     WORLD.el.classList.toggle("focus", !!act);
     if (act) { wPanel(act.k); uisChord(act.note); document.getElementById("w-hint").style.opacity = 0; }
     else { if (prev) uisSwoosh(false, 0.5); wPanel(null); }
@@ -4635,7 +4637,11 @@ function worldEvents() {
   };
   bub("w-b-coll", () => wToggleSheet("w-coll"));
   bub("w-b-prof", () => wToggleSheet("w-pop"));
-  bub("w-b-new", () => { wCloseSheets(); newSeries(); uisYes(); const c = W_ISLANDS[0]; if (WORLD.active !== c) wFlyIsland(c); });
+  bub("w-b-new", () => {
+    wCloseSheets();
+    if (WORLD.active && WORLD.active.k === "connexions") { newSeries(); uisYes(); return; }
+    WORLD.series = true; uisYes(); wFlyIsland(W_ISLANDS[0]);
+  });
 
   // Clavier : quand le monde est affiché, les raccourcis de l'ancienne vue sont coupés
   window.addEventListener("keydown", e => {
@@ -4656,7 +4662,7 @@ function wSnapSoon() {
   WORLD.snapT = setTimeout(() => {
     if (!WORLD.lastZoomIn || WORLD.active || WORLD.ptrs.size) return;
     const c = WORLD.cam, pt = WORLD.zoomPt ? wToWorld(...WORLD.zoomPt) : [c.x, c.y];
-    for (const i of wIslands()) if ((Math.hypot(c.x - i.x, c.y - i.y) < i.r * 0.75 || Math.hypot(pt[0] - i.x, pt[1] - i.y) < i.r) && c.z > wFit(i) * 0.42) { wFlyIsland(i); return; }
+    for (const i of wIslands()) if (i.k !== "connexions" && (Math.hypot(c.x - i.x, c.y - i.y) < i.r * 0.75 || Math.hypot(pt[0] - i.x, pt[1] - i.y) < i.r) && c.z > wFit(i) * 0.42) { wFlyIsland(i); return; }
   }, 260);
 }
 function wIslandAt(sx, sy) {
@@ -4678,7 +4684,7 @@ function wHover(sx, sy) {
 function wTap(sx, sy) {
   if (WORLD.active) return;
   const n = wNodeAt(sx, sy);
-  if (n) { uisClick(1.3); wFlyIsland(W_ISLANDS[0]); return; }
+  if (n) { uisClick(1.3); uisSwoosh(true, 0.5); wFly({ x: n.x, y: n.y, z: Math.max(WORLD.cam.z * 1.8, 2.4) }, 0.8); return; }
   const i = wIslandAt(sx, sy); if (i) wFlyIsland(i);
 }
 const wDegOf = sc => { const s = (sc.stars && sc.stars[0] && sc.stars[0].seed) || 0; return Math.floor(hash01(s) * 10); };
