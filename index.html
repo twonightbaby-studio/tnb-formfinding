@@ -105,6 +105,8 @@ body.idle .fade-ui:hover, body.idle .fade-ui:focus-within { opacity: 1; }
 .focus { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding-block: calc(env(safe-area-inset-top, 0px) + 74px) calc(env(safe-area-inset-bottom, 0px) + 112px); }
 .focus-wrap { position: relative; width: min(74vh, 86vw, 760px); max-width: 100%; aspect-ratio: 1; }
 .focus-wrap canvas { width: 100%; height: 100%; display: block; border-radius: var(--r-lg); background: var(--specimen); box-shadow: 0 30px 80px rgba(24, 30, 52, .18), 0 2px 6px rgba(24, 30, 52, .08); cursor: pointer; touch-action: pan-y; }
+#focus-gl { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: var(--r-lg); pointer-events: none; opacity: 0; transition: opacity .25s; box-shadow: none !important; background: transparent !important; }
+.focus-wrap { transform-style: preserve-3d; will-change: transform; }
 .focus-wrap::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-lg); pointer-events: none; box-shadow: inset 0 0 0 0 var(--yes); transition: box-shadow .2s; }
 .focus-wrap.yes::after { box-shadow: inset 0 0 0 6px var(--yes); }
 .focus-wrap.no canvas { opacity: .35; }
@@ -451,6 +453,7 @@ body.share-mode.idle .fade-ui { opacity: 1; }
   <button class="btn" id="d-next" title="Suivante (→)" aria-label="Suivante">›</button>
   <button class="btn yes" id="d-yes" title="C'est un bonhomme (Entrée)" aria-label="C'est un bonhomme">✓</button>
   <span class="sep"></span>
+  <button class="btn" id="d-son" title="Écouter la forme (M)" aria-label="Son" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
   <button class="btn" id="d-mock" title="Sur un vêtement (V)" aria-label="Voir sur un vêtement"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 3.5 5.5 2 11l3 1 1-3v12h12V9l1 3 3-1-1.5-5.5L16 3c-.6 1.6-2.2 2.5-4 2.5S8.6 4.6 8 3Z"/></svg></button>
   <button class="btn" id="d-expand" title="Agrandir, animer, exporter" aria-label="Agrandir, animer, exporter">⤢</button>
   <button class="btn" id="d-favs" title="Mes favoris (F)" aria-label="Mes favoris" aria-pressed="false">★</button>
@@ -2646,6 +2649,7 @@ function drawTrame(ctx, W, H, field, fw, fh, flowing = false, time = null) {
     const s = cell * 1.12 * Math.pow(clamp((v - 0.05) / 0.95, 0, 1), 0.85);
     if (s < 0.6) continue;
     stampWithEclat(ctx, stamps, v, idx, time, () => ctx.drawImage(ctx._stamp, x - s / 2, y - s / 2, s, s), s);
+    if (trameRec) trameRec.push([x / W, y / H, s / W, ctx.globalAlpha, ctx._glow]);
   }
   ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   ctx.restore();
@@ -2664,7 +2668,7 @@ const trameTmp = document.createElement("canvas");
 function trameRGBA(m, T, out) {
   trameTmp.width = trameTmp.height = T;
   const ctx = trameTmp.getContext("2d", { willReadFrequently: true });
-  drawTrame(ctx, T, T, shapeField(m, T, S.trame.douceur), T, T);
+  trameRec = []; drawTrame(ctx, T, T, shapeField(m, T, S.trame.douceur), T, T); lastTrameStamps = trameRec; trameRec = null;
   out.set(ctx.getImageData(0, 0, T, T).data);
 }
 
@@ -2727,8 +2731,9 @@ function stampWithEclat(ctx, stamps, v, idx, time, draw, s) {
   ctx.globalAlpha = a;
   if (glow > 0.02 && st.halo > 0) { ctx.shadowColor = `rgba(${trameColor(1).join(",")},${Math.min(1, 0.4 + 0.6 * glow)})`; ctx.shadowBlur = Math.max(2, s * 0.9 * st.halo * glow); }
   else ctx.shadowBlur = 0;
-  ctx._stamp = stamps[lvl]; draw();
+  ctx._stamp = stamps[lvl]; ctx._glow = glow; draw();
 }
+let trameRec = null, lastTrameStamps = null;
 
 /* Disposition libre : on range des motifs de tailles et d'orientations
    variées. Image fixe : les plus grands d'abord, là où ils tiennent dans le
@@ -2799,6 +2804,7 @@ function drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing, time
     if (flowing) { s *= 1.05 * Math.pow(clamp((v - 0.05) / 0.95, 0, 1), 0.85); if (s < 0.6) continue; }
     ctx.setTransform(base); ctx.translate(o.x, o.y); ctx.rotate(o.a);
     stampWithEclat(ctx, stamps, Math.max(v, 0.6), idx, time, () => ctx.drawImage(ctx._stamp, -s / 2, -s / 2, s, s), s);
+    if (trameRec) trameRec.push([o.x / W, o.y / H, s / W, ctx.globalAlpha, ctx._glow]);
   }
   ctx.setTransform(base); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 }
@@ -2874,6 +2880,7 @@ function showFocus(i, dir = 0) {
   const show = () => {
     if (current[focusIdx] !== sc || view !== "focus") return;
     paint(focusCanvas, sc.frgba, T);
+    sonScene(sc); TOUCH.key = null; touchKick();
     if (dir && focusCanvas.animate && !matchMedia("(prefers-reduced-motion: reduce)").matches)
       focusCanvas.animate([{ opacity: 0, transform: `translateX(${dir * 28}px) scale(.985)` }, { opacity: 1, transform: "none" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
   };
@@ -2892,7 +2899,7 @@ async function ensureFocus(sc, T) {
     await sc.fpending;
   }
   const key = focusKey(T);
-  if (sc.fkey !== key) { sc.frgba = finish(sc.fmask, T, sc.stars[0].seed); sc.fkey = key; }
+  if (sc.fkey !== key) { lastTrameStamps = null; sc.frgba = finish(sc.fmask, T, sc.stars[0].seed); sc.fstamps = S.preset === "trame" ? lastTrameStamps : null; sc.fkey = key; }
 }
 /* Prépare en arrière-plan les prochaines créations, pour qu'un vote affiche la suivante sans attente */
 let prefetching = false;
@@ -2930,6 +2937,7 @@ function focusNext() {
 function focusVote(v) {
   const sc = current[focusIdx]; if (!sc) return;
   const was = votes[sc.id]?.v;
+  if (was !== v) sonVote(v);
   castVote(sc, v);
   if (was !== v) setTimeout(focusNext, 220);
 }
@@ -3792,6 +3800,335 @@ document.addEventListener("keydown", e => {
   if ((e.key === "v" || e.key === "V") && view === "focus" && current[focusIdx]) openMockup(current[focusIdx]);
 });
 
+/* =====================================================================
+   Son : chaque forme devient une boucle électro (sombre et aérienne).
+   - le contour de la forme est l'onde du synthé (rayon selon l'angle)
+     → l'étoile de base ne contient que des multiples de 6 ; chaque
+       déformation ajoute ses propres harmoniques : même note, autre timbre
+   - toujours en fa mineur : la tonalité B2N ne change jamais
+   - les réglages pilotent l'accord, la basse 808, les charlestons et les effets
+   Synthèse Web Audio, aucun fichier son.
+   ===================================================================== */
+const SON = { on: false, ctx: null, P: null, next: null, step: 0, t: 0, timer: 0, scene: null };
+const SCALE = [0, 2, 3, 5, 7, 8, 10];           // fa mineur naturel
+const ROOT = 43.65;                               // fa 1
+const hz = semi => ROOT * Math.pow(2, semi / 12);
+
+function sonEnsure() {
+  if (SON.ctx) return SON.ctx;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.18;
+  const master = ctx.createGain(); master.gain.value = 0.6; master.connect(comp); comp.connect(ctx.destination);
+  // réverbe : bruit qui s'éteint (stéréo)
+  const len = Math.round(ctx.sampleRate * 3.2), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const verb = ctx.createConvolver(); verb.buffer = ir; const verbIn = ctx.createGain(); verbIn.connect(verb); verb.connect(master);
+  const delay = ctx.createDelay(2), fb = ctx.createGain(), delayIn = ctx.createGain(), dlp = ctx.createBiquadFilter();
+  dlp.type = "lowpass"; dlp.frequency.value = 3200; delayIn.connect(delay); delay.connect(dlp); dlp.connect(fb); fb.connect(delay); dlp.connect(master); dlp.connect(verbIn);
+  // bus du synthé : écrasement de bits → trémolo → hachage → panoramique → sorties
+  const crush = ctx.createWaveShaper(), trem = ctx.createGain(), chop = ctx.createGain(), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+  const padIn = ctx.createGain(), padSend = ctx.createGain(), padDel = ctx.createGain();
+  padIn.connect(crush); crush.connect(trem); trem.connect(chop); chop.connect(pan); pan.connect(master); pan.connect(padSend); padSend.connect(verbIn); pan.connect(padDel); padDel.connect(delayIn);
+  const lfo = ctx.createOscillator(), lfoAmt = ctx.createGain(); lfo.connect(lfoAmt); lfoAmt.connect(trem.gain); lfo.start();
+  const drums = ctx.createGain(); drums.connect(master); const drumSend = ctx.createGain(); drumSend.gain.value = 0.18; drums.connect(drumSend); drumSend.connect(verbIn);
+  const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  Object.assign(SON, { ctx, master, verbIn, delay, fb, delayIn, crush, trem, chop, pan, padIn, padSend, padDel, lfo, lfoAmt, drums, noise: nb });
+  return ctx;
+}
+
+/* Le contour en onde : rayon de l'encre selon l'angle, autour du centre de gravité */
+function contourWave(scene) {
+  const T = 160, m = renderSceneMask(scene, T).mask;
+  let sx = 0, sy = 0, n = 0;
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (m[y * T + x] > 0.5) { sx += x; sy += y; n++; }
+  const cx = n ? sx / n : T / 2, cy = n ? sy / n : T / 2, N = 256, prof = new Float32Array(N);
+  for (let a = 0; a < N; a++) {
+    const th = a / N * TAU, dx = Math.cos(th), dy = Math.sin(th); let last = 0;
+    for (let rr = 0; rr < T * 0.75; rr += 0.5) { const x = Math.round(cx + dx * rr), y = Math.round(cy + dy * rr); if (x < 0 || y < 0 || x >= T || y >= T) break; if (m[y * T + x] > 0.5) last = rr; }
+    prof[a] = last;
+  }
+  const mean = prof.reduce((s, v) => s + v, 0) / N, H = 48, re = new Float32Array(H + 1), im = new Float32Array(H + 1);
+  for (let k = 1; k <= H; k++) { let a = 0, b = 0; for (let i = 0; i < N; i++) { const v = prof[i] - mean, t = TAU * k * i / N; a += v * Math.cos(t); b += v * Math.sin(t); } re[k] = a / N; im[k] = b / N; }
+  // un peu de fondamentale à la 6e harmonique pour que la note se lise toujours
+  let mx = 0; for (let k = 1; k <= H; k++) mx = Math.max(mx, Math.hypot(re[k], im[k]));
+  re[6] += mx * 0.6;
+  let lowE = 0, allE = 0; for (let k = 1; k <= H; k++) { const e = re[k] ** 2 + im[k] ** 2; allE += e; if (k % 6) lowE += e; }
+  return { re, im, rough: allE ? lowE / allE : 0 };
+}
+
+function sonParams(scene) {
+  const g = padG(scene.stars[0].g), v = k => g[IDX[k]];
+  const avg = p => [0, 1, 2, 3, 4, 5].reduce((s, i) => s + v(`b${i}${p}`), 0) / 6;
+  const wave = contourWave(scene);
+  // accord : une note par branche (fa m9 + 11), déplacée sur la gamme selon la longueur de la branche
+  const chord = [0, 3, 7, 10, 14, 17].map((semi, i) => {
+    const deg = SCALE.indexOf(semi % 12), oct = Math.floor(semi / 12), steps = Math.round(1.5 * v(`b${i}len`));
+    let d = deg + steps, o = oct; while (d < 0) { d += 7; o--; } while (d > 6) { d -= 7; o++; }
+    return 24 + 12 * o + SCALE[d]; // à partir de fa 3
+  });
+  const sym = v("sym") > 0.25;
+  if (!sym && wave.rough > 0.93) chord.push(25); // forme très tordue : une seconde mineure qui frotte
+  const am = x => Math.max(0, x);
+  return {
+    wave, chord, notes: chord.map(hz),
+    bpm: clamp(140 + 10 * v("sy"), 120, 160),
+    arp: avg("bout") < -0.05,                       // bouts pointus → arpège pincé ; ronds → nappe
+    attack: clamp(0.3 + 0.5 * avg("bout"), 0.01, 0.9),
+    cutoff: clamp(3600 * (1 - 0.35 * avg("ep")) * (1 + 0.6 * am(v("fish"))), 500, 9000),
+    q: 0.8 + 9 * am(v("loupe")),
+    detune: 6 + 18 * Math.abs(avg("courb")),
+    vib: 4 + 10 * am(v("ond")),
+    tremRate: clamp(2 + 2.5 * (1 + v("vagf")), 0.5, 9), tremDepth: 0.35 * am(v("vag") + 0.2) + 0.25 * am(v("feston")),
+    wah: 1400 * Math.abs(v("tourb")),
+    crush: am(v("grille")), chop: am(v("bris")) + am(v("glitch")), stutter: am(v("glitch")),
+    pan: clamp(0.7 * v("rot"), -0.8, 0.8),
+    verb: clamp(0.35 + 0.35 * am(v("vag")) + 0.2 * am(v("ond")), 0.2, 0.9),
+    echo: clamp(0.2 + 0.5 * am(v("kalei")) + (sym ? 0.15 : 0), 0, 0.75),
+    drive: 2 + 40 * am(v("morph") + 0.3) + 20 * am(v("corps")),
+    glide: v("coulure") > 0 ? -5 : avg("courb") >= 0 ? 3 : 7,  // la 808 descend (coulures) ou monte
+    hats: clamp(Math.round(2 + 2.5 * (v("turb") + 1)), 1, 6),   // densité des charlestons
+    pinch: am(v("pince")),
+    seed: scene.stars[0].seed
+  };
+}
+
+function sonApply(P) {
+  const { ctx } = SON, t = ctx.currentTime;
+  const steps = Math.round(8 + (1 - Math.min(1, P.crush)) * 56), curve = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; curve[i] = P.crush > 0.02 ? Math.round(x * steps) / steps : x; }
+  SON.crush.curve = curve;
+  SON.lfo.frequency.setTargetAtTime(P.tremRate, t, 0.05);
+  SON.lfoAmt.gain.setTargetAtTime(P.tremDepth * 0.5, t, 0.05); SON.trem.gain.setTargetAtTime(1 - P.tremDepth * 0.5, t, 0.05);
+  if (SON.pan.pan) SON.pan.pan.setTargetAtTime(P.pan, t, 0.1);
+  SON.padSend.gain.setTargetAtTime(P.verb, t, 0.1); SON.padDel.gain.setTargetAtTime(P.echo, t, 0.1);
+  SON.fb.gain.setTargetAtTime(0.25 + P.echo * 0.5, t, 0.1); SON.delay.delayTime.setTargetAtTime(60 / P.bpm * 0.75, t, 0.1);
+  SON.periodic = ctx.createPeriodicWave(P.wave.re, P.wave.im);
+}
+
+/* --- les voix --- */
+function padVoice(P, f, t0, dur, gain) {
+  const { ctx } = SON, out = ctx.createGain(), flt = ctx.createBiquadFilter();
+  flt.type = P.pinch > 0.05 ? "bandpass" : "lowpass"; flt.Q.value = P.q + P.pinch * 6;
+  flt.frequency.setValueAtTime(P.cutoff, t0);
+  if (P.wah > 10) { flt.frequency.linearRampToValueAtTime(P.cutoff + P.wah, t0 + dur * 0.5); flt.frequency.linearRampToValueAtTime(P.cutoff, t0 + dur); }
+  for (const det of [-P.detune, P.detune]) {
+    const o = ctx.createOscillator(); o.setPeriodicWave(SON.periodic); o.frequency.value = f / 6; o.detune.value = det;
+    const vib = ctx.createOscillator(), va = ctx.createGain(); vib.frequency.value = 5.2; va.gain.value = P.vib; vib.connect(va); va.connect(o.detune);
+    o.connect(flt); o.start(t0); o.stop(t0 + dur + 1.2); vib.start(t0); vib.stop(t0 + dur + 1.2);
+  }
+  const a = Math.min(P.attack, dur * 0.6);
+  out.gain.setValueAtTime(0, t0); out.gain.linearRampToValueAtTime(gain, t0 + a); out.gain.setTargetAtTime(0, t0 + dur, P.arp ? 0.08 : 0.35);
+  flt.connect(out); out.connect(SON.padIn);
+}
+function bass808(P, t0, semi, len) {
+  const { ctx } = SON, o = ctx.createOscillator(), g = ctx.createGain(), sh = ctx.createWaveShaper(), lp = ctx.createBiquadFilter();
+  const c = new Float32Array(512), k = P.drive; for (let i = 0; i < 512; i++) { const x = i / 255.5 - 1; c[i] = (1 + k) * x / (1 + k * Math.abs(x)); }
+  sh.curve = c; lp.type = "lowpass"; lp.frequency.value = 900;
+  o.type = "sine"; o.frequency.setValueAtTime(hz(semi + 24), t0); o.frequency.exponentialRampToValueAtTime(hz(semi + 12), t0 + 0.06);
+  if (semi !== 0) { o.frequency.setValueAtTime(hz(12), t0 + 0.06); o.frequency.exponentialRampToValueAtTime(hz(semi + 12), t0 + 0.16); }
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.9, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+  o.connect(sh); sh.connect(lp); lp.connect(g); g.connect(SON.drums); o.start(t0); o.stop(t0 + len + 0.05);
+}
+function noiseHit(t0, type, f, q, len, gain, send) {
+  const { ctx } = SON, s = ctx.createBufferSource(), b = ctx.createBiquadFilter(), g = ctx.createGain();
+  s.buffer = SON.noise; b.type = type; b.frequency.value = f; b.Q.value = q;
+  g.gain.setValueAtTime(gain, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+  s.connect(b); b.connect(g); g.connect(send ? SON.verbIn : SON.drums); if (send) g.connect(SON.drums);
+  s.start(t0, Math.random() * 0.5); s.stop(t0 + len + 0.02);
+}
+
+/* --- séquenceur : 2 mesures de doubles croches, demi-tempo façon trap --- */
+function sonStep(step, t) {
+  const P = SON.P, s16 = 60 / P.bpm / 4, r = mulberry(P.seed + step * 31);
+  if (step % 16 === 0) {
+    if (SON.next) { SON.P = SON.next; SON.next = null; sonApply(SON.P); return sonStep(step, t); }
+    if (!P.arp) P.notes.forEach((f, i) => padVoice(P, f, t + i * 0.012, s16 * 16 - 0.05, 0.16 / Math.sqrt(P.notes.length)));
+  }
+  if (P.arp) { const order = [0, 2, 4, 1, 3, 5, 2, 4], f = P.notes[order[step % 8] % P.notes.length] * (step % 16 >= 12 ? 2 : 1); padVoice(P, f, t, s16 * 0.9, 0.2); }
+  // 808 : temps 1, contretemps, glissé en fin de mesure
+  const b = step % 16;
+  if (b === 0) bass808(P, t, 0, s16 * 7);
+  if (b === 7 && step >= 16) bass808(P, t, 0, s16 * 3);
+  if (b === 10) bass808(P, t, P.glide, s16 * 6);
+  if (b === 8) { noiseHit(t, "bandpass", 1500, 0.9, 0.22, 0.55, true); noiseHit(t + 0.012, "bandpass", 1100, 0.7, 0.18, 0.35, true); }
+  // charlestons : densité selon les turbulences, roulements de triples croches
+  const hatOn = P.hats >= 4 ? true : P.hats >= 2 ? step % 2 === 0 : step % 4 === 2;
+  if (hatOn) noiseHit(t, "highpass", 8000, 0.7, 0.04, step % 4 === 0 ? 0.22 : 0.13);
+  if (P.hats >= 5 && (b === 14 || b === 6) && r() < 0.8) for (let k = 1; k < 3; k++) noiseHit(t + k * s16 / 3, "highpass", 8500, 0.7, 0.03, 0.1);
+  // hachage du synthé (bris, glitch)
+  if (P.chop > 0.05 && r() < 0.25 + 0.4 * Math.min(1, P.chop)) { SON.chop.gain.setValueAtTime(0.05, t); SON.chop.gain.setValueAtTime(1, t + s16 * (P.stutter > 0.2 ? 0.5 : 0.8)); }
+}
+function sonTick() {
+  const { ctx } = SON;
+  while (SON.t < ctx.currentTime + 0.12) { sonStep(SON.step, SON.t); SON.t += 60 / SON.P.bpm / 4; SON.step = (SON.step + 1) % 32; }
+}
+
+function sonScene(scene) {
+  if (!SON.on || !scene || SON.scene === scene) return;
+  SON.scene = scene;
+  const P = sonParams(scene);
+  if (!SON.P) { SON.P = P; sonApply(P); SON.step = 0; SON.t = SON.ctx.currentTime + 0.08; } else SON.next = P; // change à la prochaine mesure
+}
+function sonVote(v) {
+  if (!SON.on || !SON.P) return;
+  const t = SON.ctx.currentTime + 0.01, P = SON.P;
+  if (v > 0) P.notes.slice(0, 4).forEach((f, i) => padVoice(Object.assign({}, P, { attack: 0.005, arp: true }), f * 2, t + i * 0.045, 0.12, 0.22));
+  else { bass808(Object.assign({}, P, { drive: 1 }), t, -5, 0.25); noiseHit(t, "lowpass", 400, 0.7, 0.12, 0.5); }
+  if (navigator.vibrate) navigator.vibrate(v > 0 ? 12 : [8, 40, 8]);
+}
+function sonToggle() {
+  const btn = document.getElementById("d-son");
+  if (SON.on) {
+    SON.on = false; clearInterval(SON.timer); SON.master.gain.setTargetAtTime(0, SON.ctx.currentTime, 0.15);
+    setTimeout(() => { if (!SON.on) SON.ctx.suspend(); }, 600);
+  } else {
+    sonEnsure(); SON.ctx.resume(); SON.on = true; SON.P = null; SON.next = null; SON.scene = null;
+    SON.master.gain.setTargetAtTime(0.6, SON.ctx.currentTime, 0.05);
+    sonScene(current[focusIdx]); SON.timer = setInterval(sonTick, 25); sonTick();
+  }
+  btn.setAttribute("aria-pressed", SON.on); btn.title = SON.on ? "Couper le son (M)" : "Écouter la forme (M)";
+}
+document.getElementById("d-son").onclick = sonToggle;
+document.addEventListener("keydown", e => {
+  const t = e.target, tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || document.querySelector(".modal:not([hidden])")) return;
+  if (e.key === "m" || e.key === "M") sonToggle();
+});
+document.addEventListener("visibilitychange", () => { if (document.hidden && SON.on) sonToggle(); });
+
+/* =====================================================================
+   Toucher : la forme réagit à la souris, sans effet appuyé.
+   - la branche sous le curseur se soulève un peu : elle grossit légèrement,
+     s'éclaire, et son ombre se détache sur le fond
+   - l'image s'incline de quelques degrés vers le curseur
+   - si le son est allumé, chaque branche joue sa note quand on la touche
+   Rendu WebGL par-dessus l'image de la forme ; rien ne change si WebGL manque.
+   ===================================================================== */
+const TOUCH = { gl: null, prog: null, texImg: null, texMask: null, key: null, mx: 0.5, my: 0.5, tx: 0.5, ty: 0.5, s: 0, st: 0, raf: 0, branch: -1, angles: null };
+function touchInit() {
+  const c = document.createElement("canvas"); c.id = "focus-gl"; c.setAttribute("aria-hidden", "true");
+  focusWrap.appendChild(c);
+  const gl = c.getContext("webgl", { premultipliedAlpha: false, alpha: true });
+  if (!gl) { c.remove(); return; }
+  const vs = "attribute vec2 p; varying vec2 uv; void main(){ uv = p * 0.5 + 0.5; uv.y = 1.0 - uv.y; gl_Position = vec4(p, 0.0, 1.0); }";
+  const fs = `precision mediump float; varying vec2 uv;
+    uniform sampler2D img; uniform sampler2D msk; uniform vec2 m; uniform float s;
+    float ink(vec2 q){ return texture2D(msk, q).r; }
+    void main(){
+      vec2 d = uv - m; float r = length(d);
+      float w = s * (1.0 - smoothstep(0.03, 0.2, r));            // zone soulevée, bord très doux
+      vec2 q = m + d * (1.0 - 0.07 * w) - vec2(0.004, 0.006) * w;  // un peu plus grande, vers la lumière
+      vec4 base = texture2D(img, uv);
+      // ombre de la partie soulevée, posée sur le fond (floutée)
+      vec2 so = vec2(0.008, 0.012) * w; float sh = 0.0;
+      for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) sh += ink(uv - so + vec2(float(i), float(j)) * 0.006);
+      sh = sh / 9.0 * w * (1.0 - ink(uv));
+      vec3 col = base.rgb * (1.0 - 0.28 * sh);
+      float a = ink(q) * smoothstep(0.0, 0.15, w);
+      vec3 lifted = texture2D(img, q).rgb;
+      lifted = lifted + (1.0 - lifted) * 0.06 * w + lifted * 0.05 * w; // un soupçon de lumière
+      gl_FragColor = vec4(mix(col, lifted, a), 1.0);
+    }`;
+  const sh = (t, src) => { const o = gl.createShader(t); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { c.remove(); return; }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const mk = unit => { const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); return t; };
+  Object.assign(TOUCH, { gl, prog, canvas: c, texImg: mk(0), texMask: mk(1) });
+  gl.uniform1i(gl.getUniformLocation(prog, "img"), 0); gl.uniform1i(gl.getUniformLocation(prog, "msk"), 1);
+  TOUCH.uM = gl.getUniformLocation(prog, "m"); TOUCH.uS = gl.getUniformLocation(prog, "s");
+
+  const move = e => {
+    if (e.pointerType === "touch" && e.type === "pointermove" && !e.isPrimary) return;
+    const r = focusCanvas.getBoundingClientRect();
+    TOUCH.tx = clamp((e.clientX - r.left) / r.width, 0, 1); TOUCH.ty = clamp((e.clientY - r.top) / r.height, 0, 1);
+    TOUCH.st = 1; touchKick();
+  };
+  focusCanvas.addEventListener("pointermove", move);
+  focusCanvas.addEventListener("pointerenter", move);
+  focusCanvas.addEventListener("pointerleave", () => { TOUCH.st = 0; touchKick(); });
+}
+function touchUpload() {
+  const sc = current[focusIdx];
+  if (!sc || !sc.frgba || !sc.fmask) return false;
+  const key = sc.id + "|" + sc.fkey;
+  if (TOUCH.key === key) return true;
+  const { gl } = TOUCH, T = sc.fT;
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, TOUCH.texImg);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, T, T, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(sc.frgba.buffer, sc.frgba.byteOffset, sc.frgba.byteLength));
+  const m8 = new Uint8Array(T * T); for (let i = 0; i < m8.length; i++) m8[i] = Math.round(clamp(sc.fmask[i], 0, 1) * 255);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, TOUCH.texMask);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, T, T, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, m8);
+  TOUCH.canvas.width = TOUCH.canvas.height = T; gl.viewport(0, 0, T, T);
+  // centre de la forme (pour savoir quelle branche on touche)
+  let sx = 0, sy = 0, n = 0; for (let y = 0; y < T; y += 2) for (let x = 0; x < T; x += 2) if (sc.fmask[y * T + x] > 0.5) { sx += x; sy += y; n++; }
+  TOUCH.cx = n ? sx / n / T : 0.5; TOUCH.cy = n ? sy / n / T : 0.5; TOUCH.mask = sc.fmask; TOUCH.T = T;
+  TOUCH.key = key; return true;
+}
+function touchKick() { if (!TOUCH.raf) TOUCH.raf = requestAnimationFrame(touchFrame); }
+function touchFrame() {
+  TOUCH.raf = 0;
+  if (!TOUCH.gl || view !== "focus") return;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // ressort doux vers le curseur
+  TOUCH.mx += (TOUCH.tx - TOUCH.mx) * 0.18; TOUCH.my += (TOUCH.ty - TOUCH.my) * 0.18;
+  TOUCH.s += (TOUCH.st - TOUCH.s) * (TOUCH.st ? 0.12 : 0.08);
+  const ok = touchUpload();
+  TOUCH.canvas.style.opacity = ok && TOUCH.s > 0.01 ? 1 : 0;
+  if (ok) {
+    const { gl } = TOUCH;
+    gl.uniform2f(TOUCH.uM, TOUCH.mx, TOUCH.my); gl.uniform1f(TOUCH.uS, reduce ? 0 : TOUCH.s);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    touchSound();
+  }
+  // légère inclinaison vers le curseur (3 degrés au plus)
+  const k = reduce ? 0 : TOUCH.s * 3;
+  focusWrap.style.transform = k > 0.02 ? `perspective(1400px) rotateX(${((0.5 - TOUCH.my) * k).toFixed(2)}deg) rotateY(${((TOUCH.mx - 0.5) * k).toFixed(2)}deg)` : "";
+  const moving = Math.abs(TOUCH.tx - TOUCH.mx) + Math.abs(TOUCH.ty - TOUCH.my) > 0.001 || Math.abs(TOUCH.st - TOUCH.s) > 0.005;
+  if (moving) touchKick();
+}
+/* le son suit le doigt : la branche touchée joue sa note, une seule fois par entrée */
+function touchSound() {
+  if (!SON.on || !SON.P || !TOUCH.mask) return;
+  const T = TOUCH.T, x = Math.floor(TOUCH.tx * T), y = Math.floor(TOUCH.ty * T);
+  const onInk = TOUCH.mask[clamp(y, 0, T - 1) * T + clamp(x, 0, T - 1)] > 0.5;
+  const dx = TOUCH.tx - TOUCH.cx, dy = TOUCH.ty - TOUCH.cy, far = Math.hypot(dx, dy) > 0.09;
+  let b = -1;
+  if (onInk && far) { const a = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360 + 30) % 360; b = Math.floor(a / 60); }
+  const hasStamps = !!(current[focusIdx] && current[focusIdx].fstamps && current[focusIdx].fstamps.length);
+  if (b !== TOUCH.branch && b >= 0 && !hasStamps) {
+    const P = SON.P, f = P.notes[b % P.notes.length] * 2;
+    padVoice(Object.assign({}, P, { attack: 0.004, arp: true }), f, SON.ctx.currentTime + 0.005, 0.18, 0.12);
+  }
+  TOUCH.branch = b;
+  // trame : chaque motif touché tinte, plus ou moins fort selon son éclat
+  const sc = current[focusIdx], st = sc && sc.fstamps;
+  if (st && st.length) {
+    let hit = -1, best = 1e9;
+    for (let i = 0; i < st.length; i++) { const q = st[i], d = Math.hypot(q[0] - TOUCH.tx, q[1] - TOUCH.ty); if (d < q[2] * 0.55 && d < best) { best = d; hit = i; } }
+    if (hit >= 0 && hit !== TOUCH.stamp) { const q = st[hit]; sonChime(Math.min(1, q[3] * q[3] * 0.8 + q[4] * 0.6), 1 - q[1], q[2]); }
+    TOUCH.stamp = hit;
+  }
+}
+function sonChime(level, height, size) {
+  if (!SON.on || !SON.P) return;
+  level = clamp(+level || 0, 0, 1); height = clamp(+height || 0, 0, 1);
+  if (window._ch !== undefined) window._ch++;
+  const { ctx } = SON, t = ctx.currentTime + 0.003, P = SON.P;
+  const deg = Math.floor(height * 10), f = P.notes[deg % P.notes.length] * Math.pow(2, 2 + Math.floor(deg / P.notes.length)) * (size > 0.05 ? 0.5 : 1);
+  const g = ctx.createGain(), dur = 0.5 + 1.2 * level;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.02 + 0.16 * level, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  for (const [mul, amp] of [[1, 1], [2.76, 0.35], [5.4, 0.12 * level]]) {
+    const o = ctx.createOscillator(), a = ctx.createGain(); o.type = "sine"; o.frequency.value = f * mul; a.gain.value = amp;
+    o.connect(a); a.connect(g); o.start(t); o.stop(t + dur + 0.05);
+  }
+  g.connect(SON.master); const send = ctx.createGain(); send.gain.value = 0.5 + 0.4 * level; g.connect(send); send.connect(SON.verbIn);
+}
+
+touchInit();
 </script>
 
 </body>
