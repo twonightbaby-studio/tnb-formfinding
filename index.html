@@ -338,6 +338,10 @@ body.share-mode.idle .fade-ui { opacity: 1; }
           <label class="btn line" for="t-file">Importer un motif SVG ou PNG</label>
           <input type="file" id="t-file" class="file-input" accept="image/svg+xml,image/png,image/webp,image/jpeg">
         </div>
+        <div class="field"><label class="lab" for="t-dispo">Disposition</label><select id="t-dispo"><option value="grille">Grille régulière</option><option value="libre">Libre : tailles et rotations au hasard, rangées dans la forme</option></select></div>
+        <div class="field t-libre"><label class="lab" for="t-ecart">Écart de tailles <output id="t-ecart-o"></output></label><input type="range" id="t-ecart" min="0" max="1" step="0.05"></div>
+        <div class="field t-libre"><label class="lab" for="t-rot">Rotation au hasard <output id="t-rot-o"></output></label><input type="range" id="t-rot" min="0" max="180" step="5"></div>
+        <button class="btn line t-libre" id="t-shuffle" type="button">Rebattre</button>
         <div class="field"><label class="lab" for="t-cell">Taille de la grille <output id="t-cell-o"></output></label><input type="range" id="t-cell" min="5" max="30" step="1"></div>
         <div class="field"><label class="lab" for="t-douceur">Douceur <output id="t-douceur-o"></output></label><input type="range" id="t-douceur" min="0" max="1" step="0.05"></div>
         <div class="field"><label class="lab" for="t-voile">Voile lumineux <output id="t-voile-o"></output></label><input type="range" id="t-voile" min="0" max="1" step="0.05"></div>
@@ -846,7 +850,7 @@ const S = Object.assign({
   styles: Object.fromEntries(Object.keys(STYLES).map(k => [k, { on: false, k: 1 }])),
 }, store.get("atelier-reglages", {}));
 for (const k of Object.keys(STYLES)) S.styles[k] = S.styles[k] || { on: false, k: 1 };
-S.trame = Object.assign({ motif: "carre", cell: 12, douceur: 0.45, voile: 0.35, fg: "#8fd0ff", bg: "#04060b", source: "forme", flux: 0.6, custom: null }, S.trame || {});
+S.trame = Object.assign({ motif: "carre", dispo: "grille", ecart: 0.6, rot: 180, graine: 1, cell: 12, douceur: 0.45, voile: 0.35, fg: "#8fd0ff", bg: "#04060b", source: "forme", flux: 0.6, custom: null }, S.trame || {});
 const saveS = () => store.set("atelier-reglages", S);
 
 /* =====================================================================
@@ -2449,7 +2453,7 @@ function trameStamps() {
 
 /* Dessine une trame sur ctx (W x H) à partir d'un champ d'intensité fw x fh (0..1). */
 const trameVeil = document.createElement("canvas");
-function drawTrame(ctx, W, H, field, fw, fh) {
+function drawTrame(ctx, W, H, field, fw, fh, flowing = false) {
   const st = S.trame, bg = hexRGB(st.bg);
   ctx.save();
   ctx.fillStyle = `rgb(${bg})`; ctx.fillRect(0, 0, W, H);
@@ -2474,6 +2478,7 @@ function drawTrame(ctx, W, H, field, fw, fh) {
     const ix = Math.floor(fx), iy = Math.floor(fy), ax = fx - ix, ay = fy - iy, j = iy * fw + ix;
     return (field[j] * (1 - ax) + field[j + 1] * ax) * (1 - ay) + (field[j + fw] * (1 - ax) + field[j + fw + 1] * ax) * ay;
   };
+  if (st.dispo === "libre") { drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing); ctx.restore(); return; }
   const ox = (W % cell) / 2, oy = (H % cell) / 2;
   for (let y = oy + cell / 2; y < H; y += cell) for (let x = ox + cell / 2; x < W; x += cell) {
     const v = sample(x, y);
@@ -2539,7 +2544,78 @@ function flowField(scene, W, H, time) {
 }
 function drawFlowFrame(ctx, W, H, scene, time) {
   const { field, fw, fh } = flowField(scene, W, H, time % FLOW_LOOP);
-  drawTrame(ctx, W, H, field, fw, fh);
+  drawTrame(ctx, W, H, field, fw, fh, true);
+}
+
+/* Disposition libre : on range des motifs de tailles et d'orientations
+   variées. Image fixe : les plus grands d'abord, là où ils tiennent dans le
+   contour de la forme, puis des plus petits dans les vides. Animation : un
+   rangement fixe sur toute l'image, dont la taille suit l'intensité (pas de
+   scintillement d'une image à l'autre). */
+function edgeDistance(field, fw, fh) {
+  const INF = 1e9, d = new Float32Array(fw * fh), D = Math.SQRT2;
+  for (let i = 0; i < d.length; i++) d[i] = field[i] >= 0.5 ? INF : 0;
+  const at = (x, y) => (x < 0 || y < 0 || x >= fw || y >= fh) ? 0 : d[y * fw + x];
+  for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+    const i = y * fw + x; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + D, at(x + 1, y - 1) + D);
+  }
+  for (let y = fh - 1; y >= 0; y--) for (let x = fw - 1; x >= 0; x--) {
+    const i = y * fw + x; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + D, at(x - 1, y + 1) + D);
+  }
+  return d;
+}
+function packStamps(W, H, cell, free, seed) {
+  const st = S.trame, r = mulberry(seed * 7919 + 13), K = 0.8;
+  const rmin = cell * 0.42, rmax = cell * 0.5 * (1 + 7 * st.ecart), rotMax = st.rot * Math.PI / 180;
+  const B = Math.max(4, rmax * 2), cols = Math.ceil(W / B) + 1, rows = Math.ceil(H / B) + 1, grid = new Array(cols * rows);
+  const out = [];
+  const fits = (x, y, rr) => {
+    const gx = Math.floor(x / B), gy = Math.floor(y / B);
+    for (let j = gy - 1; j <= gy + 1; j++) for (let i = gx - 1; i <= gx + 1; i++) {
+      if (i < 0 || j < 0 || i >= cols || j >= rows) continue;
+      const b = grid[j * cols + i]; if (!b) continue;
+      for (const o of b) if (Math.hypot(o.x - x, o.y - y) < (o.r + rr) * K) return false;
+    }
+    return true;
+  };
+  for (let tr = rmax; tr >= rmin * 0.999; tr = tr > rmin && tr * 0.82 < rmin ? rmin : tr * 0.82) {
+    const tries = clamp(Math.round(W * H / (tr * tr) * 1.2), 40, 6000);
+    for (let k = 0; k < tries; k++) {
+      const x = r() * W, y = r() * H, e = free(x, y);
+      if (e < tr * 0.78) continue;
+      const rr = Math.min(tr * (0.92 + 0.16 * r()), e / 0.78);
+      if (!fits(x, y, rr)) continue;
+      const o = { x, y, r: rr, a: (r() * 2 - 1) * rotMax };
+      out.push(o);
+      const gi = Math.floor(y / B) * cols + Math.floor(x / B); (grid[gi] || (grid[gi] = [])).push(o);
+    }
+    if (tr === rmin) break;
+  }
+  return out;
+}
+const libreCache = { key: "", list: null };
+function drawLibre(ctx, W, H, field, fw, fh, stamps, cell, sample, flowing) {
+  const st = S.trame;
+  let list;
+  if (flowing) {
+    const key = [W, H, cell, st.ecart, st.rot, st.graine].join("|");
+    if (libreCache.key !== key) { libreCache.list = packStamps(W, H, cell, () => Infinity, st.graine); libreCache.key = key; }
+    list = libreCache.list;
+  } else {
+    const ed = edgeDistance(field, fw, fh), kx = W / fw;
+    list = packStamps(W, H, cell, (x, y) => ed[clamp(Math.floor(y / H * fh), 0, fh - 1) * fw + clamp(Math.floor(x / W * fw), 0, fw - 1)] * kx, st.graine);
+  }
+  const base = ctx.getTransform();
+  for (const o of list) {
+    const v = sample(o.x, o.y);
+    let s = 2 * o.r;
+    if (flowing) { s *= 1.05 * Math.pow(clamp((v - 0.05) / 0.95, 0, 1), 0.85); if (s < 0.6) continue; }
+    ctx.setTransform(base); ctx.translate(o.x, o.y); ctx.rotate(o.a);
+    ctx.drawImage(stamps[Math.min(STAMP_LEVELS - 1, Math.floor(Math.max(v, 0.6) * STAMP_LEVELS))], -s / 2, -s / 2, s, s);
+  }
+  ctx.setTransform(base);
 }
 
 function setupTrame() {
@@ -2578,6 +2654,12 @@ function setupTrame() {
   bind("t-fg", "fg", v => v);
   bind("t-bg", "bg", v => v);
   bind("t-source", "source", v => v);
+  bind("t-ecart", "ecart", v => Math.round(v * 100) + " %");
+  bind("t-rot", "rot", v => "± " + Math.round(v) + "°");
+  bind("t-dispo", "dispo", v => v);
+  const showLibre = () => document.querySelectorAll(".t-libre").forEach(el => el.hidden = S.trame.dispo !== "libre");
+  document.getElementById("t-dispo").addEventListener("change", showLibre); showLibre();
+  document.getElementById("t-shuffle").onclick = () => { S.trame.graine = (S.trame.graine || 1) + 1; saveS(); libreCache.key = ""; if (S.preset === "trame") redrawStyles(); };
   document.getElementById("t-apply").onclick = () => { S.preset = "trame"; saveS(); updateFxButton(); redrawStyles(); };
   refresh();
   prepareStamps().then(() => { stampCache.clear(); if (S.preset === "trame") redrawStyles(); });
