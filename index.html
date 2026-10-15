@@ -246,6 +246,10 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
 .fit-row figcaption { font-size: 11px; color: var(--muted); }
 .progress { height: 4px; border-radius: 2px; background: var(--press); overflow: hidden; }
 .progress i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
+.fav-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
+.fav-head h2 { margin: 0; font-family: var(--f-main); font-weight: 400; font-size: 28px; }
+#fav-empty { margin: 0 0 14px; }
+.dock .btn[aria-pressed=true] { background: var(--press); }
 @media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; animation: none !important; } }
 </style>
 </head>
@@ -400,6 +404,11 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
       <div class="done glass" id="focus-done" hidden><div><p>Série terminée</p><button class="btn primary" id="done-regen">Nouvelle série</button></div></div>
     </div>
   </section>
+  <section class="board" id="fav-view" hidden>
+    <div class="fav-head"><h2>Mes favoris</h2><span class="counter" id="fav-count"></span></div>
+    <p class="hint" id="fav-empty" hidden>Aucun favori pour l'instant. Clique sur une création (ou ✓) pour l'ajouter ici.</p>
+    <div class="grid" id="fav-grid"></div>
+  </section>
   <section class="board" id="board-view" hidden>
     <div class="grid" id="grid"></div>
   </section>
@@ -412,6 +421,7 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
   <button class="btn yes" id="d-yes" title="C'est un bonhomme (Entrée)" aria-label="C'est un bonhomme">✓</button>
   <span class="sep"></span>
   <button class="btn" id="d-expand" title="Agrandir, animer, exporter" aria-label="Agrandir, animer, exporter">⤢</button>
+  <button class="btn" id="d-favs" title="Mes favoris (F)" aria-label="Mes favoris" aria-pressed="false">★</button>
   <button class="btn" id="d-board" title="Voir la planche (G)" aria-label="Changer de vue">▦</button>
 </nav>
 
@@ -1485,7 +1495,7 @@ function renderLogs() {
 let votesAtSeries = 0;
 async function castVote(scene, v) {
   const id = scene.id, cur = votes[id], remove = cur && cur.v === v;
-  const rec = remove ? null : { stars: scene.stars.map(s => ({ g: s.g })), v, off: scene.off, n: scene.stars.length, t: Date.now(), by: me || null };
+  const rec = remove ? null : { stars: scene.stars.map(s => ({ g: s.g, seed: s.seed, x: +(+s.x).toFixed(4), y: +(+s.y).toFixed(4), s: +(+s.s).toFixed(4) })), v, off: scene.off, n: scene.stars.length, t: Date.now(), by: me || null };
   if (!sb || !me || (cur && cur.local)) {
     if (remove) delete localVotes[id]; else localVotes[id] = Object.assign({}, rec, { local: true });
     store.set(LOCAL_VOTES, localVotes); mergeVotes();
@@ -1506,6 +1516,7 @@ function onVotesChanged() {
   trainTimer = setTimeout(train, 250);
   for (const sc of current) updateCardVote(sc);
   if (modalScene) renderModalVotes();
+  if (typeof refreshFavs === "function") refreshFavs();
   const n = Object.values(votes).filter(isMine).length - votesAtSeries;
   document.getElementById("newvotes").textContent = n >= 3 ? `+${n} votes depuis cette série` : "";
   document.getElementById("regen").classList.toggle("pulse", n >= 3);
@@ -2311,11 +2322,52 @@ function setView(v) {
   view = v; store.set("atelier-vue", v);
   document.getElementById("focus-view").hidden = v !== "focus";
   document.getElementById("board-view").hidden = v !== "board";
+  document.getElementById("fav-view").hidden = v !== "favs";
   const b = document.getElementById("d-board");
-  b.textContent = v === "focus" ? "▦" : "◻"; b.title = v === "focus" ? "Voir la planche (G)" : "Une création à la fois (G)";
+  b.textContent = v === "board" ? "◻" : "▦"; b.title = v === "board" ? "Une création à la fois (G)" : "Voir la planche (G)";
+  document.getElementById("d-favs").setAttribute("aria-pressed", v === "favs");
   ["d-no", "d-prev", "d-count", "d-next", "d-yes"].forEach(id => document.getElementById(id).hidden = v !== "focus");
   if (v === "focus") showFocus(focusIdx);
+  if (v === "favs") renderFavs();
 }
+
+/* Favoris : toutes tes scènes votées « bonhomme », toutes séries confondues, les plus récentes d'abord */
+let favSig = "", favToken = 0;
+const myFavEntries = () => Object.entries(votes).filter(([, v]) => v.v > 0 && isMine(v) && Array.isArray(v.stars) && v.stars.length);
+function favScenes() {
+  return myFavEntries().sort((a, b) => (b[1].t || 0) - (a[1].t || 0)).map(([key, v]) => {
+    const id = key.split("|")[0], n = v.stars.length;
+    const r = mulberry([...id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261));
+    const pos = v.stars.every(st => st.x != null) ? null : layout(n, 0.5, r);
+    return { id, off: v.off || [], stars: v.stars.map((st, k) => ({
+      g: st.g, seed: st.seed ?? Math.floor(r() * 2 ** 31),
+      x: st.x ?? pos[k].x, y: st.y ?? pos[k].y, s: st.s ?? pos[k].s })) };
+  });
+}
+async function renderFavs() {
+  const list = favScenes(), grid = document.getElementById("fav-grid"), token = ++favToken, T = cssT();
+  favSig = myFavEntries().map(([k]) => k).sort().join(",");
+  document.getElementById("fav-count").textContent = list.length ? `${list.length} favori${list.length > 1 ? "s" : ""}` : "";
+  document.getElementById("fav-empty").hidden = list.length > 0;
+  grid.replaceChildren(...list.map((sc, i) => {
+    const card = document.createElement("div"); card.className = "card";
+    const b = document.createElement("button"); b.className = "spec";
+    b.title = "Agrandir, animer, exporter"; b.setAttribute("aria-label", `Ouvrir le favori ${i + 1}`);
+    const cv = document.createElement("canvas"); b.append(cv); b.onclick = () => openModal(sc, i);
+    card.append(b); sc.canvas = cv; return card;
+  }));
+  for (let i = 0; i < list.length; i++) {
+    if (i % 4 === 0) await new Promise(res => setTimeout(res, 0));
+    if (token !== favToken) return;
+    const sc = list[i]; paint(sc.canvas, finish(renderSceneMask(sc, T).mask, T, sc.stars[0].seed), T);
+  }
+}
+function refreshFavs() {
+  if (view !== "favs") return;
+  const sig = myFavEntries().map(([k]) => k).sort().join(",");
+  if (sig !== favSig) renderFavs();
+}
+
 function setupFocus() {
   let swiped = false, x0 = 0;
   focusCanvas.addEventListener("pointerdown", e => { x0 = e.clientX; swiped = false; });
@@ -2328,13 +2380,15 @@ function setupFocus() {
   document.getElementById("d-no").onclick = () => focusVote(-1);
   document.getElementById("d-prev").onclick = () => showFocus(focusIdx - 1, -1);
   document.getElementById("d-next").onclick = () => showFocus(focusIdx + 1, 1);
-  document.getElementById("d-board").onclick = () => setView(view === "focus" ? "board" : "focus");
+  document.getElementById("d-board").onclick = () => setView(view === "board" ? "focus" : "board");
+  document.getElementById("d-favs").onclick = () => setView(view === "favs" ? "focus" : "favs");
   document.getElementById("d-expand").onclick = () => { if (current[focusIdx]) openModal(current[focusIdx], focusIdx); };
   document.getElementById("done-regen").onclick = () => newSeries();
   document.addEventListener("keydown", e => {
     const t = e.target, tag = t && t.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || document.querySelector(".modal:not([hidden])")) return;
-    if (e.key === "g" || e.key === "G") { setView(view === "focus" ? "board" : "focus"); return; }
+    if (e.key === "g" || e.key === "G") { setView(view === "board" ? "focus" : "board"); return; }
+    if (e.key === "f" || e.key === "F") { setView(view === "favs" ? "focus" : "favs"); return; }
     if (view !== "focus") return;
     if (e.key === "ArrowRight") showFocus(focusIdx + 1, 1);
     else if (e.key === "ArrowLeft") showFocus(focusIdx - 1, -1);
