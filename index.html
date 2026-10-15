@@ -1073,11 +1073,62 @@ function layout(n, varr, r) {
   return Array.from({ length: n }, (_, i) => ({ x: -0.6 + 1.2 * i / Math.max(1, n - 1), y: 0, s: 0.3 }));
 }
 
+/* Plusieurs formes : on les fait grossir et glisser jusqu'à ce qu'elles se
+   touchent, puis on cadre l'ensemble pour qu'il occupe le plus de fond possible.
+   Calcul sur une grille basse définition à partir du vrai dessin de chaque forme. */
+function packScene(stars, r) {
+  const P = 80, R = 96, n = stars.length;
+  const ink = stars.map(st => {
+    const m = renderStar(st.g, st.seed, P).mask; let x0 = P, y0 = P, x1 = -1, y1 = -1;
+    for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (m[y * P + x] > 0.5) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    return { m, b: x1 < 0 ? [0, 1, 0, 1] : [x0 / P, (x1 + 1) / P, y0 / P, (y1 + 1) / P] };
+  });
+  const st = stars.map(q => ({ x: q.x, y: q.y, s: q.s }));
+  const grid = new Uint8Array(R * R);
+  const cells = (i, q) => { // pixels de la grille couverts par l'encre de la forme i placée en q
+    const out = [], L = q.s * R, ox = (q.x + 1) / 2 * R - L / 2, oy = (q.y + 1) / 2 * R - L / 2, m = ink[i].m;
+    const xa = Math.max(0, Math.floor(ox)), xb = Math.min(R - 1, Math.ceil(ox + L)), ya = Math.max(0, Math.floor(oy)), yb = Math.min(R - 1, Math.ceil(oy + L));
+    for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+      const sx = Math.floor((x + 0.5 - ox) / L * P), sy = Math.floor((y + 0.5 - oy) / L * P);
+      if (sx >= 0 && sy >= 0 && sx < P && sy < P && m[sy * P + sx] > 0.5) out.push(y * R + x);
+    }
+    return out;
+  };
+  const inFrame = (i, q) => { const b = ink[i].b, L = q.s, x0 = q.x - L / 2 * 2 * (0.5 - b[0]), x1 = q.x + L / 2 * 2 * (b[1] - 0.5), y0 = q.y - L / 2 * 2 * (0.5 - b[2]), y1 = q.y + L / 2 * 2 * (b[3] - 0.5); return x0 >= -0.99 && x1 <= 0.99 && y0 >= -0.99 && y1 <= 0.99; };
+  let occ = st.map((q, i) => cells(i, q));
+  const fill = skip => { grid.fill(0); occ.forEach((c, j) => { if (j === skip) return; for (const k of c) { grid[k] = 1; if (k % R) grid[k - 1] = 1; if ((k + 1) % R) grid[k + 1] = 1; if (k >= R) grid[k - R] = 1; if (k < R * R - R) grid[k + R] = 1; } }); }; // un pixel d'écart entre les formes
+  const ok = (i, q) => {
+    if (!inFrame(i, q)) return null;
+    const c = cells(i, q); let over = 0;
+    for (const k of c) if (grid[k] > 0) over++;
+    return over <= c.length * 0.004 ? c : null;
+  };
+  const dirs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+  for (let round = 0; round < 28; round++) {
+    let grew = false;
+    const order = [...Array(n).keys()].sort(() => r() - 0.5);
+    for (const i of order) {
+      fill(i);
+      for (const [dx, dy] of dirs) {
+        const q = { x: st[i].x + dx * 0.03, y: st[i].y + dy * 0.03, s: st[i].s * 1.07 };
+        const c = ok(i, q); if (c) { st[i] = q; occ[i] = c; grew = true; break; }
+      }
+    }
+    if (!grew) break;
+  }
+  // cadrage final : l'ensemble remplit le cadre (même échelle pour toutes)
+  let X0 = 1, X1 = -1, Y0 = 1, Y1 = -1;
+  st.forEach((q, i) => { const b = ink[i].b; X0 = Math.min(X0, q.x + q.s * (2 * b[0] - 1)); X1 = Math.max(X1, q.x + q.s * (2 * b[1] - 1)); Y0 = Math.min(Y0, q.y + q.s * (2 * b[2] - 1)); Y1 = Math.max(Y1, q.y + q.s * (2 * b[3] - 1)); });
+  const k = 1.94 / Math.max(X1 - X0, Y1 - Y0, 1e-3), cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2;
+  st.forEach((q, i) => { stars[i].x = +((q.x - cx) * k).toFixed(4); stars[i].y = +((q.y - cy) * k).toFixed(4); stars[i].s = +(q.s * k).toFixed(4); });
+}
+
 async function makeScene() {
   const seed = Math.floor(Math.random() * 2 ** 31), r = mulberry(seed);
   const pos = layout(S.nStars, S.sizeVar, r);
   const T = cssT(), stars = [];
   for (const q of pos) stars.push(Object.assign(await makeStar(r, Math.max(24, Math.round(q.s * T))), q));
+  if (stars.length > 1) packScene(stars, r);
   const ps = stars.map(s => s.p).filter(p => p != null);
   const bad = stars.some(s => s.bad);
   return { id: newId(), stars, bad, score: ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : null, off: [...S.off] };
