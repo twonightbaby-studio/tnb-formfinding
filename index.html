@@ -223,6 +223,15 @@ select { background: var(--press); border: 0; border-radius: 10px; padding: 7px 
 .modal-in { border-radius: var(--r-lg); padding: 18px; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: var(--glass-strong); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); border: 1px solid var(--glass-brd); box-shadow: var(--shadow); }
 .modal-in.wide { width: min(900px, 100%); }
 .modal-in canvas { width: 100%; aspect-ratio: 1; max-width: 100%; display: block; border-radius: var(--r-md); background: var(--specimen); }
+.mk-body { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 16px; align-items: start; }
+.mk-view { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.modal-in .mk-view canvas { cursor: grab; touch-action: none; background: radial-gradient(circle at 50% 40%, #ffffff, #e4e5e9); }
+.mk-side { display: flex; flex-direction: column; gap: 12px; }
+.mk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mk-chip { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--hair); cursor: pointer; padding: 0; font-family: var(--f-accent); font-size: 14px; background: var(--glass); }
+.mk-chip[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+#mk-color { width: 100%; height: 28px; border: 1px solid var(--hair); border-radius: 8px; background: none; padding: 0; }
+@media (max-width: 760px) { .mk-body { grid-template-columns: 1fr; } }
 .modal-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
 .modal-row h2 { margin: 0; font-family: var(--f-main); font-weight: 400; font-size: 26px; line-height: 1; }
 .modal .votes { display: flex; gap: 6px; }
@@ -435,6 +444,7 @@ body.share-mode.idle .fade-ui { opacity: 1; }
   <button class="btn" id="d-next" title="Suivante (→)" aria-label="Suivante">›</button>
   <button class="btn yes" id="d-yes" title="C'est un bonhomme (Entrée)" aria-label="C'est un bonhomme">✓</button>
   <span class="sep"></span>
+  <button class="btn" id="d-mock" title="Sur un vêtement (V)" aria-label="Voir sur un vêtement"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 3.5 5.5 2 11l3 1 1-3v12h12V9l1 3 3-1-1.5-5.5L16 3c-.6 1.6-2.2 2.5-4 2.5S8.6 4.6 8 3Z"/></svg></button>
   <button class="btn" id="d-expand" title="Agrandir, animer, exporter" aria-label="Agrandir, animer, exporter">⤢</button>
   <button class="btn" id="d-favs" title="Mes favoris (F)" aria-label="Mes favoris" aria-pressed="false">★</button>
   <button class="btn" id="d-board" title="Voir la planche (G)" aria-label="Changer de vue">▦</button>
@@ -459,9 +469,37 @@ body.share-mode.idle .fade-ui { opacity: 1; }
       <div class="votes dl">
         <button class="btn" id="modal-dl">PNG</button>
         <button class="btn" id="modal-svg">SVG vectoriel</button>
+        <button class="btn" id="modal-mock">Sur un vêtement</button>
       </div>
     </div>
     <div class="note" id="modal-note"></div>
+  </div>
+</div>
+
+<div class="modal" id="mockup" hidden>
+  <div class="modal-in wide" role="dialog" aria-modal="true" aria-labelledby="mk-title">
+    <div class="modal-row">
+      <h2 id="mk-title">Sur un vêtement</h2>
+      <button class="btn" data-close>Fermer</button>
+    </div>
+    <div class="mk-body">
+      <div class="mk-view">
+        <canvas id="mk-canvas" aria-label="Aperçu 3D du vêtement"></canvas>
+        <div class="note" id="mk-note"></div>
+      </div>
+      <div class="mk-side">
+        <div class="field"><label class="lab" for="mk-piece">Pièce</label>
+          <select id="mk-piece"><option value="longsleeve">Longsleeve gaufré</option><option value="sweat">Sweat molleton</option><option value="beanie">Beanie</option></select></div>
+        <div class="field"><span class="lab">Couleur du vêtement</span><div class="mk-chips" id="mk-colors"></div>
+          <input type="color" id="mk-color" aria-label="Autre couleur du vêtement"></div>
+        <div class="field"><label class="lab" for="mk-place">Emplacement</label><select id="mk-place"></select></div>
+        <div class="field"><label class="lab" for="mk-tech">Technique</label><select id="mk-tech"></select></div>
+        <div class="field"><span class="lab">Couleur du motif</span><div class="mk-chips" id="mk-inks"></div></div>
+        <div class="field"><label class="lab" for="mk-size">Taille <output id="mk-size-o"></output></label><input type="range" id="mk-size" min="2" max="40" step="0.5"></div>
+        <div class="field"><label class="lab" for="mk-rot">Rotation <output id="mk-rot-o"></output></label><input type="range" id="mk-rot" min="-180" max="180" step="1"></div>
+        <div class="modal-row"><button class="btn" id="mk-front" type="button">Face</button><button class="btn" id="mk-back" type="button">Dos</button><button class="btn primary" id="mk-png" type="button">PNG</button></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3160,6 +3198,328 @@ document.getElementById("open-fx").onclick = openGallery;
 renderLearned();
 newSeries();
 connect();
+/* =====================================================================
+   Sur un vêtement : aperçu 3D d'une forme posée sur un longsleeve, un
+   sweat ou un beanie. Three.js n'est chargé qu'à la première ouverture.
+   Unités : centimètres.
+   ===================================================================== */
+const MK_DEF = { piece: "longsleeve", color: "#1c1c1e", place: "coeur", tech: "broderie", ink: "#efece4", size: 7, rot: 0 };
+const MK = { opt: Object.assign({}, MK_DEF, store.get("atelier-mockup", {})), ready: false, src: null, motif: null, hit: null, raf: 0 };
+const MK_COLORS = [["Noir délavé", "#1c1c1e"], ["Anthracite", "#3a3b3e"], ["Gris chiné", "#9c9ea3"], ["Blanc cassé", "#ece8df"], ["Marine", "#1e2638"], ["Olive passé", "#5b5d44"], ["Brun", "#4a3a2e"]];
+const MK_INKS = [["Blanc cassé", "#efece4"], ["Noir", "#141414"], ["Gris", "#8d8f94"], ["Ton sur ton", "tone"]];
+const MK_PLACES = {
+  longsleeve: [["coeur", "Poitrine, côté cœur", 7], ["centre", "Centre poitrine", 12], ["grand", "Grand devant", 30], ["manche", "Manche", 7], ["dos", "Dos", 28]],
+  sweat: [["coeur", "Poitrine, côté cœur", 8], ["centre", "Centre poitrine", 14], ["grand", "Grand devant", 32], ["manche", "Manche", 8], ["dos", "Dos", 30]],
+  beanie: [["devant", "Revers, devant", 5], ["cote", "Revers, côté", 5], ["calotte", "Calotte", 9]]
+};
+const MK_TECH = [["serigraphie", "Sérigraphie"], ["broderie", "Broderie"], ["puff", "Puff (relief)"], ["patch", "Patch cousu"]];
+
+let threeP = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); });
+}
+function ensureThree() {
+  if (window.THREE && THREE.DecalGeometry && THREE.OrbitControls) return Promise.resolve(true);
+  if (!threeP) threeP = (async () => {
+    const B = "https://cdn.jsdelivr.net/npm/three@0.128.0/";
+    if (!window.THREE) await loadScript(B + "build/three.min.js");
+    await Promise.all([loadScript(B + "examples/js/geometries/DecalGeometry.js"), loadScript(B + "examples/js/controls/OrbitControls.js")]);
+    return true;
+  })().catch(() => { threeP = null; return false; });
+  return threeP;
+}
+
+/* --- textures générées : relief du tissu (cartes de normales) --- */
+function mkNormalCanvas(W, Hh, hf, strength) {
+  const h = new Float32Array(W * Hh);
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) h[y * W + x] = hf(x, y);
+  const c = document.createElement("canvas"); c.width = W; c.height = Hh;
+  const ctx = c.getContext("2d"), img = ctx.createImageData(W, Hh), d = img.data;
+  for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    const dx = (h[y * W + (x + W - 1) % W] - h[y * W + (x + 1) % W]) * strength;
+    const dy = (h[((y + Hh - 1) % Hh) * W + x] - h[((y + 1) % Hh) * W + x]) * strength;
+    const l = Math.hypot(dx, dy, 1);
+    d[i * 4] = (dx / l * 0.5 + 0.5) * 255; d[i * 4 + 1] = (dy / l * 0.5 + 0.5) * 255; d[i * 4 + 2] = (1 / l * 0.5 + 0.5) * 255; d[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0); return c;
+}
+function mkFabric(kind) {
+  const r = mulberry(kind.length * 977), noise = new Float32Array(128 * 128).map(() => r());
+  const n = (x, y) => noise[(y & 127) * 128 + (x & 127)];
+  const f = {
+    jersey: (x, y) => { const c = x % 8, s = Math.abs(c - 4) / 4; return 0.55 * Math.cos(Math.PI * s) * (0.7 + 0.3 * Math.cos((y + (c < 4 ? 0 : 3)) * Math.PI / 3)) + 0.12 * n(x, y); },
+    waffle: (x, y) => { const dx = Math.abs((x % 16) - 8) / 8, dy = Math.abs((y % 16) - 8) / 8; return Math.pow(Math.max(dx, dy), 3) + 0.08 * n(x, y); },
+    rib: (x, y) => 0.5 + 0.5 * Math.cos(x * Math.PI * 2 / 8) + 0.06 * n(x, y),
+    fleece: (x, y) => 0.25 * (n(x, y) + n(x + 1, y) + n(x, y + 1) + n(x + 1, y + 1)) + 0.15 * Math.cos(x * Math.PI * 2 / 6)
+  }[kind];
+  const t = new THREE.CanvasTexture(mkNormalCanvas(128, 128, f, kind === "waffle" ? 2.2 : 3));
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+
+/* --- les pièces --- */
+function mkTaperTube(curve, seg, rad, r0, r1, flat) {
+  const g = new THREE.TubeGeometry(curve, seg, 1, rad, false), p = g.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg, c = curve.getPointAt(t), rr = r0 + (r1 - r0) * t;
+    const wr = 1 + 0.018 * Math.sin(t * 22) * Math.sin(t * Math.PI); // plis légers
+    for (let j = 0; j <= rad; j++) {
+      const k = i * (rad + 1) + j; v.fromBufferAttribute(p, k).sub(c);
+      v.multiplyScalar(rr * wr); v.z *= flat; v.add(c); p.setXYZ(k, v.x, v.y, v.z);
+    }
+  }
+  g.computeVertexNormals(); return g;
+}
+function mkLathe(pts, seg, zScale, wobble) {
+  const g = new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const a = Math.atan2(z, x), w = wobble ? 1 + wobble * Math.sin(y * 0.45 + a * 3) * Math.sin(a * 5 + y * 0.2) : 1;
+    p.setXYZ(i, x * w, y, z * zScale * w);
+  }
+  g.computeVertexNormals(); return g;
+}
+function mkFabricMat(color, normal, repeat, rough) {
+  const nm = normal.clone(); nm.needsUpdate = true; nm.repeat.set(repeat[0], repeat[1]);
+  return new THREE.MeshStandardMaterial({ color: new THREE.Color(color).convertSRGBToLinear(), roughness: rough, metalness: 0, normalMap: nm, normalScale: new THREE.Vector2(0.4, 0.4), side: THREE.DoubleSide });
+}
+function mkMannequin(group, neckY, headScale) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8f9096, roughness: 0.75, flatShading: true });
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 6.2, 12, 9, 1, true), mat); neck.position.y = neckY + 5; group.add(neck);
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), mat); head.scale.set(8.4 * headScale, 11 * headScale, 9.6 * headScale);
+  head.position.set(0, neckY + 19 * headScale, 0.6); group.add(head);
+  return head;
+}
+function mkBuildPiece(piece, color) {
+  const g = new THREE.Group(), T = MK.tex, surf = [];
+  if (piece === "beanie") {
+    const crown = new THREE.Mesh(mkLathe([[9.55, 7.2], [9.5, 9], [9.3, 12], [8.8, 15.5], [7.9, 18.5], [6.4, 21], [4.2, 22.8], [1.8, 23.6], [0.01, 23.8]], 96, 1.08, 0.012), mkFabricMat(color, T.jersey, [24, 6], 0.92));
+    const cuff = new THREE.Mesh(mkLathe([[9.55, -0.2], [9.75, 0.5], [9.85, 3.5], [9.95, 6.6], [9.7, 7.4], [9.5, 7.6]], 96, 1.08, 0), mkFabricMat(color, T.rib, [30, 1], 0.95));
+    crown.name = "crown"; cuff.name = "cuff"; g.add(crown, cuff); surf.push(crown, cuff);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8f9096, roughness: 0.75, flatShading: true });
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), mat); head.scale.set(8.9, 12.4, 10.1); head.position.set(0, 6, 0.3); g.add(head);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(5.4, 6.4, 14, 9, 1, true), mat); neck.position.y = -10; g.add(neck);
+    MK.view = { target: new THREE.Vector3(0, 9, 0), pos: new THREE.Vector3(18, 22, 78) };
+  } else {
+    const big = piece === "sweat" ? 1.06 : 1, R = 23.5 * big, fab = piece === "sweat" ? T.fleece : T.waffle;
+    const bodyMat = mkFabricMat(color, fab, piece === "sweat" ? [10, 8] : [30, 22], 0.95), ribMat = mkFabricMat(color, T.rib, [40, 1], 0.95);
+    const hemH = piece === "sweat" ? 7 : 3;
+    const body = new THREE.Mesh(mkLathe([[R + 0.3, hemH], [R + 0.6, 12], [R - 0.4, 30], [R + 0.3, 44], [R + 1.2, 54], [R - 0.8, 61], [R - 6, 65.5], [15, 67.6], [9.4, 68.4]], 120, 0.6, 0.012), bodyMat);
+    const hem = new THREE.Mesh(mkLathe([[R - 0.6, 0], [R - 0.2, 0.6], [R + 0.1, hemH - 0.5], [R + 0.35, hemH + 0.4]], 120, 0.6, 0), ribMat);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(9.6, 1.25, 12, 72), ribMat); collar.rotation.x = Math.PI / 2; collar.scale.set(1, 0.72, 1); collar.position.y = 68.6;
+    body.name = "body"; g.add(body, hem, collar); surf.push(body);
+    const cuffH = piece === "sweat" ? 7 : 6, r0 = 8.6 * big, r1 = 6.4 * big;
+    for (const s of [-1, 1]) {
+      const curve = new THREE.CatmullRomCurve3([[15.5, 53, 0], [23.5, 48, 0.6], [28.5, 34, 2.5], [31.5, 17, 4], [32.6, cuffH + 2, 4.6]].map(([x, y, z]) => new THREE.Vector3(s * x * big, y, z)));
+      const sl = new THREE.Mesh(mkTaperTube(curve, 72, 28, r0, r1, 0.86), mkFabricMat(color, fab, piece === "sweat" ? [6, 10] : [14, 26], 0.95));
+      sl.name = s < 0 ? "sleeveR" : "sleeveL"; g.add(sl); surf.push(sl);
+      const cc = new THREE.CatmullRomCurve3([new THREE.Vector3(s * 32.5 * big, cuffH + 3, 4.6), new THREE.Vector3(s * 33 * big, -1, 4.8)]);
+      const cuff = new THREE.Mesh(mkTaperTube(cc, 6, 24, r1 * 0.92, r1 * 0.86, 0.86), ribMat); g.add(cuff);
+    }
+    mkMannequin(g, 66, 1);
+    MK.view = { target: new THREE.Vector3(0, 42, 0), pos: new THREE.Vector3(30, 60, 205) };
+  }
+  g.updateMatrixWorld(true);
+  return { group: g, surf };
+}
+
+/* --- le motif : la forme courante, recadrée, puis traduite selon la technique --- */
+function mkMotifMask(scene) {
+  const T = 640, m = renderSceneMask(scene, T).mask;
+  let x0 = T, y0 = T, x1 = 0, y1 = 0;
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (m[y * T + x] > 0.5) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < x0) { x0 = y0 = 0; x1 = y1 = T - 1; }
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, S = 512, pad = 40, k = (S - 2 * pad) / Math.max(w, h);
+  const out = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const sx = (x - S / 2) / k + (x0 + w / 2), sy = (y - S / 2) / k + (y0 + h / 2);
+    const ix = Math.floor(sx), iy = Math.floor(sy);
+    if (ix < 0 || iy < 0 || ix >= T - 1 || iy >= T - 1) continue;
+    const fx = sx - ix, fy = sy - iy, i = iy * T + ix;
+    out[y * S + x] = m[i] * (1 - fx) * (1 - fy) + m[i + 1] * fx * (1 - fy) + m[i + T] * (1 - fx) * fy + m[i + T + 1] * fx * fy;
+  }
+  return { a: out, S, aspect: h / w };
+}
+function mkInk() {
+  if (MK.opt.ink !== "tone") return MK.opt.ink;
+  const c = new THREE.Color(MK.opt.color), hsl = {}; c.getHSL(hsl);
+  return "#" + new THREE.Color().setHSL(hsl.h, hsl.s * 0.9, hsl.l < 0.5 ? hsl.l + 0.09 : hsl.l - 0.12).getHexString();
+}
+function mkTechMaps() {
+  const { a, S } = MK.motif, tech = MK.opt.tech, ink = new THREE.Color(mkInk());
+  const blur = r => { const b = boxBlur(a, S, r); return boxBlur(b, S, r); };
+  let alpha = a, h, col = i => 1, rough = 0.85, nScale = 0.8;
+  const bg = new THREE.Color(MK.opt.color);
+  if (tech === "serigraphie") {
+    const r = mulberry(5); h = a.map(v => v * 0.08 + r() * 0.05); rough = 0.9; nScale = 0.5;
+  } else if (tech === "puff") {
+    const b = blur(9); h = b.map(v => Math.pow(v, 0.6)); rough = 0.96; nScale = 2.2;
+  } else if (tech === "broderie") {
+    const b = blur(3); h = new Float32Array(S * S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const i = y * S + x, st = 0.5 + 0.5 * Math.sin((x + y) * 0.62); h[i] = b[i] * (0.65 + 0.35 * st); }
+    col = i => 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(((i % S) + Math.floor(i / S)) * 0.62)); rough = 0.5; nScale = 1.6;
+  } else { // patch
+    let x0 = S, y0 = S, x1 = 0, y1 = 0;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (a[y * S + x] > 0.5) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const m = 26; x0 -= m; y0 -= m; x1 += m; y1 += m;
+    alpha = new Float32Array(S * S); h = new Float32Array(S * S);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const inside = x >= x0 && x <= x1 && y >= y0 && y <= y1, i = y * S + x;
+      if (!inside) continue; alpha[i] = 1;
+      const e = Math.min(x - x0, x1 - x, y - y0, y1 - y);
+      h[i] = Math.min(1, e / 6) * 0.6 + (e > 9 && e < 13 && ((x + y) >> 3) % 2 ? -0.25 : 0);
+    }
+    const patchBg = new THREE.Color(ink), motifC = new THREE.Color(ink.getHSL({}).l > 0.5 ? "#141414" : "#efece4");
+    col = i => (a[i] > 0.5 ? -1 : 1);
+    MK.patchCols = [patchBg, motifC]; rough = 0.9; nScale = 1.4;
+  }
+  const c = document.createElement("canvas"); c.width = c.height = S;
+  const ctx = c.getContext("2d"), img = ctx.createImageData(S, S), d = img.data;
+  for (let i = 0; i < S * S; i++) {
+    let r, g, b;
+    if (tech === "patch") { const cc = col(i) < 0 ? MK.patchCols[1] : MK.patchCols[0]; r = cc.r; g = cc.g; b = cc.b; }
+    else { const k = col(i); r = ink.r * k; g = ink.g * k; b = ink.b * k; }
+    d[i * 4] = r * 255; d[i * 4 + 1] = g * 255; d[i * 4 + 2] = b * 255; d[i * 4 + 3] = clamp(alpha[i], 0, 1) * 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const map = new THREE.CanvasTexture(c); map.encoding = THREE.sRGBEncoding;
+  const nmap = new THREE.CanvasTexture(mkNormalCanvas(S, S, (x, y) => h[clamp(y, 0, S - 1) * S + clamp(x, 0, S - 1)], 6));
+  return new THREE.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(nScale, nScale), roughness: rough, metalness: 0, transparent: true, alphaTest: 0.04, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+}
+
+/* --- placement : un rayon vers le vêtement, ou un clic --- */
+function mkPresetRay(piece, place) {
+  const V = (x, y, z) => new THREE.Vector3(x, y, z), big = piece === "sweat" ? 1.06 : 1;
+  const P = { // point visé + direction d'où l'on regarde
+    coeur: [V(11, 52, 0), V(0, 0, 1)], centre: [V(0, 48, 0), V(0, 0, 1)], grand: [V(-2, 38, 0), V(0, 0, 1)],
+    dos: [V(0, 46, 0), V(0, 0, -1)], manche: [V(-28.6 * big, 36, 2.5), V(-0.9, 0, 0.44)],
+    devant: [V(0, 3.6, 0), V(0, 0, 1)], cote: [V(0, 3.6, 0), V(0.85, 0, 0.53)], calotte: [V(0, 14.5, 0), V(0, 0.2, 1)]
+  };
+  const [t, out] = P[place] || P.coeur; out.normalize();
+  return [t.clone().addScaledVector(out, 120), out.clone().negate()];
+}
+function mkApplyDecal() {
+  if (!MK.piece) return;
+  if (MK.decal) { MK.piece.group.remove(MK.decal); MK.decal.geometry.dispose(); MK.decal.material.dispose(); MK.decal = null; }
+  let hit = MK.hit;
+  if (!hit) {
+    const [o, d] = mkPresetRay(MK.opt.piece, MK.opt.place), rc = new THREE.Raycaster(o, d);
+    hit = rc.intersectObjects(MK.piece.surf, false)[0];
+  }
+  if (!hit) return;
+  const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+  const helper = new THREE.Object3D(); helper.position.copy(hit.point); helper.lookAt(hit.point.clone().add(n));
+  helper.rotation.z += MK.opt.rot * Math.PI / 180;
+  const s = +MK.opt.size, depth = Math.min(s * 0.9, MK.opt.piece === "beanie" ? 6 : 14);
+  const tech = MK.opt.tech, k = tech === "patch" ? 1.12 : 1;
+  const geo = new THREE.DecalGeometry(hit.object, hit.point, helper.rotation, new THREE.Vector3(s * k / 0.844, s * k / 0.844, depth));
+  MK.decal = new THREE.Mesh(geo, mkTechMaps()); MK.piece.group.add(MK.decal);
+}
+function mkRebuild() {
+  if (MK.piece) { MK.root.remove(MK.piece.group); MK.piece.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  MK.piece = mkBuildPiece(MK.opt.piece, MK.opt.color); MK.decal = null;
+  MK.root.add(MK.piece.group); mkApplyDecal();
+}
+function mkResetCam() { MK.cam.position.copy(MK.view.pos); MK.ctrl.target.copy(MK.view.target); MK.ctrl.update(); }
+
+async function mkInit() {
+  const canvas = document.getElementById("mk-canvas");
+  const R = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); R.outputEncoding = THREE.sRGBEncoding;
+  R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.15;
+  const S = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, 1, 2000);
+  S.add(new THREE.HemisphereLight(0xffffff, 0x6b6e78, 0.75));
+  const key = new THREE.DirectionalLight(0xfff4e8, 1.25); key.position.set(-60, 110, 120); S.add(key);
+  const rim = new THREE.DirectionalLight(0xdfe8ff, 0.55); rim.position.set(80, 40, -100); S.add(rim);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.3); fill.position.set(90, 10, 60); S.add(fill);
+  MK.root = new THREE.Group(); S.add(MK.root);
+  const ctrl = new THREE.OrbitControls(cam, canvas); ctrl.enableDamping = true; ctrl.dampingFactor = 0.08; ctrl.enablePan = false; ctrl.minDistance = 25; ctrl.maxDistance = 320;
+  Object.assign(MK, { R, S, cam, ctrl, tex: { jersey: mkFabric("jersey"), waffle: mkFabric("waffle"), rib: mkFabric("rib"), fleece: mkFabric("fleece") } });
+  // clic sur le vêtement = poser le motif là
+  let down = null;
+  canvas.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+  canvas.addEventListener("pointerup", e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+    const r = canvas.getBoundingClientRect(), rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), cam);
+    const hit = rc.intersectObjects(MK.piece.surf, false)[0];
+    if (hit) { MK.hit = hit; document.getElementById("mk-place").value = "libre"; mkApplyDecal(); }
+  });
+  MK.ready = true;
+}
+function mkResize() {
+  const c = MK.R.domElement, w = c.clientWidth || 600, h = c.clientHeight || w;
+  if (c.width !== Math.round(w * MK.R.getPixelRatio()) || c.height !== Math.round(h * MK.R.getPixelRatio())) { MK.R.setSize(w, h, false); MK.cam.aspect = w / h; MK.cam.updateProjectionMatrix(); }
+}
+function mkLoop() {
+  if (document.getElementById("mockup").hidden) { MK.raf = 0; return; }
+  mkResize(); MK.ctrl.update(); MK.R.render(MK.S, MK.cam); MK.raf = requestAnimationFrame(mkLoop);
+}
+function mkSave() { store.set("atelier-mockup", MK.opt); }
+function mkFillPlaces() {
+  const sel = document.getElementById("mk-place"), list = MK_PLACES[MK.opt.piece];
+  sel.replaceChildren(...list.map(([v, l]) => new Option(l, v)), new Option("Là où j'ai cliqué", "libre"));
+  if (!list.some(([v]) => v === MK.opt.place)) { MK.opt.place = list[0][0]; MK.opt.size = list[0][2]; }
+  sel.value = MK.opt.place;
+}
+function mkSyncUI() {
+  document.getElementById("mk-piece").value = MK.opt.piece;
+  mkFillPlaces();
+  document.getElementById("mk-tech").value = MK.opt.tech;
+  document.getElementById("mk-size").value = MK.opt.size; document.getElementById("mk-size-o").textContent = `${MK.opt.size} cm`;
+  document.getElementById("mk-rot").value = MK.opt.rot; document.getElementById("mk-rot-o").textContent = `${MK.opt.rot}°`;
+  document.querySelectorAll("#mk-colors button").forEach(b => b.setAttribute("aria-pressed", b.dataset.c === MK.opt.color));
+  document.querySelectorAll("#mk-inks button").forEach(b => b.setAttribute("aria-pressed", b.dataset.c === MK.opt.ink));
+  document.getElementById("mk-color").value = MK.opt.color;
+}
+function mkSetupUI() {
+  const sw = (box, list, key) => {
+    document.getElementById(box).replaceChildren(...list.map(([l, c]) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "mk-chip"; b.dataset.c = c; b.title = l; b.setAttribute("aria-label", l);
+      if (c === "tone") b.textContent = "≈"; else b.style.background = c;
+      b.onclick = () => { MK.opt[key] = c; mkSave(); mkSyncUI(); if (key === "color") mkRebuild(); else mkApplyDecal(); };
+      return b;
+    }));
+  };
+  sw("mk-colors", MK_COLORS, "color"); sw("mk-inks", MK_INKS, "ink");
+  document.getElementById("mk-tech").replaceChildren(...MK_TECH.map(([v, l]) => new Option(l, v)));
+  document.getElementById("mk-color").oninput = e => { MK.opt.color = e.target.value; mkSave(); mkSyncUI(); mkRebuild(); };
+  document.getElementById("mk-piece").onchange = e => { MK.opt.piece = e.target.value; MK.hit = null; mkSave(); mkSyncUI(); mkRebuild(); mkResetCam(); };
+  document.getElementById("mk-place").onchange = e => {
+    const v = e.target.value; if (v === "libre") return;
+    MK.hit = null; MK.opt.place = v; const p = MK_PLACES[MK.opt.piece].find(x => x[0] === v); if (p) MK.opt.size = p[2];
+    mkSave(); mkSyncUI(); mkApplyDecal();
+    if (v === "dos") { MK.cam.position.set(-MK.view.pos.x, MK.view.pos.y, -MK.view.pos.z); MK.ctrl.update(); }
+  };
+  document.getElementById("mk-tech").onchange = e => { MK.opt.tech = e.target.value; mkSave(); mkApplyDecal(); };
+  document.getElementById("mk-size").oninput = e => { MK.opt.size = +e.target.value; document.getElementById("mk-size-o").textContent = `${MK.opt.size} cm`; mkApplyDecal(); };
+  document.getElementById("mk-size").onchange = mkSave;
+  document.getElementById("mk-rot").oninput = e => { MK.opt.rot = +e.target.value; document.getElementById("mk-rot-o").textContent = `${MK.opt.rot}°`; mkApplyDecal(); };
+  document.getElementById("mk-rot").onchange = mkSave;
+  document.getElementById("mk-front").onclick = () => mkResetCam();
+  document.getElementById("mk-back").onclick = () => { MK.cam.position.set(-MK.view.pos.x, MK.view.pos.y, -MK.view.pos.z); MK.ctrl.target.copy(MK.view.target); MK.ctrl.update(); };
+  document.getElementById("mk-png").onclick = () => { MK.R.render(MK.S, MK.cam); offerFile(MK.R.domElement, `formfinding_${MK.opt.piece}_${MK.opt.tech}.png`); };
+}
+async function openMockup(scene) {
+  if (!scene) return;
+  const m = document.getElementById("mockup"), note = document.getElementById("mk-note");
+  m.hidden = false; note.textContent = "Chargement de la 3D…";
+  if (!(await ensureThree())) { note.textContent = "La 3D n'a pas pu se charger (connexion ?). Réessaie dans un instant."; return; }
+  if (!MK.ready) { await mkInit(); mkSetupUI(); }
+  MK.src = scene; MK.motif = mkMotifMask(scene); MK.hit = null;
+  if (MK.opt.place === "libre") MK.opt.place = MK_PLACES[MK.opt.piece][0][0];
+  mkSyncUI(); mkRebuild(); mkResetCam();
+  note.textContent = "Fais tourner le vêtement à la souris ou au doigt. Clique dessus pour y poser la forme.";
+  if (!MK.raf) MK.raf = requestAnimationFrame(mkLoop);
+}
+document.getElementById("d-mock").onclick = () => openMockup(current[focusIdx]);
+document.getElementById("modal-mock").onclick = () => { const s = modalScene; closeM(modal); openMockup(s); };
+document.addEventListener("keydown", e => {
+  const t = e.target, tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || document.querySelector(".modal:not([hidden])")) return;
+  if ((e.key === "v" || e.key === "V") && view === "focus" && current[focusIdx]) openMockup(current[focusIdx]);
+});
+
 </script>
 
 </body>
