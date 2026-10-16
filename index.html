@@ -5240,22 +5240,40 @@ function spVoiceLevel(v) {
 }
 
 /* Moteur */
+// Limiteur : colle et monte le niveau sans saturer
+function spLimiter(c) {
+  const inp = c.createGain(), l = c.createDynamicsCompressor(), clip = c.createWaveShaper(), out = c.createGain();
+  inp.gain.value = 1.0; l.threshold.value = -6; l.knee.value = 2; l.ratio.value = 20; l.attack.value = 0.001; l.release.value = 0.1;
+  const n = 2048, cu = new Float32Array(n); for (let j = 0; j < n; j++) { const x = (j / (n - 1) * 2 - 1) * 1.5; cu[j] = Math.tanh(x * 1.1) * 0.94; } clip.curve = cu;   // écrêtage doux : jamais au-dessus de 0 dB
+  out.gain.value = 1; const pre = c.createGain(); pre.gain.value = 1 / 1.5;
+  inp.connect(l); l.connect(pre); pre.connect(clip); clip.connect(out); return { inp, out };
+}
+// Réverbs : plaque (courte, brillante), hall (longue, sombre), ressort (métallique, façon dub)
+function spIR(c, type) {
+  const sr = c.sampleRate, T = type === "plate" ? 1.6 : type === "spring" ? 2.2 : 3.4, len = (sr * T) | 0, ir = c.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); let lp = 0;
+    for (let i = 0; i < len; i++) { const x = i / len, n = Math.random() * 2 - 1; lp += (n - lp) * (type === "hall" ? 0.18 + 0.5 * (1 - x) : 0.85); let v = (type === "hall" ? lp : n) * Math.pow(1 - x, type === "plate" ? 3.2 : 2.4);
+      if (type === "spring") v += Math.sin(i / sr * 2 * Math.PI * (1800 - 1200 * x)) * 0.25 * Math.pow(1 - x, 3) * (i % Math.round(sr * 0.031) < 40 ? 3 : 1);
+      d[i] = v; } }
+  return ir;
+}
 function spAudio() {
   if (SP.ctx) { if (SP.ctx.state === "suspended") SP.ctx.resume(); return SP.ctx; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
   const c = SP.ctx = new AC();
   const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.3;
-  const master = c.createGain(); master.gain.value = 0.8;
+  const master = c.createGain(); master.gain.value = 0.5;
   const tone = c.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 9000;
   const postIn = c.createGain(), postOut = c.createGain(); master.connect(tone); tone.connect(postIn); postOut.connect(comp);
   Object.assign(SP, { postIn, postOut, ctx: c, rev: null });
-  const an = c.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.82; comp.connect(an); an.connect(c.destination);
-  const dest = c.createMediaStreamDestination ? c.createMediaStreamDestination() : null; if (dest) comp.connect(dest);
+  const lim = spLimiter(c); comp.connect(lim.inp);
+  const an = c.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.82; lim.out.connect(an); an.connect(c.destination);
+  const dest = c.createMediaStreamDestination ? c.createMediaStreamDestination() : null; if (dest) lim.out.connect(dest);
   const len = (c.sampleRate * 3.4) | 0, ir = c.createBuffer(2, len, c.sampleRate);
   for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
   const rev = c.createConvolver(); rev.buffer = ir; const wet = c.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
   const nb = c.createBuffer(1, c.sampleRate, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  Object.assign(SP, { master, tone, an, dest, rev, wet, comp, noise: nb, fbins: new Uint8Array(an.frequencyBinCount) }); spPostApply();
+  Object.assign(SP, { master, tone, an, dest, rev, wet, comp, noise: nb, fbins: new Uint8Array(an.frequencyBinCount) }); spPostApply(); try { rev.buffer = spIR(c, (typeof SY !== "undefined" && SY.post && SY.post.space) || "hall"); } catch {}
   spApplyMood(); return c;
 }
 function spApplyMood() {
@@ -5463,18 +5481,21 @@ function wPSampler(p) {
 // Chaque piste = un instrument synthétisé + 16 pas + 4 boutons analogiques (Timbre, Grain, Espace, Mouvement).
 const SY_INST = {
   kick:   { lab: "Kick", kind: "drum", hue: 10 },
-  k808:   { lab: "808", kind: "mel", hue: 0, oct: -2 },
+  k808:   { lab: "808", kind: "mel", hue: 0, oct: -2, bass: true },
   snare:  { lab: "Snare", kind: "drum", hue: 30 },
   clap:   { lab: "Clap", kind: "drum", hue: 40 },
   hat:    { lab: "Charley", kind: "drum", hue: 55, roll: true },
   shaker: { lab: "Shaker", kind: "drum", hue: 70, roll: true },
   rim:    { lab: "Rim", kind: "drum", hue: 85 },
-  tom:    { lab: "Tom", kind: "mel", hue: 20, oct: -1 },
-  sub:    { lab: "Sub", kind: "mel", hue: 220, oct: -2 },
-  reese:  { lab: "Reese", kind: "mel", hue: 235, oct: -2 },
+  tom:    { lab: "Tom", kind: "mel", hue: 20, oct: -1, bass: true },
+  sub:    { lab: "Sub", kind: "mel", hue: 220, oct: -2, bass: true },
+  reese:  { lab: "Reese", kind: "mel", hue: 235, oct: -2, bass: true },
   pluck:  { lab: "Pluck", kind: "mel", hue: 170, oct: 0 },
   bell:   { lab: "Cloche", kind: "mel", hue: 190, oct: 1 },
-  keys:   { lab: "Keys", kind: "mel", hue: 140, oct: 0, chord: true },
+  keys:   { lab: "Rhodes", kind: "mel", hue: 140, oct: 0, chord: true },
+  fbass:  { lab: "Basse jouée", kind: "mel", hue: 225, oct: -1, bass: true },
+  piano:  { lab: "Piano sombre", kind: "mel", hue: 150, oct: 0 },
+  strings:{ lab: "Cordes", kind: "mel", hue: 35, oct: 0, chord: true },
   pad:    { lab: "Nappe", kind: "mel", hue: 265, oct: 0, chord: true },
   lead:   { lab: "Supersaw", kind: "mel", hue: 300, oct: 0 },
   vox:    { lab: "Voix", kind: "mel", hue: 320, oct: 0 },
@@ -5482,9 +5503,9 @@ const SY_INST = {
   glass:  { lab: "Verre", kind: "mel", hue: 200, oct: 1 },
   flute:  { lab: "Souffle", kind: "mel", hue: 120, oct: 1 },
   riser:  { lab: "Montée", kind: "drum", hue: 250 },
-  acid:   { lab: "Acide 303", kind: "mel", hue: 95, oct: -1 },
+  acid:   { lab: "Acide 303", kind: "mel", hue: 95, oct: -1, bass: true },
   hoover: { lab: "Hoover", kind: "mel", hue: 340, oct: 0 },
-  growl:  { lab: "Growl", kind: "mel", hue: 15, oct: -2 },
+  growl:  { lab: "Growl", kind: "mel", hue: 15, oct: -2, bass: true },
   stab:   { lab: "Stab", kind: "mel", hue: 50, oct: 0, chord: true },
   chop:   { lab: "Vocal chop", kind: "mel", hue: 310, oct: 0 },
   glitch: { lab: "Glitch", kind: "drum", hue: 180 },
@@ -5495,54 +5516,97 @@ const SY_INST = {
 };
 const SY_KEYS = ["Do", "Do#", "Ré", "Mi♭", "Mi", "Fa", "Fa#", "Sol", "La♭", "La", "Si♭", "Si"];
 const SY_SCALE = [0, 2, 3, 5, 7, 8, 10];                 // mineur naturel
-const SY_PROGS = { "i–VI–III–VII": [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], "i–iv–VI–V": [[0, 3, 7], [5, 8, 12], [-4, 0, 3], [-5, -1, 2]], "i–VII–VI–VII": [[0, 3, 7], [-2, 2, 5], [-4, 0, 3], [-2, 2, 5]], "i seul (drone)": [[0, 3, 7], [0, 3, 7], [0, 3, 7], [0, 3, 7]], "VI–VII–i–i": [[-4, 0, 3], [-2, 2, 5], [0, 3, 7], [0, 3, 7]], "i–iv (reggae)": [[0, 3, 7], [5, 8, 12], [0, 3, 7], [5, 8, 12]], "VI–v–i (néo-soul)": [[-4, 0, 3], [-5, -2, 2], [0, 3, 7], [3, 7, 10]] };
+const SY_PROGS = {
+  "i–VI–III–VII": [[0, 3, 7, 10, 14], [-4, 0, 3, 7], [3, 7, 10, 14], [-2, 2, 5, 9]],
+  "i–iv–VI–V": [[0, 3, 7, 10], [5, 8, 12, 15], [-4, 0, 3, 7], [-5, -1, 2, 5]],
+  "i–VII–VI–VII": [[0, 3, 7, 10, 14], [-2, 2, 5, 9], [-4, 0, 3, 7, 11], [-2, 2, 5, 9]],
+  "i seul (drone)": [[0, 3, 7, 10, 14], [0, 3, 7, 10, 14], [0, 3, 7, 10, 14], [0, 3, 7, 10, 14]],
+  "VI–VII–i–i": [[-4, 0, 3, 7], [-2, 2, 5, 9], [0, 3, 7, 10, 14], [0, 3, 7, 10, 14]],
+  "i–iv (reggae)": [[0, 3, 7, 10], [5, 8, 12, 15], [0, 3, 7, 10], [5, 8, 12, 15]],
+  "VI–v–i (néo-soul)": [[-4, 0, 3, 7, 10], [-5, -2, 2, 5, 9], [0, 3, 7, 10, 14], [3, 7, 10, 14]],
+  "ii–V–i (jazz)": [[2, 5, 8, 12], [-5, -1, 2, 5, 8], [0, 3, 7, 10, 14], [0, 3, 7, 10, 14]],
+  "i–VII–VI–V (andalou)": [[0, 3, 7, 10], [-2, 2, 5, 8], [-4, 0, 3, 7], [-5, -1, 2, 5]],
+  "iv–i (cloud)": [[5, 8, 12, 15, 19], [5, 8, 12, 15, 19], [0, 3, 7, 10, 14], [0, 3, 7, 10, 14]],
+  "i–i–VI–VI (drill)": [[0, 3, 7, 10], [0, 3, 7, 10], [-4, 0, 3, 7], [-4, 0, 3, 7]],
+  "I–vi–IV–V (french touch)": [[3, 7, 10, 14], [0, 3, 7, 10], [-4, 0, 3, 7], [-2, 2, 5, 8]] };
 const syTrack = (inst, steps, k = {}) => ({ inst, steps, mute: false, vol: k.vol ?? 0.8, tone: k.tone ?? 0.6, drive: k.drive ?? 0.15, space: k.space ?? 0.3, move: k.move ?? 0.5, fx: k.fx || {} });
-const syS = (str, deg = []) => [...str].map((c, i) => c === "." ? 0 : { v: c === "x" ? 1 : c === "2" ? 2 : c === "3" ? 3 : 1, d: deg[i] ?? 0 });
+const syS = (str, deg = [], len = []) => [...str].map((c, i) => c === "." ? 0 : Object.assign({ v: c === "2" ? 2 : c === "3" ? 3 : 1, d: deg[i] ?? 0 }, (len[i] || 1) > 1 ? { l: len[i] } : {}, c === "g" ? { g: true } : {}));
+const syL = pairs => { const a = []; for (const [i, l] of pairs) a[i] = l; return a; };           // durées : [[pas, longueur], …]
+const syD = pairs => { const a = []; for (const [i, d] of pairs) a[i] = d; return a; };           // notes : [[pas, degré], …]
 const SY_VIBES = {
-  "Éthéré": { bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [
-    syTrack("kick", syS("x.......x.x....."), { tone: 0.4, move: 0.6 }), syTrack("clap", syS("....x.......x..."), { space: 0.6 }),
-    syTrack("shaker", syS("..x...x...x...xx"), { vol: 0.5, space: 0.5 }), syTrack("sub", syS("x.......x.....x.", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1]), { tone: 0.3 }),
-    syTrack("pad", syS("x..............."), { space: 0.8, move: 0.7, tone: 0.45 }), syTrack("bell", syS("..x..x....x..x..", [0, 0, 4, 0, 0, 6, 0, 0, 0, 0, 7, 0, 0, 4]), { space: 0.85 }),
-    syTrack("vox", syS("x.......x.......", [7, 0, 0, 0, 0, 0, 0, 0, 5]), { space: 0.9, vol: 0.5 }) ] },
-  "Rage 808": { bpm: 150, swing: 0, key: 1, prog: "i–VII–VI–VII", tracks: [
-    syTrack("k808", syS("x.....x...x..x..", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 3]), { drive: 0.55, move: 0.75 }), syTrack("snare", syS("........x......."), { drive: 0.3 }),
-    syTrack("hat", syS("x.x.x.x2x.x.x3x."), { vol: 0.6, tone: 0.8 }), syTrack("lead", syS("x..x..x...x..x..", [7, 0, 0, 5, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0]), { drive: 0.4, space: 0.5, tone: 0.7 }),
-    syTrack("glass", syS("x.x.x.x.x.x.x.x.", [0, 0, 2, 0, 4, 0, 7, 0, 4, 0, 2, 0, 0, 0, -1]), { vol: 0.45, space: 0.6 }), syTrack("riser", syS("............x..."), { vol: 0.4 }) ] },
-  "Alt-pop": { bpm: 104, swing: 0.15, key: 9, prog: "i–iv–VI–V", tracks: [
-    syTrack("kick", syS("x.....x...x....."), { tone: 0.5 }), syTrack("rim", syS("....x..x....x..."), { space: 0.4 }),
-    syTrack("hat", syS("..x...x...x...x."), { vol: 0.5 }), syTrack("reese", syS("x..x....x..x....", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]), { tone: 0.35, drive: 0.25 }),
-    syTrack("bowed", syS("x.......x.......", [4, 0, 0, 0, 0, 0, 0, 0, 2]), { space: 0.6, move: 0.3, vol: 0.6, fx: { chorus: { on: true, k: 0.4 } } }), syTrack("keys", syS("x.......x......."), { space: 0.55 }),
-    syTrack("flute", syS("......x.......x.", [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.8, vol: 0.45 }) ] },
-  "R&B": { bpm: 92, swing: 0.18, key: 3, prog: "VI–v–i (néo-soul)", tracks: [
-    syTrack("kick", syS("x......x..x....."), { tone: 0.45, move: 0.55 }), syTrack("clap", syS("....x.......x..."), { space: 0.45, vol: 0.7 }),
-    syTrack("hat", syS("x.x.x.x2x.x.x.x3"), { vol: 0.45, tone: 0.7 }), syTrack("sub", syS("x......x..x.....", [0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0]), { tone: 0.3 }),
-    syTrack("keys", syS("x.....x........."), { space: 0.5, move: 0.7, tone: 0.55 }), syTrack("vox", syS("....x.......x...", [0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.75, vol: 0.5 }),
-    syTrack("chop", syS("..x...x...xx..x.", [0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 5, 0, 0, 2]), { space: 0.5, vol: 0.55, move: 0.3, fx: { chorus: { on: true, k: 0.5 }, echo: { on: true, k: 0.3 } } }) ] },
-  "Sade-like": { bpm: 88, swing: 0.22, key: 2, prog: "VI–v–i (néo-soul)", tracks: [
+  "Cloud (PNL, Yung Lean)": { bpm: 140, swing: 0, key: 4, prog: "iv–i (cloud)", post: { preset: "Nuit", space: "hall", mix: true, duck: 0.3, fx: { wash: { on: true, k: 0.55 }, wide: { on: true, k: 0.6 }, tape: { on: true, k: 0.25 } }, filter: 0.5 }, tracks: [
+    syTrack("k808", syS("x.........x.....", [], syL([[0, 8], [10, 5]])), { drive: 0.45, move: 0.7, tone: 0.45 }),
+    syTrack("snare", syS("........x......."), { space: 0.7, tone: 0.45 }),
+    syTrack("hat", syS("x...x.g.x...x.gx"), { vol: 0.38, tone: 0.7, move: 0.15 }),
+    syTrack("pad", syS("x...............", [], syL([[0, 16]])), { space: 0.85, tone: 0.42, move: 0.45, vol: 0.55, fx: { chorus: { on: true, k: 0.5 } } }),
+    syTrack("chop", syS("x.....x.....x...", syD([[0, 9], [6, 7], [12, 4]]), syL([[0, 3], [6, 3], [12, 4]])), { space: 0.85, vol: 0.5, move: 0.6, fx: { echo: { on: true, k: 0.45 }, chorus: { on: true, k: 0.4 } } }),
+    syTrack("bowed", syS("x.......x.......", syD([[0, 7], [8, 9]]), syL([[0, 8], [8, 8]])), { space: 0.75, vol: 0.4, tone: 0.5 }) ] },
+  "Jazz rap (Nujabes)": { bpm: 90, swing: 0.32, key: 2, prog: "ii–V–i (jazz)", post: { preset: "Cassette", space: "plate", mix: true, duck: 0.25, fx: { tape: { on: true, k: 0.55 }, vinyl: { on: true, k: 0.35 }, lofi: { on: true, k: 0.15 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x.....x.x.....g."), { tone: 0.42, move: 0.45 }),
+    syTrack("snare", syS("....x..g....x..g"), { tone: 0.45, space: 0.35 }),
+    syTrack("hat", syS("x.xgx.xgx.xgx.xg"), { vol: 0.4, tone: 0.55, move: 0.2 }),
+    syTrack("fbass", syS("x..x....x.x.....", syD([[3, 2], [10, 4]]), syL([[0, 3], [3, 2], [8, 2], [10, 3]])), { tone: 0.45 }),
+    syTrack("keys", syS("x.......x.......", [], syL([[0, 7], [8, 7]])), { space: 0.45, move: 0.8, tone: 0.5 }),
+    syTrack("flute", syS("..x.....x....x..", syD([[2, 9], [8, 7], [13, 4]]), syL([[2, 4], [8, 3], [13, 3]])), { space: 0.55, vol: 0.45, move: 0.5 }) ] },
+  "Boom bap sombre (Mobb Deep)": { bpm: 92, swing: 0.18, key: 7, prog: "i–i–VI–VI (drill)", post: { preset: "Vinyle", space: "plate", mix: true, duck: 0.15, fx: { vinyl: { on: true, k: 0.5 }, tape: { on: true, k: 0.45 }, glue: { on: true, k: 0.5 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x......xx.x....."), { tone: 0.38, drive: 0.35, move: 0.4 }),
+    syTrack("snare", syS("....x.......x..."), { tone: 0.4, drive: 0.3, space: 0.25 }),
+    syTrack("hat", syS("x.x.x.x.x.x.x.xg"), { vol: 0.35, tone: 0.5 }),
+    syTrack("piano", syS("x..x....x..x....", syD([[0, 0], [3, -1], [8, 0], [11, 3]]), syL([[0, 3], [3, 4], [8, 3], [11, 4]])), { space: 0.4, tone: 0.45, move: 0.5, fx: { chorus: { on: true, k: 0.3 } } }),
+    syTrack("sub", syS("x......x........", [], syL([[0, 6], [7, 6]])), { tone: 0.3 }) ] },
+  "Dark R&B (PartyNextDoor)": { bpm: 76, swing: 0.12, key: 9, prog: "VI–v–i (néo-soul)", post: { preset: "Nuit", space: "hall", mix: true, duck: 0.3, fx: { wash: { on: true, k: 0.4 }, wide: { on: true, k: 0.5 } }, filter: 0.42 }, tracks: [
+    syTrack("kick", syS("x......x..x....."), { tone: 0.4, move: 0.5 }),
+    syTrack("clap", syS("....x.......x..."), { space: 0.55, vol: 0.65 }),
+    syTrack("hat", syS("x.xgx.x3x.xgx.x2"), { vol: 0.36, tone: 0.65, move: 0.15 }),
+    syTrack("k808", syS("x......x..x.....", syD([[7, -2]]), syL([[0, 6], [7, 3], [10, 5]])), { drive: 0.35, move: 0.6, tone: 0.4 }),
+    syTrack("keys", syS("x.......x.......", [], syL([[0, 8], [8, 8]])), { space: 0.6, move: 0.85, tone: 0.42, fx: { phaser: { on: true, k: 0.3 } } }),
+    syTrack("vox", syS("....x.......x...", syD([[4, 9], [12, 7]]), syL([[4, 4], [12, 4]])), { space: 0.8, vol: 0.45, fx: { echo: { on: true, k: 0.4 } } }) ] },
+  "Sade-like": { bpm: 88, swing: 0.22, key: 2, prog: "ii–V–i (jazz)", post: { preset: "Cassette", space: "plate", mix: true, duck: 0.15, fx: { tape: { on: true, k: 0.4 } }, filter: 0.5 }, tracks: [
     syTrack("kick", syS("x.......x.x....."), { tone: 0.35, move: 0.5 }), syTrack("rim", syS("....x.......x..."), { space: 0.55, vol: 0.6 }),
-    syTrack("shaker", syS("x.xxx.xxx.xxx.xx"), { vol: 0.32, tone: 0.55 }), syTrack("sub", syS("x...x.x...x...x.", [0, 0, 0, 0, 2, 0, 4, 0, 0, 0, 0, 0, 0, 0, -1]), { tone: 0.32, move: 0.3 }),
-    syTrack("keys", syS("x.......x......."), { space: 0.6, move: 0.85, tone: 0.42, vol: 0.75 }), syTrack("flute", syS("x.....x.......x.", [9, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 4]), { space: 0.75, vol: 0.5, move: 0.6 }),
-    syTrack("pad", syS("x..............."), { space: 0.8, vol: 0.4, tone: 0.35, move: 0.4 }) ] },
-  "Trap": { bpm: 140, swing: 0, key: 7, prog: "i–VI–III–VII", tracks: [
-    syTrack("k808", syS("x.....x.x.....x.", [0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0, 0, 0, 3]), { drive: 0.45, move: 0.8 }), syTrack("kick", syS("x.....x.x......."), { tone: 0.55, vol: 0.7 }),
-    syTrack("snare", syS("........x......."), { drive: 0.25, space: 0.35 }), syTrack("hat", syS("xxx2xxx.xx3xxx2x"), { vol: 0.5, tone: 0.85, move: 0.15 }),
-    syTrack("bell", syS("x..x..x.x..x..x.", [7, 0, 0, 6, 0, 0, 4, 0, 7, 0, 0, 9, 0, 0, 7]), { space: 0.6, vol: 0.55 }), syTrack("pad", syS("x..............."), { space: 0.7, vol: 0.35, tone: 0.4 }) ] },
-  "E-trap (TH)": { bpm: 146, swing: 0, key: 1, prog: "i seul (drone)", post: { preset: "Glitch", fx: { lofi: { on: true, k: 0.35 }, tape: { on: true, k: 0.55 }, wide: { on: true, k: 0.4 } }, filter: 0.5 }, tracks: [
-    syTrack("k808", syS("x.....x...x..x..", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 1]), { drive: 0.65, move: 0.75, fx: { crush: { on: true, k: 0.3 } } }), syTrack("kick", syS("x.........x....."), { tone: 0.6, vol: 0.65 }),
+    syTrack("shaker", syS("x.xgx.xgx.xgx.xg"), { vol: 0.32, tone: 0.55 }),
+    syTrack("fbass", syS("x...x.x...x...x.", syD([[4, 2], [6, 4], [14, -1]]), syL([[0, 3], [4, 2], [6, 3], [10, 3], [14, 2]])), { tone: 0.42, move: 0.3 }),
+    syTrack("keys", syS("x.......x.......", [], syL([[0, 8], [8, 8]])), { space: 0.6, move: 0.85, tone: 0.42, vol: 0.75 }),
+    syTrack("flute", syS("x.....x.......x.", syD([[0, 9], [6, 7], [14, 4]]), syL([[0, 5], [6, 6], [14, 2]])), { space: 0.75, vol: 0.5, move: 0.6 }) ] },
+  "French touch (Daft Punk)": { bpm: 122, swing: 0.06, key: 5, prog: "I–vi–IV–V (french touch)", post: { preset: "Club", space: "plate", mix: true, duck: 0.6, fx: { glue: { on: true, k: 0.7 }, tape: { on: true, k: 0.3 }, wide: { on: true, k: 0.35 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x...x...x...x..."), { tone: 0.55, move: 0.4, drive: 0.2 }), syTrack("clap", syS("....x.......x..."), { space: 0.35 }),
+    syTrack("hat", syS("..x...x...x...x."), { vol: 0.5, tone: 0.75, move: 0.35 }),
+    syTrack("fbass", syS("x.xx..x.x.x..x.x", syD([[2, 7], [3, 0], [6, 7], [10, 7], [13, 0], [15, 7]])), { tone: 0.55, drive: 0.25, move: 0.25 }),
+    syTrack("stab", syS("x..x..x...x..x..", [], syL([[0, 2], [3, 2], [6, 3], [10, 2], [13, 2]])), { space: 0.3, tone: 0.6, fx: { wobble: { on: true, k: 0.35 }, phaser: { on: true, k: 0.4 } } }),
+    syTrack("chop", syS("......x.......x.", syD([[6, 4], [14, 2]]), syL([[6, 2], [14, 2]])), { vol: 0.45, space: 0.45, fx: { echo: { on: true, k: 0.35 } } }) ] },
+  "Psyché (Tame Impala)": { bpm: 100, swing: 0.1, key: 4, prog: "i–VII–VI–VII", post: { preset: "Cassette", space: "plate", mix: true, duck: 0.35, fx: { tape: { on: true, k: 0.5 }, wide: { on: true, k: 0.55 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x......xx.x....."), { tone: 0.4, drive: 0.3, fx: { phaser: { on: true, k: 0.4 } } }), syTrack("snare", syS("....x.......x..."), { tone: 0.5, drive: 0.35, fx: { phaser: { on: true, k: 0.5 } } }),
+    syTrack("hat", syS("x.x.x.x.x.x.x.x."), { vol: 0.35, tone: 0.55, fx: { phaser: { on: true, k: 0.6 } } }),
+    syTrack("fbass", syS("x..x..x...x.x...", syD([[3, 2], [6, 4], [10, 7], [12, 4]]), syL([[0, 3], [3, 3], [6, 3], [10, 2], [12, 4]])), { tone: 0.5, drive: 0.25 }),
+    syTrack("pad", syS("x...............", [], syL([[0, 16]])), { space: 0.6, tone: 0.55, vol: 0.5, fx: { chorus: { on: true, k: 0.7 }, phaser: { on: true, k: 0.5 } } }),
+    syTrack("lead", syS("x...x.....x.....", syD([[0, 7], [4, 9], [10, 11]]), syL([[0, 4], [4, 6], [10, 6]])), { space: 0.55, vol: 0.4, tone: 0.5, move: 0.6, fx: { chorus: { on: true, k: 0.5 } } }) ] },
+  "Rage (Yeat)": { bpm: 160, swing: 0, key: 1, prog: "i–VII–VI–VII", post: { preset: "Club", space: "hall", mix: true, duck: 0.45, fx: { glue: { on: true, k: 0.7 }, wide: { on: true, k: 0.5 }, tape: { on: true, k: 0.4 } }, filter: 0.5 }, tracks: [
+    syTrack("k808", syS("x.....x...x..x..", syD([[10, -2], [13, 3]]), syL([[0, 6], [6, 4], [10, 3], [13, 3]])), { drive: 0.7, move: 0.75 }), syTrack("snare", syS("........x......."), { drive: 0.35 }),
+    syTrack("hat", syS("x.x.x.x2x.x.x3x."), { vol: 0.5, tone: 0.8 }),
+    syTrack("lead", syS("x.x.x.x.x.x.x.x.", syD([[0, 7], [2, 7], [4, 9], [6, 7], [8, 4], [10, 4], [12, 6], [14, 4]])), { drive: 0.45, space: 0.5, tone: 0.75, move: 0.2, fx: { chorus: { on: true, k: 0.4 }, crush: { on: true, k: 0.15 } } }),
+    syTrack("hoover", syS("x...............", [], syL([[0, 16]])), { vol: 0.35, space: 0.6 }) ] },
+  "Drill UK (Headie One)": { bpm: 142, swing: 0, key: 6, prog: "i–i–VI–VI (drill)", post: { preset: "Club", space: "hall", mix: true, duck: 0.25, fx: { glue: { on: true, k: 0.6 }, wide: { on: true, k: 0.35 } }, filter: 0.5 }, tracks: [
+    syTrack("k808", syS("x.....x..x....x.", syD([[6, 3], [9, 1], [14, -2]]), syL([[0, 5], [6, 3], [9, 4], [14, 2]])), { drive: 0.5, move: 0.65 }),
+    syTrack("snare", syS("........x.....x."), { drive: 0.2, tone: 0.55 }),
+    syTrack("hat", syS("x..x..x.x.3..x.x"), { vol: 0.45, tone: 0.8, move: 0.1 }),
+    syTrack("strings", syS("x.......x.......", [], syL([[0, 8], [8, 8]])), { space: 0.6, vol: 0.5, tone: 0.45 }),
+    syTrack("piano", syS("x...x...x..x..x.", syD([[0, 7], [4, 6], [8, 4], [11, 3], [14, 4]]), syL([[0, 3], [4, 3], [8, 3], [11, 2], [14, 2]])), { space: 0.55, vol: 0.45, tone: 0.4 }) ] },
+  "Electro sombre (Gesaffelstein)": { bpm: 124, swing: 0, key: 2, prog: "i seul (drone)", post: { preset: "Club", space: "plate", mix: true, duck: 0.55, fx: { glue: { on: true, k: 0.8 }, tape: { on: true, k: 0.55 }, wide: { on: true, k: 0.3 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x...x...x...x..."), { tone: 0.5, drive: 0.55, move: 0.35 }), syTrack("clap", syS("....x.......x..."), { space: 0.45, drive: 0.3 }),
+    syTrack("hat", syS("..x...x...x...x."), { vol: 0.45, tone: 0.85, move: 0.25 }),
+    syTrack("acid", syS("x.xx.x.xx.x.xx.x", syD([[2, 7], [3, 0], [5, 3], [8, 0], [10, 7], [12, 1], [13, 0], [15, 3]])), { tone: 0.55, drive: 0.55, move: 0.45, fx: { crush: { on: true, k: 0.2 } } }),
+    syTrack("metal", syS("....x.......x...", syD([[4, 7], [12, 8]])), { space: 0.5, vol: 0.4, fx: { echo: { on: true, k: 0.45 } } }),
+    syTrack("bowed", syS("x...............", syD([[0, 7]]), syL([[0, 16]])), { vol: 0.35, space: 0.7, tone: 0.45 }) ] },
+  "E-trap (TH)": { bpm: 146, swing: 0, key: 1, prog: "i seul (drone)", post: { preset: "Glitch", space: "plate", mix: true, duck: 0.35, fx: { lofi: { on: true, k: 0.35 }, tape: { on: true, k: 0.55 }, wide: { on: true, k: 0.4 } }, filter: 0.5 }, tracks: [
+    syTrack("k808", syS("x.....x...x..x..", syD([[10, -2], [13, 1]]), syL([[0, 6], [6, 4], [10, 3], [13, 3]])), { drive: 0.65, move: 0.75, fx: { crush: { on: true, k: 0.3 } } }), syTrack("kick", syS("x.........x....."), { tone: 0.6, vol: 0.65 }),
     syTrack("clap", syS("........x......."), { space: 0.35, fx: { echo: { on: true, k: 0.25 } } }), syTrack("hat", syS("x.x3x.x.x2x.xx3x"), { vol: 0.45, tone: 0.9, move: 0.08, fx: { pan: { on: true, k: 0.4 } } }),
     syTrack("glitch", syS("...x......x...x."), { vol: 0.55, move: 0.6, fx: { stutter: { on: true, k: 0.6 }, crush: { on: true, k: 0.5 } } }),
-    syTrack("growl", syS("x.......x.......", [0, 0, 0, 0, 0, 0, 0, 0, 1]), { tone: 0.45, drive: 0.4, move: 0.55, vol: 0.55, fx: { wobble: { on: true, k: 0.5 }, pump: { on: true, k: 0.55 } } }),
-    syTrack("metal", syS("....x.......x..x", [0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 6]), { space: 0.55, vol: 0.45, move: 0.35, fx: { ring: { on: true, k: 0.35 }, echo: { on: true, k: 0.4 } } }),
-    syTrack("hoover", syS("x...............", [7]), { space: 0.6, vol: 0.4, tone: 0.55, move: 0.5, fx: { phaser: { on: true, k: 0.5 } } }) ] },
-  "Reggae": { bpm: 76, swing: 0.25, key: 0, prog: "i–iv (reggae)", tracks: [
-    syTrack("kick", syS("........x......."), { tone: 0.4, move: 0.55 }), syTrack("rim", syS("........x......."), { space: 0.45, vol: 0.8 }),
-    syTrack("hat", syS("x.xxx.xxx.xxx.xx"), { vol: 0.35, tone: 0.65 }), syTrack("keys", syS("..x...x...x...x."), { move: 0.03, space: 0.35, tone: 0.6, vol: 0.7 }),
-    syTrack("sub", syS("x..x..x...x.x...", [0, 0, 0, 2, 0, 0, 4, 0, 0, 0, 3, 0, 2]), { tone: 0.4, move: 0.25, vol: 0.9 }), syTrack("flute", syS("x.......x.......", [7, 0, 0, 0, 0, 0, 0, 0, 4]), { space: 0.8, vol: 0.4 }) ] },
-  "Nuit douce": { bpm: 72, swing: 0.2, key: 7, prog: "VI–VII–i–i", tracks: [
-    syTrack("kick", syS("x.........x....."), { tone: 0.3, move: 0.7 }), syTrack("snare", syS("....x.......x..."), { tone: 0.35, space: 0.7 }),
-    syTrack("shaker", syS("x.x.x.x.x.x.x.x."), { vol: 0.35 }), syTrack("sub", syS("x.........x.....")),
-    syTrack("choir", syS("x..............."), { space: 0.9, move: 0.8 }), syTrack("keys", syS("..x...x...x...x."), { space: 0.6, tone: 0.4 }),
-    syTrack("glass", syS(".....x.......x..", [0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.9, vol: 0.5 }) ] },
+    syTrack("growl", syS("x.......x.......", syD([[8, 1]]), syL([[0, 7], [8, 7]])), { tone: 0.45, drive: 0.4, move: 0.55, vol: 0.55, fx: { wobble: { on: true, k: 0.5 } } }),
+    syTrack("metal", syS("....x.......x..x", syD([[4, 7], [12, 8], [15, 6]])), { space: 0.55, vol: 0.45, move: 0.35, fx: { ring: { on: true, k: 0.35 }, echo: { on: true, k: 0.4 } } }),
+    syTrack("hoover", syS("x...............", syD([[0, 7]]), syL([[0, 16]])), { space: 0.6, vol: 0.4, tone: 0.55, move: 0.5, fx: { phaser: { on: true, k: 0.5 } } }) ] },
+  "Reggae": { bpm: 76, swing: 0.25, key: 0, prog: "i–iv (reggae)", post: { preset: "Propre", space: "spring", mix: true, duck: 0.1, fx: { tape: { on: true, k: 0.3 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("........x......."), { tone: 0.4, move: 0.55 }), syTrack("rim", syS("........x......."), { space: 0.6, vol: 0.8, fx: { echo: { on: true, k: 0.55 } } }),
+    syTrack("hat", syS("x.xgx.xgx.xgx.xg"), { vol: 0.35, tone: 0.65 }), syTrack("keys", syS("..x...x...x...x."), { move: 0.03, space: 0.35, tone: 0.6, vol: 0.7 }),
+    syTrack("fbass", syS("x..x..x...x.x...", syD([[3, 2], [6, 4], [10, 3], [12, 2]]), syL([[0, 3], [3, 2], [6, 4], [10, 2], [12, 3]])), { tone: 0.38, move: 0.25, vol: 0.9 }) ] },
 };
 /* ---------- Boucles et suite : on boucle, on enchaîne, ça devient un vrai morceau ---------- */
 // Chaque boucle = 1 mesure de pas pour toutes les pistes (les sons et boutons sont communs).
@@ -5662,12 +5726,12 @@ const LP_CSS = `
 .lp-cell.play { transform: scale(1.18); box-shadow: 0 0 0 2px rgba(27,29,34,.75); }
 `;
 
-const SY = Object.assign({ bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [], vibe: "Éthéré", sel: 0 }, store.get("atelier-synthe", null) || {});
-if (!SY.tracks.length) syLoadVibe("Éthéré", false);
+const SY = Object.assign({ bpm: 140, swing: 0, key: 4, prog: "iv–i (cloud)", tracks: [], vibe: "Cloud (PNL, Yung Lean)", sel: 0 }, store.get("atelier-synthe", null) || {});
+if (!SY.tracks.length || !SY_PROGS[SY.prog]) syLoadVibe("Cloud (PNL, Yung Lean)", false);
 syEnsureLoops();
 function syLoadVibe(name, ui = true) {
   const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0, parent: null, from: null, loops: null, chain: null, cur: 0, song: false, post: v.post || { preset: "Propre", fx: {}, filter: 0.5 } });
-  if (SP.ctx) { spPostApply(); if (SY.ch) SY.ch.forEach((_, i) => syFxRebuild(i)); }
+  if (SP.ctx) { spPostApply(); if (SP.rev) SP.rev.buffer = spIR(SP.ctx, SY.post.space || "hall"); if (SY.ch) SY.ch.forEach(c => { try { c && c.vol.disconnect(); } catch {} }); SY.ch = []; }
   syEnsureLoops();
   if (ui && typeof prRender === "function") prRender();
   sySave(); if (ui) syRender();
@@ -5678,10 +5742,20 @@ function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() 
 function syChain(i) {
   const c = SP.ctx; SY.ch = SY.ch || [];
   if (SY.ch[i]) return SY.ch[i];
-  const inp = c.createGain(), sh = c.createWaveShaper(), lp = c.createBiquadFilter(), fxIn = c.createGain(), vol = c.createGain(), send = c.createGain();
-  sh.oversample = "2x"; lp.type = "lowpass"; lp.Q.value = 0.9;
-  inp.connect(sh); sh.connect(lp); lp.connect(fxIn); vol.connect(SP.master); vol.connect(send); send.connect(SP.rev);
+  const inp = c.createGain(), sh = c.createWaveShaper(), lp = c.createBiquadFilter(), hp = c.createBiquadFilter(), fxIn = c.createGain(), vol = c.createGain(), send = c.createGain();
+  const I = SY_INST[SY.tracks[i].inst] || {}, low = I.bass || ["kick", "subdrop", "tom"].includes(SY.tracks[i].inst);
+  sh.oversample = "2x"; lp.type = "lowpass"; lp.Q.value = 0.9; hp.type = "highpass"; hp.Q.value = 0.6;
+  hp.frequency.value = low ? 22 : ["hat", "shaker"].includes(SY.tracks[i].inst) ? 380 : I.kind === "drum" ? 90 : 160;
+  inp.connect(sh); sh.connect(lp); lp.connect(hp); hp.connect(fxIn);
+  vol.connect(I.kind === "drum" || low ? SP.master : syDuckBus()); vol.connect(send); send.connect(SP.rev);
   SY.ch[i] = { inp, sh, lp, fxIn, vol, send, d: -1, fx: [] }; syFxRebuild(i); syChainSet(i); return SY.ch[i];
+}
+// Bus « pompé » : tout ce qui n'est ni batterie ni basse se creuse à chaque kick (mix automatique)
+function syDuckBus() { const c = SP.ctx; if (!SY.duck || SY.duck.ctx !== c) { const g = c.createGain(); g.connect(SP.master); SY.duck = { g, ctx: c }; } return SY.duck.g; }
+function syDuck(t) {
+  const P = SY.post || {}; if (P.mix === false || !SY.duck) return;
+  const d = P.duck ?? 0.35, g = SY.duck.g.gain, beat = 60 / SY.bpm;
+  g.cancelScheduledValues(t); g.setValueAtTime(1 - d * 0.85, t); g.linearRampToValueAtTime(1, t + beat * 0.55);
 }
 function syChainSet(i) {
   const T = SY.tracks[i], C = SY.ch && SY.ch[i]; if (!T || !C || !SP.ctx) return;
@@ -5697,59 +5771,71 @@ function syChainSet(i) {
 }
 const syHz = m => 440 * Math.pow(2, (m - 69) / 12);
 function syEnv(g, t, a, peak, d, sus = 0.0001) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(Math.max(0.0001, sus), t + a + d); }
-function syOsc(type, f, t, end, out, det = 0) { const o = SP.ctx.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det; o.connect(out); o.start(t); o.stop(end); return o; }
+function syOsc(type, f, t, end, out, det = 0) { const o = SP.ctx.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det + (Math.random() - 0.5) * 7; o.connect(out); o.start(t); o.stop(end); return o; }
 function syNoise(t, end, out) { const s = SP.ctx.createBufferSource(); s.buffer = SP.noise; s.loop = true; s.connect(out); s.start(t, Math.random() * 0.5); s.stop(end); return s; }
 // Joue une note d'un instrument. m = note midi (ou accord), v = vélocité, mv = bouton Mouvement (0..1), sec = durée d'un pas
-function syPlay(inst, out, t, m, v, mv, sec, glideFrom) {
+const syTanh = (c, k) => { const sh = c.createWaveShaper(), n = 1024, cu = new Float32Array(n); for (let j = 0; j < n; j++) { const x = j / (n - 1) * 2 - 1; cu[j] = Math.tanh(x * k) / Math.tanh(k); } sh.curve = cu; return sh; };
+function syPlay(inst, out, t, m, v, mv, sec, glideFrom, hold) {
   const c = SP.ctx, g = c.createGain(); g.connect(out);
   const notes = Array.isArray(m) ? m : [m], f = syHz(notes[0]);
   switch (inst) {
-    case "kick": { const o = syOsc("sine", 150, t, t + 0.6, g); o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.05 + mv * 0.08); syEnv(g, t, 0.002, 1.1 * v, 0.18 + mv * 0.4); const ck = c.createGain(); syEnv(ck, t, 0.001, 0.3 * v, 0.012); ck.connect(out); syNoise(t, t + 0.02, ck); break; }
-    case "k808": { const o = syOsc("sine", f, t, t + 2.5, g); if (glideFrom) { o.frequency.setValueAtTime(syHz(glideFrom), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.09); } else { o.frequency.setValueAtTime(f * 2.2, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.04); } syEnv(g, t, 0.003, 0.95 * v, 0.3 + mv * 1.8, 0.0001); break; }
-    case "snare": { const n = c.createBiquadFilter(); n.type = "bandpass"; n.frequency.value = 1800 + mv * 2400; n.Q.value = 0.7; const gn = c.createGain(); n.connect(gn); gn.connect(out); syNoise(t, t + 0.4, n); syEnv(gn, t, 0.001, 0.7 * v, 0.12 + mv * 0.2); const o = syOsc("triangle", 190, t, t + 0.2, g); o.frequency.exponentialRampToValueAtTime(120, t + 0.08); syEnv(g, t, 0.001, 0.5 * v, 0.09); break; }
+    case "kick": { const body = c.createGain(), sat = syTanh(c, 2.2); body.connect(sat); sat.connect(g); const o = syOsc("sine", 160, t, t + 1, body); o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.05 + mv * 0.09); syEnv(body, t, 0.001, 1, 0.22 + mv * 0.5); const p = c.createGain(); syOsc("triangle", 420, t, t + 0.05, p).frequency.exponentialRampToValueAtTime(120, t + 0.03); syEnv(p, t, 0.0005, 0.5, 0.03); p.connect(g); const ck = c.createBiquadFilter(), cg = c.createGain(); ck.type = "highpass"; ck.frequency.value = 2500; ck.connect(cg); cg.connect(g); syNoise(t, t + 0.02, ck); syEnv(cg, t, 0.0005, 0.35, 0.01); g.gain.value = 0.95 * v; break; }
+    case "k808": { const dur = hold ? hold + 0.08 : 0.35 + mv * 1.8, sat = syTanh(c, 1.6 + mv), og = c.createGain(); og.connect(sat); sat.connect(g); const o = syOsc("sine", f, t, t + dur + 0.2, og); if (glideFrom) { o.frequency.setValueAtTime(syHz(glideFrom), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.1); } else { o.frequency.setValueAtTime(f * 2.4, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.035); } og.gain.value = 1; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.85 * v, t + 0.004); g.gain.setTargetAtTime(0.55 * v, t + 0.05, 0.25); g.gain.setValueAtTime(0.55 * v * Math.exp(-dur / 2.5), t + dur - 0.06); g.gain.linearRampToValueAtTime(0.0001, t + dur); break; }
+    case "snare": { const bd = c.createGain(); bd.connect(g); [185, 330].forEach((fr, j) => { const o = syOsc("triangle", fr, t, t + 0.2, bd); o.frequency.exponentialRampToValueAtTime(fr * 0.75, t + 0.06); }); syEnv(bd, t, 0.001, 0.55, 0.07 + mv * 0.05); const hp = c.createBiquadFilter(), bp = c.createBiquadFilter(), gn = c.createGain(); hp.type = "highpass"; hp.frequency.value = 450; bp.type = "peaking"; bp.frequency.value = 2200 + mv * 2000; bp.gain.value = 6; hp.connect(bp); bp.connect(gn); gn.connect(g); syNoise(t, t + 0.6, hp); syEnv(gn, t, 0.001, 0.75, 0.16 + mv * 0.3); g.gain.value = 0.85 * v; break; }
     case "clap": { const n = c.createBiquadFilter(); n.type = "bandpass"; n.frequency.value = 1300; n.Q.value = 1.1; n.connect(g); syNoise(t, t + 0.5, n); g.gain.setValueAtTime(0.0001, t); [0, 0.011, 0.023].forEach(o => { g.gain.setValueAtTime(0.75 * v, t + o); g.gain.exponentialRampToValueAtTime(0.08, t + o + 0.009); }); g.gain.setValueAtTime(0.65 * v, t + 0.034); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15 + mv * 0.25); break; }
-    case "hat": case "shaker": { const n = c.createBiquadFilter(); n.type = inst === "hat" ? "highpass" : "bandpass"; n.frequency.value = inst === "hat" ? 7200 : 5200; n.Q.value = inst === "hat" ? 0.5 : 1.2; n.connect(g); syNoise(t, t + 0.6, n); syEnv(g, t, inst === "hat" ? 0.001 : 0.012, (inst === "hat" ? 0.42 : 0.3) * v, 0.03 + mv * 0.28); break; }
+    case "hat": case "shaker": { if (inst === "hat") { const bp = c.createBiquadFilter(), hp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 10000; bp.Q.value = 0.8; hp.type = "highpass"; hp.frequency.value = 7000; bp.connect(hp); hp.connect(g); [205.3, 304.4, 369.6, 522.7, 540, 800].forEach(fr => syOsc("square", fr * 1.65, t, t + 0.5, bp)); const ng = c.createGain(); ng.gain.value = 0.35; ng.connect(hp); syNoise(t, t + 0.5, ng); syEnv(g, t, 0.0008, 0.16 * v, 0.03 + mv * 0.3); } else { const n = c.createBiquadFilter(); n.type = "bandpass"; n.frequency.value = 5200; n.Q.value = 1.2; n.connect(g); syNoise(t, t + 0.6, n); syEnv(g, t, 0.012, 0.3 * v, 0.03 + mv * 0.28); } break; }
     case "rim": { const b = c.createBiquadFilter(); b.type = "bandpass"; b.frequency.value = 1700; b.Q.value = 6; b.connect(g); syOsc("square", 820, t, t + 0.06, b); syEnv(g, t, 0.001, 0.6 * v, 0.03 + mv * 0.06); break; }
     case "tom": { const o = syOsc("sine", f * 2, t, t + 0.8, g); o.frequency.exponentialRampToValueAtTime(f, t + 0.12); syEnv(g, t, 0.002, 0.8 * v, 0.2 + mv * 0.4); break; }
-    case "sub": { syOsc("sine", f, t, t + sec * 8, g); syOsc("triangle", f, t, t + sec * 8, g).detune.value = 3; syEnv(g, t, 0.006, 0.5 * v, sec * (1.5 + mv * 5), 0.0001); break; }
-    case "reese": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(300, t); lp.frequency.linearRampToValueAtTime(300 + mv * 1400, t + sec * 2); lp.connect(g); [-14, 14, 0].forEach(d => syOsc("sawtooth", f, t, t + sec * 6, lp, d)); syEnv(g, t, 0.01, 0.28 * v, sec * (2 + mv * 4), 0.0001); break; }
+    case "sub": { const dur = hold ? hold + 0.05 : sec * (1.5 + mv * 5), sat = syTanh(c, 1.5); sat.connect(g); syOsc("sine", f, t, t + dur + 0.1, sat); syOsc("sine", f * 2, t, t + dur + 0.1, sat).detune.value = 4; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.5 * v, t + 0.008); g.gain.setTargetAtTime(0.38 * v, t + 0.05, 0.3); g.gain.setValueAtTime(0.38 * v, t + dur - 0.05); g.gain.linearRampToValueAtTime(0.0001, t + dur); break; }
+    case "reese": { const dur = hold ? hold + 0.05 : sec * (2 + mv * 4), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(300, t); lp.frequency.linearRampToValueAtTime(300 + mv * 1400, t + dur); lp.connect(g); [-14, 14, 0].forEach(d => syOsc("sawtooth", f, t, t + dur + 0.1, lp, d)); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.26 * v, t + 0.01); g.gain.setValueAtTime(0.26 * v, t + dur - 0.05); g.gain.linearRampToValueAtTime(0.0001, t + dur); break; }
     case "pluck": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 4; lp.frequency.setValueAtTime(5000, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.08 + mv * 0.4); lp.connect(g); syOsc("sawtooth", f, t, t + 1.2, lp); syOsc("square", f * 2, t, t + 1.2, lp, 5); syEnv(g, t, 0.002, 0.3 * v, 0.25 + mv * 0.8); break; }
     case "bell": case "glass": {
       const ratios = inst === "bell" ? [[1, 1, 2], [2.76, 0.4, 1], [5.4, 0.2, 0.5], [8.93, 0.1, 0.3]] : [[1, 1, 1.4], [2, 0.5, 0.9], [3, 0.25, 0.6], [4.2, 0.12, 0.3]];
       ratios.forEach(([r, a, d]) => { const gg = c.createGain(); gg.connect(g); syOsc(inst === "glass" ? "triangle" : "sine", f * r, t, t + d * (1 + mv * 2) + 0.1, gg); syEnv(gg, t, 0.002, a * 0.3 * v, d * (0.5 + mv * 2)); });
       g.gain.value = 1; break; }
-    case "keys": { for (const n of notes) { const mod = c.createOscillator(), mg = c.createGain(), car = c.createOscillator(), hz = syHz(n); mod.frequency.value = hz * 1; mg.gain.setValueAtTime(hz * (1.4 + mv), t); mg.gain.exponentialRampToValueAtTime(hz * 0.05, t + 0.6); mod.connect(mg); mg.connect(car.frequency); car.frequency.value = hz; car.connect(g); mod.start(t); car.start(t); mod.stop(t + 3); car.stop(t + 3); } syEnv(g, t, 0.004, 0.16 * v, 0.6 + mv * 2.2); break; }
+    case "keys": { const dur = hold ? hold + 0.3 : 0.8 + mv * 2.4, trem = c.createGain(); trem.connect(g); const tl = c.createOscillator(), tg = c.createGain(); tl.frequency.value = 4.2; tg.gain.value = 0.12 + mv * 0.15; tl.connect(tg); tg.connect(trem.gain); trem.gain.value = 0.88; tl.start(t); tl.stop(t + dur + 0.2);
+      for (const n of notes) { const hz = syHz(n), car = c.createOscillator(), mod = c.createOscillator(), mg = c.createGain(), bark = c.createOscillator(), bg = c.createGain(); car.frequency.value = hz; car.detune.value = (Math.random() - 0.5) * 8; mod.frequency.value = hz; mg.gain.setValueAtTime(hz * (0.9 + v * 1.2), t); mg.gain.exponentialRampToValueAtTime(hz * 0.04, t + 0.9); bark.frequency.value = hz * 14; bg.gain.setValueAtTime(hz * 0.6 * v, t); bg.gain.exponentialRampToValueAtTime(1, t + 0.05); mod.connect(mg); mg.connect(car.frequency); bark.connect(bg); bg.connect(car.frequency); car.connect(trem); [car, mod, bark].forEach(o => { o.start(t); o.stop(t + dur + 0.25); }); }
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.13 * v / Math.sqrt(notes.length / 3), t + 0.004); g.gain.setTargetAtTime(0.0001, t + 0.05, dur / 3.2); break; }
     case "pad": case "choir": {
-      const dur = sec * 16, lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = inst === "pad" ? 2200 : 1400; lp.connect(g);
-      for (const n of notes) for (const d of [-9, 8, 0]) syOsc(inst === "pad" ? "sawtooth" : "triangle", syHz(n), t, t + dur * 1.3, lp, d);
+      const dur = hold || sec * 16, lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.8; lp.frequency.setValueAtTime(inst === "pad" ? 500 : 400, t); lp.frequency.linearRampToValueAtTime(inst === "pad" ? 1800 + mv * 1600 : 1300, t + dur * 0.5); lp.connect(g);
+      for (const n of notes) for (const d of inst === "pad" ? [-15, -6, 0, 7, 13] : [-8, 0, 9]) syOsc(inst === "pad" ? "sawtooth" : "triangle", syHz(n), t, t + dur * 1.3, lp, d);
+      const br = c.createBiquadFilter(), bg = c.createGain(); br.type = "bandpass"; br.frequency.value = 3200; br.Q.value = 0.7; bg.gain.value = 0.05; br.connect(bg); bg.connect(g); syNoise(t, t + dur * 1.3, br);
       if (inst === "choir") { const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 750; bp.Q.value = 3; lp.disconnect(); lp.connect(bp); bp.connect(g); }
       const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.15 + mv * 3; lg.gain.value = 600 * mv; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(t); lfo.stop(t + dur * 1.3);
-      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07 * v / Math.sqrt(notes.length), t + dur * 0.25); g.gain.setValueAtTime(0.07 * v / Math.sqrt(notes.length), t + dur * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + dur * 1.25); break; }
-    case "lead": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 5200; lp.connect(g); [-24, -12, 0, 11, 23].forEach(d => syOsc("sawtooth", f, t, t + sec * 4, lp, d)); const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 5.5; vg.gain.value = mv * 14; vib.connect(vg); vib.start(t); vib.stop(t + sec * 4); syEnv(g, t, 0.01, 0.1 * v, sec * (1 + mv * 3)); break; }
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.045 * v / Math.sqrt(notes.length), t + dur * 0.25); g.gain.setValueAtTime(0.045 * v / Math.sqrt(notes.length), t + dur * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + dur * 1.25); break; }
+    case "lead": { const dur = hold ? hold + 0.05 : sec * (1 + mv * 3), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 4200; lp.connect(g); [-24, -12, 0, 11, 23].forEach(d => syOsc("sawtooth", f, t, t + dur + 0.3, lp, d)); syEnv(g, t, 0.012, 0.09 * v, dur); break; }
     case "vox": case "flute": {
-      const dur = sec * (2 + mv * 6), src = c.createGain();
+      const dur = hold ? hold + 0.1 : sec * (2 + mv * 6), src = c.createGain();
       if (inst === "vox") syOsc("sawtooth", f, t, t + dur + 0.3, src);
       else { syOsc("sine", f, t, t + dur + 0.3, g); const nb = c.createBiquadFilter(); nb.type = "bandpass"; nb.frequency.value = f * 2; nb.Q.value = 8; syNoise(t, t + dur + 0.3, nb); nb.connect(src); }
       (inst === "vox" ? [[800, 1, 8], [1150, 0.6, 9], [2900, 0.25, 10]] : [[f * 2, 1, 6]]).forEach(([fr, a, q]) => { const bp = c.createBiquadFilter(), ga = c.createGain(); bp.type = "bandpass"; bp.frequency.value = fr; bp.Q.value = q; ga.gain.value = a * (inst === "vox" ? 2.2 : 1.4); src.connect(bp); bp.connect(ga); ga.connect(g); });
       g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32 * v, t + 0.06 + mv * 0.25); g.gain.setValueAtTime(0.32 * v, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); break; }
     case "acid": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 12 + mv * 10; lp.frequency.setValueAtTime(250 + 3800 * (0.3 + mv * 0.7) * v, t); lp.frequency.exponentialRampToValueAtTime(160, t + 0.08 + mv * 0.25); lp.connect(g); const o = syOsc("sawtooth", f, t, t + sec * 2, lp); if (glideFrom) { o.frequency.setValueAtTime(syHz(glideFrom), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06); } syEnv(g, t, 0.003, 0.22 * v, sec * 1.6); break; }
-    case "hoover": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400 + mv * 2600; lp.connect(g); const dur = sec * (2 + mv * 5); [-32, 0, 29].forEach(d => { const o = syOsc("sawtooth", f, t, t + dur + 0.2, lp, d); o.frequency.setValueAtTime(f * 0.68, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.14); }); syEnv(g, t, 0.02, 0.11 * v, dur); break; }
-    case "growl": { const mod = c.createOscillator(), mg = c.createGain(), car = c.createOscillator(), dur = sec * (1.5 + mv * 4); mod.frequency.value = f * 0.5; mg.gain.value = f * 2; const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = (SY.bpm / 60) * (1 + Math.round(mv * 3)); lg.gain.value = f * (1.5 + mv * 4); lfo.connect(lg); lg.connect(mg.gain); mod.connect(mg); mg.connect(car.frequency); car.frequency.value = f; car.connect(g); syOsc("sine", f / 2, t, t + dur, g); [mod, car, lfo].forEach(o => { o.start(t); o.stop(t + dur + 0.1); }); syEnv(g, t, 0.006, 0.3 * v, dur, 0.0001); break; }
+    case "hoover": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400 + mv * 2600; lp.connect(g); const dur = hold || sec * (2 + mv * 5); [-32, 0, 29].forEach(d => { const o = syOsc("sawtooth", f, t, t + dur + 0.2, lp, d); o.frequency.setValueAtTime(f * 0.68, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.14); }); syEnv(g, t, 0.02, 0.11 * v, dur); break; }
+    case "growl": { const mod = c.createOscillator(), mg = c.createGain(), car = c.createOscillator(), dur = hold || sec * (1.5 + mv * 4); mod.frequency.value = f * 0.5; mg.gain.value = f * 2; const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = (SY.bpm / 60) * (1 + Math.round(mv * 3)); lg.gain.value = f * (1.5 + mv * 4); lfo.connect(lg); lg.connect(mg.gain); mod.connect(mg); mg.connect(car.frequency); car.frequency.value = f; car.connect(g); syOsc("sine", f / 2, t, t + dur, g); [mod, car, lfo].forEach(o => { o.start(t); o.stop(t + dur + 0.1); }); syEnv(g, t, 0.006, 0.3 * v, dur, 0.0001); break; }
     case "stab": { const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 250; const sh = c.createWaveShaper(), n = 512, cu = new Float32Array(n); for (let j = 0; j < n; j++) { const x = j / (n - 1) * 2 - 1; cu[j] = Math.round(x * 6) / 6; } sh.curve = cu; hp.connect(sh); sh.connect(g); for (const nn of notes) { syOsc("square", syHz(nn), t, t + 1, hp); syOsc("sawtooth", syHz(nn) * 1.003, t, t + 1, hp); } syEnv(g, t, 0.002, 0.09 * v / Math.sqrt(notes.length), 0.12 + mv * 0.35); break; }
     case "chop": { const V = [[800, 1150, 2900], [400, 2000, 2600], [450, 800, 2830], [300, 2300, 3000], [350, 600, 2700]][Math.floor(hash01(Math.round(t * 1000)) * 5)], src = c.createGain(); syOsc("sawtooth", f, t, t + 0.6, src); V.forEach((fr, j) => { const bp = c.createBiquadFilter(), ga = c.createGain(); bp.type = "bandpass"; bp.frequency.value = fr; bp.Q.value = 9; ga.gain.value = [2.2, 1.3, 0.6][j]; src.connect(bp); bp.connect(ga); ga.connect(g); }); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.35 * v, t + 0.006); g.gain.setValueAtTime(0.35 * v, t + 0.06 + mv * 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08 + mv * 0.25); break; }
     case "glitch": { const n = 3 + Math.floor(mv * 6); for (let j = 0; j < n; j++) { const at = t + hash01(Math.round(t * 997) + j * 31) * sec * 1.6, d = 0.008 + hash01(j * 7 + Math.round(t * 13)) * 0.035, gg = c.createGain(); gg.connect(g); if (j % 3 === 2) { const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 3000; hp.connect(gg); syNoise(at, at + d, hp); } else syOsc(j % 2 ? "square" : "sine", 200 + hash01(j * 13 + Math.round(t * 71)) * 3800, at, at + d, gg); gg.gain.setValueAtTime(0.25 * v, at); gg.gain.setValueAtTime(0.0001, at + d); } g.gain.value = 1; break; }
     case "metal": { const car = c.createOscillator(), m1 = c.createOscillator(), m2 = c.createOscillator(), g1 = c.createGain(), g2 = c.createGain(), dur = 0.25 + mv * 1.2; car.frequency.value = f; m1.frequency.value = f * 1.41; m2.frequency.value = f * 3.7; g1.gain.setValueAtTime(f * 3, t); g1.gain.exponentialRampToValueAtTime(f * 0.1, t + dur); g2.gain.setValueAtTime(f * 2, t); g2.gain.exponentialRampToValueAtTime(1, t + dur * 0.4); m1.connect(g1); m2.connect(g2); g1.connect(car.frequency); g2.connect(car.frequency); car.connect(g); [car, m1, m2].forEach(o => { o.start(t); o.stop(t + dur + 0.1); }); syEnv(g, t, 0.001, 0.22 * v, dur); break; }
-    case "bowed": { const dur = sec * (4 + mv * 8), bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f * 2; bp.Q.value = 2; bp.connect(g); const o = syOsc("sawtooth", f, t, t + dur + 0.5, bp); const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 5.2; vg.gain.value = 6; vib.connect(vg); vg.connect(o.detune); vib.start(t); vib.stop(t + dur + 0.5); const nb = c.createBiquadFilter(); nb.type = "bandpass"; nb.frequency.value = f * 3; nb.Q.value = 12; nb.connect(g); syNoise(t, t + dur + 0.5, nb); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32 * v, t + 0.25 + mv * 0.5); g.gain.setValueAtTime(0.32 * v, t + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); break; }
+    case "bowed": { const dur = hold || sec * (4 + mv * 8), bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f * 2; bp.Q.value = 2; bp.connect(g); const o = syOsc("sawtooth", f, t, t + dur + 0.5, bp); const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 5.2; vg.gain.value = 6; vib.connect(vg); vg.connect(o.detune); vib.start(t); vib.stop(t + dur + 0.5); const nb = c.createBiquadFilter(); nb.type = "bandpass"; nb.frequency.value = f * 3; nb.Q.value = 12; nb.connect(g); syNoise(t, t + dur + 0.5, nb); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32 * v, t + 0.25 + mv * 0.5); g.gain.setValueAtTime(0.32 * v, t + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); break; }
     case "zap": { const o = syOsc("sine", 2800, t, t + 0.5, g); o.frequency.setValueAtTime(2800, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.08 + mv * 0.25); syEnv(g, t, 0.001, 0.4 * v, 0.1 + mv * 0.3); break; }
     case "subdrop": { const dur = 0.8 + mv * 1.5, o = syOsc("sine", 110, t, t + dur + 0.1, g); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(28, t + dur); syEnv(g, t, 0.005, 0.7 * v, dur); break; }
     case "riser": { const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 2; bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(6000, t + sec * 4); bp.connect(g); syNoise(t, t + sec * 4.2, bp); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4 * v, t + sec * 4); g.gain.linearRampToValueAtTime(0.0001, t + sec * 4.2); break; }
+    case "fbass": { const dur = hold ? hold + 0.03 : sec * (1.2 + mv * 2), lp = c.createBiquadFilter(), sat = syTanh(c, 1.8); lp.type = "lowpass"; lp.Q.value = 2; lp.frequency.setValueAtTime(1600 + v * 1200, t); lp.frequency.exponentialRampToValueAtTime(380, t + 0.18); lp.connect(sat); sat.connect(g); const o1 = syOsc("triangle", f, t, t + dur + 0.1, lp), o2 = syOsc("sawtooth", f, t, t + dur + 0.1, lp, 3); if (glideFrom) [o1, o2].forEach(o => { o.frequency.setValueAtTime(syHz(glideFrom), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.05); }); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.42 * v, t + 0.006); g.gain.setTargetAtTime(0.28 * v, t + 0.03, 0.2); g.gain.setValueAtTime(0.28 * v, t + dur - 0.03); g.gain.linearRampToValueAtTime(0.0001, t + dur); break; }
+    case "piano": { const dur = hold ? hold + 0.5 : 1.2 + mv * 2.5; for (const [r, a, dt] of [[1, 1, 0], [2, 0.35, 2], [3, 0.12, -3], [4.01, 0.06, 1]]) { const gg = c.createGain(); gg.connect(g); syOsc("triangle", f * r, t, t + dur + 0.2, gg, dt); syOsc("sine", f * r, t, t + dur + 0.2, gg, -dt * 2); gg.gain.setValueAtTime(0.0001, t); gg.gain.linearRampToValueAtTime(a * 0.12 * v, t + 0.003); gg.gain.setTargetAtTime(0.0001, t + 0.01, dur / (2.5 + r)); } const hm = c.createBiquadFilter(), hg = c.createGain(); hm.type = "bandpass"; hm.frequency.value = 2500; hm.connect(hg); hg.connect(g); syNoise(t, t + 0.02, hm); syEnv(hg, t, 0.0005, 0.08 * v, 0.015); g.gain.value = 1; break; }
+    case "strings": { const dur = hold || sec * 8, lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1400 + mv * 1800; lp.connect(g); for (const n of notes) for (const d of [-10, 0, 9]) { const o = syOsc("sawtooth", syHz(n), t, t + dur + 0.6, lp, d); const vb = c.createOscillator(), vg = c.createGain(); vb.frequency.value = 4.6 + Math.random(); vg.gain.value = 7; vb.connect(vg); vg.connect(o.detune); vb.start(t); vb.stop(t + dur + 0.6); } g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05 * v / Math.sqrt(notes.length), t + 0.35 + mv * 0.4); g.gain.setValueAtTime(0.05 * v / Math.sqrt(notes.length), t + dur); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.5); break; }
   }
 }
 function syNote(T, st, bar) {
   const I = SY_INST[T.inst], chord = SY_PROGS[SY.prog][bar % 4], base = 48 + SY.key + (I.oct || 0) * 12;
-  if (I.chord) return chord.map(x => base + 12 + x);
+  if (I.chord) {                                   // accord resserré autour d'un centre : les voix bougent peu d'un accord à l'autre
+    const center = base + 17, out = [];
+    for (let n of chord.map(x => base + 12 + x)) { while (n > center + 7) n -= 12; while (n < center - 6) n += 12; if (!out.includes(n)) out.push(n); }
+    return out.sort((a, b) => a - b);
+  }
   const deg = st.d || 0, oct = Math.floor(deg / 7), sc = SY_SCALE[((deg % 7) + 7) % 7];
-  return base + 12 + chord[0] + sc + oct * 12;
+  if (I.bass) return base + 12 + chord[0] + sc + oct * 12;          // la basse suit la fondamentale de l'accord
+  return base + 12 + sc + oct * 12;                                   // la mélodie reste dans la tonalité
 }
 function sySchedule(s, t) {
   const sec = 60 / SY.bpm / 4, bar = SY.bar || 0, tt = t + (s % 2 ? SY.swing * sec * 0.5 : 0);
@@ -5761,7 +5847,11 @@ function sySchedule(s, t) {
     const ch = syChain(i), I = SY_INST[T.inst], m = I.kind === "drum" ? 60 : syNote(T, st, bar);
     let reps = I.roll ? (st.v || 1) : 1;
     if (FX.stutter && FX.stutter.on && Math.random() < 0.15 + (FX.stutter.k ?? 0.5) * 0.5) reps = Math.max(reps, 2 + Math.floor(Math.random() * 3));
-    for (let r = 0; r < reps; r++) syPlay(T.inst, ch.inp, tt + r * sec / reps, m, r ? 0.6 : 1, T.move, sec, (T.inst === "k808" || T.inst === "acid") && T.last && T.last !== m && row[(s + 15) % 16] ? T.last : null);
+    const vel = (st.g ? 0.32 : 1) * (0.92 + Math.random() * 0.08), hold = (st.l || 1) > 1 ? st.l * sec : null;
+    const tq = tt + (I.kind === "drum" && !I.roll ? (Math.random() - 0.5) * 0.006 : 0);
+    for (let r = 0; r < reps; r++) syPlay(T.inst, ch.inp, tq + r * sec / reps, m, (r ? 0.6 : 1) * vel, T.move, sec, (T.inst === "k808" || T.inst === "acid" || T.inst === "fbass") && T.last && T.last !== m && (row[(s + 15) % 16] || (T.lastEnd && T.lastEnd > tq - 0.01)) ? T.last : null, reps > 1 ? null : hold);
+    T.lastEnd = tq + (hold || sec);
+    if ((T.inst === "kick" || (T.inst === "k808" && !SY.tracks.some(x => x.inst === "kick" && !x.mute))) && !st.g) syDuck(tq);
     if (FX.octave && FX.octave.on && I.kind === "mel" && !Array.isArray(m)) syPlay(T.inst, ch.inp, tt, m + ((FX.octave.k ?? 0.5) < 0.5 ? -12 : 12), 0.55, T.move, sec, null);
     if (I.kind !== "drum") T.last = Array.isArray(m) ? m[0] : m;
     SY.flash = SY.flash || {}; SY.flash[i] = performance.now() + (tt - SP.ctx.currentTime) * 1000;
@@ -5789,14 +5879,24 @@ function syRun(on) {
 }
 // « bidouiller » : tirer un motif au hasard, ou faire muter un peu toute la prod
 function syRoll(T) {
-  const I = SY_INST[T.inst], dens = { kick: 0.2, k808: 0.25, snare: 0.1, clap: 0.1, hat: 0.6, shaker: 0.6, rim: 0.2, riser: 0.05, pad: 0.06, choir: 0.06, keys: 0.2 }[T.inst] ?? 0.35;
-  T.steps = T.steps.map((_, s) => {
-    let p = dens * (s % 4 === 0 ? 1.8 : s % 2 === 0 ? 1.1 : 0.7);
-    if (T.inst === "snare" || T.inst === "clap") p = s === 4 || s === 12 ? 0.9 : 0.04;
-    if (T.inst === "kick" && s === 0) p = 1;
-    if (Math.random() > p) return 0;
-    return { v: I.roll && Math.random() < 0.15 ? 2 + (Math.random() < 0.4 ? 1 : 0) : 1, d: I.kind === "mel" && !I.chord ? Math.floor(Math.random() * 9) - 1 : 0 };
-  });
+  const I = SY_INST[T.inst], R = Math.random, pick = a => a[Math.floor(R() * a.length)], z = () => new Array(16).fill(0);
+  let st = z();
+  if (I.chord) { if (["pad", "strings", "choir"].includes(T.inst)) st[0] = { v: 1, d: 0, l: 16 }; else pick([[[0, 7], [8, 7]], [[0, 3], [3, 3], [8, 5]], [[0, 16]], [[2, 1], [6, 1], [10, 1], [14, 1]]]).forEach(([i, l]) => st[i] = Object.assign({ v: 1, d: 0 }, l > 1 ? { l } : {})); }
+  else if (I.bass) { pick([[[0, 6], [7, 3], [10, 5]], [[0, 8], [10, 5]], [[0, 3], [3, 3], [8, 3], [11, 4]], [[0, 5], [6, 4], [12, 3]]]).forEach(([i, l], k) => st[i] = Object.assign({ v: 1, d: k && R() < 0.35 ? pick([-2, 2, 4, 3]) : 0 }, l > 1 ? { l } : {})); }
+  else if (I.kind === "mel") {                     // motif : 2 à 4 notes de l'accord, répétées, la 2e moitié répond
+    const pool = [0, 2, 4, 6, 7, 9], n = 2 + Math.floor(R() * 3), motif = Array.from({ length: n }, () => pick(pool)), rhythm = pick([[0, 3, 6], [0, 2, 6, 7], [0, 6], [0, 3, 4, 6], [0, 4, 6]]).slice(0, n);
+    for (let half = 0; half < 2; half++) rhythm.forEach((p, k) => { const i = half * 8 + p; if (i > 15) return; let d = motif[k % n]; if (half && k === rhythm.length - 1) d = pick(pool.filter(x => x !== d)); const l = Math.max(1, Math.min(4, (rhythm[k + 1] ?? 8) - p)); st[i] = Object.assign({ v: 1, d }, l > 1 ? { l } : {}); });
+  } else {
+    const dens = { kick: 0.25, snare: 0.1, clap: 0.1, hat: 0.65, shaker: 0.65, rim: 0.2, riser: 0.05, glitch: 0.2, zap: 0.08, subdrop: 0.04 }[T.inst] ?? 0.3;
+    st = st.map((_, s) => {
+      let p = dens * (s % 4 === 0 ? 1.8 : s % 2 === 0 ? 1.1 : 0.7);
+      if (T.inst === "snare" || T.inst === "clap") p = s === 4 || s === 12 ? 0.95 : 0.04;
+      if (T.inst === "kick" && s === 0) p = 1;
+      if (R() > p) return (T.inst === "snare" && R() < 0.12) ? { v: 1, d: 0, g: true } : 0;
+      return Object.assign({ v: I.roll && R() < 0.15 ? 2 + (R() < 0.4 ? 1 : 0) : 1, d: 0 }, I.roll && s % 2 && R() < 0.35 ? { g: true } : {});
+    });
+  }
+  T.steps = st;
 }
 function syMutate() {
   for (const T of SY.tracks) {
@@ -5824,7 +5924,7 @@ function wPSynth(host) {
     <div class="sy-loops sp-card" id="sy-loops"></div>
     <div class="sy-post sp-card" id="sy-post"></div>
     <div class="sy-tracks" id="sy-tracks"></div>
-    <div class="w-row"><button class="w-pill w-glass-ui" id="sy-add">+ Piste</button><span class="sp-hint">Touche le nom d'une piste pour changer de son. Pas : touche pour allumer · glisse vers le haut / bas pour la note${""} · sur les charleys, re-touche pour des roulements.</span></div>
+    <div class="w-row"><button class="w-pill w-glass-ui" id="sy-add">+ Piste</button><span class="sp-hint">Touche le nom d'une piste pour changer de son. Pas : touche pour allumer · glisse vers la droite pour tenir la note · vers le haut / bas pour changer la note · appui long = note fantôme (douce) · sur les charleys, re-touche pour des roulements.</span></div>
   </div>`;
   const vb = host.querySelector("#sy-vibes");
   for (const k of Object.keys(SY_VIBES)) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = k; b.setAttribute("aria-pressed", SY.vibe === k); b.onclick = () => { uisClick(); syLoadVibe(k); if (SY.playing) { SY.ch = []; SY.tracks.forEach((_, i) => syChain(i)); } }; vb.append(b); }
@@ -5865,23 +5965,31 @@ function syRender() {
     T.steps.forEach((st, s) => {
       const b = document.createElement("button"); b.className = "sy-st"; b.dataset.s = s; syStepLook(b, st, I);
       let dr = null;
-      b.addEventListener("pointerdown", e => { e.stopPropagation(); dr = { y: e.clientY, d: (T.steps[s] && T.steps[s].d) || 0, moved: false }; try { b.setPointerCapture(e.pointerId); } catch {} });
+      b.addEventListener("pointerdown", e => {
+        e.stopPropagation(); const w = b.getBoundingClientRect().width + 4;
+        dr = { x: e.clientX, y: e.clientY, w, d: (T.steps[s] && T.steps[s].d) || 0, l: (T.steps[s] && T.steps[s].l) || 1, mode: null, long: false };
+        dr.timer = setTimeout(() => { if (!dr || dr.mode) return; dr.long = true; const cur = T.steps[s]; if (cur) cur.g = !cur.g; else T.steps[s] = { v: 1, d: dr.d, g: true }; if (T.steps[s] && !T.steps[s].g) delete T.steps[s].g; syStepLook(b, T.steps[s], I); syTails(steps, T); uisSwitch(!!(T.steps[s] && T.steps[s].g)); sySave(); }, 450);
+        try { b.setPointerCapture(e.pointerId); } catch {}
+      });
       b.addEventListener("pointermove", e => {
-        if (!dr || I.kind !== "mel" || I.chord) return; const dd = Math.round((dr.y - e.clientY) / 14); if (!dd && !dr.moved) return;
-        dr.moved = true; if (!T.steps[s]) T.steps[s] = { v: 1, d: 0 }; const nd = Math.max(-7, Math.min(14, dr.d + dd));
-        if (nd !== T.steps[s].d) { T.steps[s].d = nd; syStepLook(b, T.steps[s], I); syAudition(T, i, T.steps[s]); }
+        if (!dr) return; const dx = e.clientX - dr.x, dy = dr.y - e.clientY;
+        if (!dr.mode) { if (Math.abs(dx) > 9 && Math.abs(dx) > Math.abs(dy)) dr.mode = "len"; else if (Math.abs(dy) > 9 && I.kind === "mel" && !I.chord) dr.mode = "pitch"; else return; clearTimeout(dr.timer); if (!T.steps[s]) T.steps[s] = { v: 1, d: dr.d }; }
+        const cur = T.steps[s];
+        if (dr.mode === "len") { const l = Math.max(1, Math.min(16 - s, dr.l + Math.round(dx / dr.w))); if (l !== (cur.l || 1)) { if (l > 1) cur.l = l; else delete cur.l; syStepLook(b, cur, I); syTails(steps, T); } }
+        else { const nd = Math.max(-7, Math.min(14, dr.d + Math.round(dy / 14))); if (nd !== cur.d) { cur.d = nd; syStepLook(b, cur, I); syAudition(T, i, cur); } }
       });
       b.addEventListener("pointerup", () => {
-        if (!dr) return; const moved = dr.moved; dr = null; if (moved) { sySave(); return; }
+        if (!dr) return; clearTimeout(dr.timer); const { mode, long } = dr; dr = null; if (mode || long) { sySave(); return; }
         const st0 = T.steps[s];
         if (!st0) T.steps[s] = { v: 1, d: Math.max(-7, Math.min(14, (T.steps[(s + 15) % 16] && T.steps[(s + 15) % 16].d) || 0)) };
         else if (I.roll && st0.v < 3) st0.v++;
         else T.steps[s] = 0;
-        syStepLook(b, T.steps[s], I); uisSwitch(!!T.steps[s]); if (T.steps[s]) syAudition(T, i, T.steps[s]); sySave();
+        syStepLook(b, T.steps[s], I); syTails(steps, T); uisSwitch(!!T.steps[s]); if (T.steps[s]) syAudition(T, i, T.steps[s]); sySave();
       });
-      b.addEventListener("pointercancel", () => { dr = null; });
+      b.addEventListener("pointercancel", () => { if (dr) clearTimeout(dr.timer); dr = null; });
       steps.append(b);
     });
+    syTails(steps, T);
     row.querySelectorAll(".sy-knobs .sy-knob-w").forEach(w => { const k = w.dataset.k; syKnob(w, () => T[k], v => { T[k] = v; syChainSet(i); sySave(); }, () => ({ tone: "Timbre", drive: "Grain", space: "Espace", move: "Mouvement", vol: "Volume" })[k], { tone: 0.6, drive: 0.15, space: 0.3, move: 0.5, vol: 0.8 }[k]); });
     row.querySelector(".sy-name").onclick = e => syPicker(e.currentTarget, T, i);
     row.querySelector('[data-a="mute"]').onclick = () => { T.mute = !T.mute; uisSwitch(!T.mute); syChainSet(i); sySave(); syRender(); };
@@ -5892,22 +6000,27 @@ function syRender() {
     return row;
   }));
 }
+function syTails(el, T) {           // les cases couvertes par une note tenue
+  const cells = el.querySelectorAll(".sy-st"); cells.forEach(c => c.classList.remove("tail"));
+  T.steps.forEach((st, s) => { if (st && st.l > 1) for (let k = 1; k < st.l && s + k < 16; k++) if (!T.steps[s + k]) cells[s + k].classList.add("tail"); });
+}
 function syStepLook(b, st, I) {
+  b.classList.toggle("ghost", !!(st && st.g));
   b.classList.toggle("on", !!st); b.textContent = st && I.roll && st.v > 1 ? "×" + st.v : "";
   b.style.setProperty("--d", st && I.kind === "mel" && !I.chord ? Math.max(0, Math.min(1, (st.d + 7) / 21)) : 0.5);
   b.classList.toggle("mel", I.kind === "mel" && !I.chord);
 }
 function syAudition(T, i, st) {
   if (!spAudio()) return; syChain(i); syChainSet(i);
-  const I = SY_INST[T.inst]; syPlay(T.inst, SY.ch[i].inp, SP.ctx.currentTime + 0.01, I.kind === "drum" ? 60 : syNote(T, st, 0), 0.8, Math.min(T.move, I.chord ? 0.2 : 1), 60 / SY.bpm / 4 * (I.chord ? 0.25 : 1));
+  const I = SY_INST[T.inst], sec = 60 / SY.bpm / 4; syPlay(T.inst, SY.ch[i].inp, SP.ctx.currentTime + 0.01, I.kind === "drum" ? 60 : syNote(T, st, 0), st.g ? 0.35 : 0.8, T.move, sec, null, Math.min(2, (st.l || (I.chord ? 3 : 1)) * sec) );
 }
 function syPicker(anchor, T, i) {
   document.querySelectorAll(".sy-pick").forEach(x => x.remove());
   const m = document.createElement("div"); m.className = "sy-pick";
   const TX = ["glitch", "metal", "bowed", "zap", "subdrop"];
-  const groups = [["Batterie", Object.keys(SY_INST).filter(k => (SY_INST[k].kind === "drum" || k === "tom" || k === "k808") && !TX.includes(k))], ["Basses", ["sub", "reese", "k808", "growl", "acid"]], ["Synthés", ["hoover", "stab", "lead", "chop", "acid"]], ["Textures", TX], ["Mélodie", ["bell", "glass", "vox", "flute", "pluck"]], ["Accords", ["keys", "pad", "choir", "stab"]]];
+  const groups = [["Batterie", Object.keys(SY_INST).filter(k => (SY_INST[k].kind === "drum" || k === "tom" || k === "k808") && !TX.includes(k))], ["Basses", ["fbass", "sub", "k808", "reese", "growl", "acid"]], ["Accords", ["keys", "pad", "strings", "choir", "stab"]], ["Mélodie", ["piano", "flute", "vox", "chop", "lead", "hoover"]], ["Textures", TX], ["Cloches (à doser)", ["bell", "glass", "pluck"]]];
   m.innerHTML = groups.map(([g, ks]) => `<div class="w-sec">${g}</div><div class="sy-pick-g">${ks.map(k => `<button class="w-chip" data-k="${k}" aria-pressed="${T.inst === k}">${SY_INST[k].lab}</button>`).join("")}</div>`).join("");
-  m.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); T.inst = b.dataset.k; T.steps = T.steps.map(st => st ? { v: SY_INST[T.inst].roll ? st.v : 1, d: st.d || 0 } : 0); syAudition(T, i, T.steps.find(Boolean) || { v: 1, d: 0 }); sySave(); m.remove(); syRender(); });
+  m.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); T.inst = b.dataset.k; T.steps = T.steps.map(st => st ? Object.assign({ v: SY_INST[T.inst].roll ? st.v : 1, d: st.d || 0 }, st.l > 1 ? { l: st.l } : {}, st.g ? { g: true } : {}) : 0); if (SY.ch && SY.ch[i]) { try { SY.ch[i].vol.disconnect(); } catch {} SY.ch[i] = null; } syAudition(T, i, T.steps.find(Boolean) || { v: 1, d: 0 }); sySave(); m.remove(); syRender(); });
   anchor.closest(".sy-tr").append(m);
   setTimeout(() => document.addEventListener("pointerdown", function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("pointerdown", off, true); } }, true), 0);
 }
@@ -5941,6 +6054,8 @@ const SY_CSS = `
 .sy-st:nth-child(4n+1) { background: rgba(27,29,34,.1); }
 .sy-st.on { background: hsl(var(--h), 45%, 48%); }
 .sy-st.on.mel { background: linear-gradient(to top, hsl(var(--h), 45%, 46%) calc(var(--d) * 100%), hsl(var(--h), 40%, 70%) calc(var(--d) * 100%)); }
+.sy-st.tail { background: hsla(var(--h), 45%, 52%, .38); border-radius: 2px; }
+.sy-st.ghost { opacity: .45; }
 .sy-st.now { transform: scaleY(1.12); box-shadow: 0 0 0 1.5px rgba(27,29,34,.6); }
 .sy-knobs { display: flex; gap: 10px; }
 .sy-knob-w { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 9px; opacity: .85; user-select: none; }
@@ -5968,19 +6083,20 @@ const prDb = () => (typeof sb !== "undefined" && sb) ? sb : null;
 const prMe = () => (typeof me !== "undefined" ? me : null);
 function syRecipe() {
   return { v: 1, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, vibe: SY.vibe,
-    tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? { v: s.v, d: s.d || 0 } : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3), fx: syClone(T.fx || {}) })),
+    tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? Object.assign({ v: s.v, d: s.d || 0 }, s.l > 1 ? { l: s.l } : {}, s.g ? { g: true } : {}) : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3), fx: syClone(T.fx || {}) })),
     post: syClone(SY.post || { preset: "Propre", fx: {}, filter: 0.5 }),
-    loops: (syStore(), SY.loops.map(L => ({ name: L.name, steps: L.steps.map(row => row.map(s => s ? { v: s.v, d: s.d || 0 } : 0)) }))), chain: SY.chain.slice(), cur: SY.cur, song: !!SY.song };
+    loops: (syStore(), SY.loops.map(L => ({ name: L.name, steps: L.steps.map(row => row.map(s => s ? Object.assign({ v: s.v, d: s.d || 0 }, s.l > 1 ? { l: s.l } : {}, s.g ? { g: true } : {}) : 0)) }))), chain: SY.chain.slice(), cur: SY.cur, song: !!SY.song };
 }
 function prFx(fx, allowed) { const o = {}; if (fx && typeof fx === "object") for (const k of Object.keys(allowed)) { const f = fx[k]; if (f && typeof f === "object") o[k] = { on: !!f.on, k: Number.isFinite(+f.k) ? Math.min(1, Math.max(0, +f.k)) : 0.5 }; } return o; }
+function prStep(s) { if (!s) return 0; const n = (x, a, b, d) => Number.isFinite(+x) ? Math.min(b, Math.max(a, +x)) : d; const o = { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 }; const l = n(s.l, 1, 16, 1) | 0; if (l > 1) o.l = l; if (s.g) o.g = true; return o; }
 function prValid(r) {
   if (!r || !Array.isArray(r.tracks) || !r.tracks.length || r.tracks.length > 10 || !SY_PROGS[r.prog]) return null;
   const n = (x, a, b, d) => Number.isFinite(+x) ? Math.min(b, Math.max(a, +x)) : d;
   const tracks = r.tracks.filter(T => T && SY_INST[T.inst] && Array.isArray(T.steps) && T.steps.length === 16).map(T => ({
     inst: T.inst, mute: !!T.mute, fx: prFx(T.fx, SY_FX), vol: n(T.vol, 0, 1, 0.8), tone: n(T.tone, 0, 1, 0.6), drive: n(T.drive, 0, 1, 0.15), space: n(T.space, 0, 1, 0.3), move: n(T.move, 0, 1, 0.5),
-    steps: T.steps.map(s => s ? { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 } : 0) }));
+    steps: T.steps.map(prStep) }));
   if (!tracks.length) return null;
-  const st = s => s ? { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 } : 0;
+  const st = prStep;
   let loops = null, chain = null;
   if (tracks.length === r.tracks.length && Array.isArray(r.loops) && r.loops.length && r.loops.length <= 8) {
     loops = r.loops.filter(L => L && Array.isArray(L.steps) && L.steps.length === tracks.length && L.steps.every(row => Array.isArray(row) && row.length === 16))
@@ -5988,7 +6104,7 @@ function prValid(r) {
     if (loops.length !== r.loops.length) loops = null;
     else chain = (Array.isArray(r.chain) ? r.chain : [0]).map(x => x | 0).filter(x => x >= 0 && x < loops.length).slice(0, 64);
   }
-  const post = { preset: String((r.post && r.post.preset) || "").slice(0, 20), fx: prFx(r.post && r.post.fx, SY_POST_FX), filter: n(r.post && r.post.filter, 0, 1, 0.5) };
+  const post = { preset: String((r.post && r.post.preset) || "").slice(0, 20), fx: prFx(r.post && r.post.fx, SY_POST_FX), filter: n(r.post && r.post.filter, 0, 1, 0.5), space: ["plate", "hall", "spring"].includes(r.post && r.post.space) ? r.post.space : "hall", mix: !(r.post && r.post.mix === false), duck: n(r.post && r.post.duck, 0, 1, 0.35) };
   return { bpm: n(r.bpm, 60, 180, 90) | 0, swing: n(r.swing, 0, 0.6, 0), key: n(r.key, 0, 11, 5) | 0, prog: r.prog, vibe: String(r.vibe || "").slice(0, 30), tracks, post,
     loops, chain, cur: loops ? Math.min(loops.length - 1, n(r.cur, 0, 7, 0) | 0) : 0, song: !!(loops && r.song) };
 }
@@ -6111,19 +6227,19 @@ const PR_CSS = `
 async function syOffline(recipe, bars) {
   const r = prValid(recipe); if (!r) throw new Error("recette illisible");
   const sr = 44100, sec = 60 / r.bpm / 4, len = bars * 16 * sec, oc = new OfflineAudioContext(2, Math.ceil(sr * (len + 3)), sr);
-  const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25; comp.connect(oc.destination);
-  const master = oc.createGain(), postIn = oc.createGain(), postOut = oc.createGain(); master.gain.value = 0.8; master.connect(postIn); postOut.connect(comp);
+  const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25; const lim = spLimiter(oc); comp.connect(lim.inp); lim.out.connect(oc.destination);
+  const master = oc.createGain(), postIn = oc.createGain(), postOut = oc.createGain(); master.gain.value = 0.5; master.connect(postIn); postOut.connect(comp);
   const ilen = (sr * 3.4) | 0, ir = oc.createBuffer(2, ilen, sr);
   for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < ilen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ilen, 2.6); }
-  const rev = oc.createConvolver(); rev.buffer = ir; const wet = oc.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
+  const rev = oc.createConvolver(); rev.buffer = spIR(oc, (r.post && r.post.space) || "hall"); const wet = oc.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
   const nb = oc.createBuffer(1, sr, sr), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  const KEYS = ["tracks", "loops", "chain", "cur", "song", "bpm", "swing", "key", "prog", "ch", "pl", "pos", "bar", "started", "flash"];
+  const KEYS = ["tracks", "loops", "chain", "cur", "song", "bpm", "swing", "key", "prog", "ch", "pl", "pos", "bar", "started", "flash", "duck", "post"];
   const saveSY = {}; KEYS.forEach(k => saveSY[k] = SY[k]);
   const saveSP = { ctx: SP.ctx, master: SP.master, rev: SP.rev, noise: SP.noise };
   try {
     Object.assign(SP, { ctx: oc, master, rev, noise: nb }); spPostBuild(oc, postIn, postOut, r.post);
     Object.assign(SY, { tracks: r.tracks, loops: r.loops || [{ name: "A", steps: r.tracks.map(t => t.steps) }], chain: r.chain && r.chain.length ? r.chain : [0], cur: r.cur || 0, song: !!r.song,
-      bpm: r.bpm, swing: r.swing, key: r.key, prog: r.prog, ch: [], pos: 0, pl: 0, bar: 0, started: false, flash: {} });
+      bpm: r.bpm, swing: r.swing, key: r.key, prog: r.prog, ch: [], pos: 0, pl: 0, bar: 0, started: false, flash: {}, duck: null, post: r.post });
     SY.tracks.forEach((T, i) => { T.steps = SY.loops[SY.cur].steps[i]; T.last = null; });
     for (let b = 0; b < bars; b++) { syAdvance(b === 0); SY.bar = b; for (let s = 0; s < 16; s++) sySchedule(s, 0.02 + (b * 16 + s) * sec); }
   } finally { Object.assign(SP, saveSP); Object.assign(SY, saveSY); }
@@ -6515,14 +6631,21 @@ function syFxRow(row, T, i) {
 function syFxBadge(row, T) { const n = Object.entries(syFxOf(T)).filter(([, f]) => f && f.on).length, b = row.querySelector('[data-a="fx"]'); if (b) { b.textContent = n ? "fx " + n : "fx"; b.classList.toggle("on", !!n); } }
 function syRenderPost() {
   const box = document.getElementById("sy-post"); if (!box) return;
-  SY.post = SY.post || { preset: "Propre", fx: {}, filter: 0.5 };
+  SY.post = SY.post || { preset: "Propre", fx: {}, filter: 0.5, space: "hall", mix: true, duck: 0.35 };
   box.innerHTML = `<div class="lp-row"><span class="w-sec" style="margin:0">Post-traitement</span><div class="lp-chips" id="po-presets"></div>
       <div class="sy-knob-w" id="po-filter"><div class="sy-knob" tabindex="0"></div><span></span></div></div>
+    <div class="lp-row"><span class="w-sec" style="margin:0">Espace</span><div class="lp-chips" id="po-space"></div>
+      <span class="w-sec" style="margin:0 0 0 12px">Mix auto</span><button class="w-sw" id="po-mix" role="switch" aria-checked="${SY.post.mix !== false}" title="Pompe sur le kick, nettoyage du grave, limiteur"></button>
+      <div class="sy-knob-w" id="po-duck"><div class="sy-knob" tabindex="0"></div><span>Pompe</span></div></div>
     <div class="po-fx" id="po-fx"></div>`;
+  const spc = box.querySelector("#po-space");
+  [["plate", "Plaque"], ["hall", "Hall"], ["spring", "Ressort"]].forEach(([k, l]) => { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", (SY.post.space || "hall") === k); b.onclick = () => { SY.post.space = k; if (SP.ctx && SP.rev) SP.rev.buffer = spIR(SP.ctx, k); uisChime(3, 0.5); sySave(); syRenderPost(); }; spc.append(b); });
+  box.querySelector("#po-mix").onclick = e => { SY.post.mix = SY.post.mix === false; e.currentTarget.setAttribute("aria-checked", SY.post.mix); uisSwitch(SY.post.mix); sySave(); };
+  syKnob(box.querySelector("#po-duck"), () => SY.post.duck ?? 0.35, v => { SY.post.duck = v; sySave(); }, () => "Pompe", 0.35);
   const pr = box.querySelector("#po-presets");
   for (const name of Object.keys(SY_POST_PRESETS)) {
     const b = document.createElement("button"); b.className = "w-chip"; b.textContent = name; b.setAttribute("aria-pressed", SY.post.preset === name);
-    b.onclick = () => { SY.post.preset = name; SY.post.fx = {}; for (const [k, v] of Object.entries(SY_POST_PRESETS[name])) SY.post.fx[k] = { on: true, k: v }; uisChime(Object.keys(SY_POST_PRESETS).indexOf(name) + 2, 0.5); spPostApply(); sySave(); syRenderPost(); };
+    b.onclick = () => { SY.post.preset = name; SY.post.fx = {}; SY.post.space = SY.post.space || "hall"; for (const [k, v] of Object.entries(SY_POST_PRESETS[name])) SY.post.fx[k] = { on: true, k: v }; uisChime(Object.keys(SY_POST_PRESETS).indexOf(name) + 2, 0.5); spPostApply(); sySave(); syRenderPost(); };
     pr.append(b);
   }
   syKnob(box.querySelector("#po-filter"), () => SY.post.filter ?? 0.5, v => { SY.post.filter = v; clearTimeout(syRenderPost.t); syRenderPost.t = setTimeout(spPostApply, 40); sySave(); }, () => (SY.post.filter ?? 0.5) < 0.47 ? "Étouffé" : (SY.post.filter ?? 0.5) > 0.53 ? "Aminci" : "Filtre", 0.5);
