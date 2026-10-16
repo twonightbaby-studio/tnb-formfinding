@@ -4375,30 +4375,38 @@ function uisChord(base) {                           // arrivée sur un îlot : n
 }
 function uisSetOn(on) { UIS.on = on; store.set("atelier-uis", on); if (on) { uisInit(); setTimeout(() => uisSwitch(true), 30); } }
 
-/* ---------- Îlots ---------- */
+/* ---------- Îlots : posés sur le canvas, sans bord ---------- */
+// a = position en paysage, p = position en portrait (unités de l'anneau autour du graphe)
 const W_ISLANDS = [
-  { k: "connexions", lab: "Connexions", x: 0, y: 0, r: 640, note: 53 },
-  { k: "production", lab: "Production", x: 1800, y: -80, r: 330, note: 56 },
-  { k: "sampler", lab: "Sampler", x: -1800, y: -80, r: 330, note: 51 },
-  { k: "labo", lab: "Labo", x: -760, y: 1300, r: 300, note: 58 },
-  { k: "diffusion", lab: "Diffusion", x: 900, y: 1300, r: 300, note: 60 },
-  { k: "admin", lab: "Observatoire", x: 0, y: -1380, r: 270, note: 48, admin: true },
+  { k: "connexions", lab: "Connexions", x: 0, y: 0, r: 500, note: 53 },
+  { k: "production", lab: "Production", r: 280, note: 56, a: [1.25, -0.1], p: [0.62, -1.05] },
+  { k: "sampler", lab: "Sampler", r: 280, note: 51, a: [-1.25, -0.1], p: [-0.62, -1.05] },
+  { k: "labo", lab: "Labo", r: 260, note: 58, a: [-0.62, 0.95], p: [-0.62, 1.05] },
+  { k: "diffusion", lab: "Diffusion", r: 260, note: 60, a: [0.62, 0.95], p: [0.62, 1.05] },
+  { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
 const W_FAM_LAB = { forme: "Forme", rotation: "Rotation", etirement: "Étirement", symetrie: "Symétrie", epaisseur: "Épaisseur", grandangle: "Grand-angle", kaleidoscope: "Kaléidoscope" };
 const wFamLab = f => W_FAM_LAB[f] || (f.charAt(0).toUpperCase() + f.slice(1));
-const W_GRAPH_R = 560;
 const WORLD = {
   on: false, el: null, cv: null, ctx: null, W: 0, H: 0, dpr: 1,
   cam: { x: 0, y: 0, z: 0.3 }, fly: null, active: null, lastZoomIn: false, snapT: 0,
-  nodes: [], byId: new Map(), links: [], sig: "", thumbs: new Map(), queue: [], busy: 0,
-  hover: null, ptrs: new Map(), drag: null, dirty: true, t0: performance.now(),
+  nodes: [], byId: new Map(), links: [], key: "", ver: 0, thumbs: new Map(), queue: [], busy: 0, graphR: 400,
+  hover: null, sel: null, ptrs: new Map(), drag: null, dirty: true,
   cards: new Map(), curSig: "", panelKey: null,
 };
+const SIM = { alpha: 0, ticks: 0 };
 const wIslands = () => W_ISLANDS.filter(i => !i.admin || isOwner);
 const wFit = isl => Math.min(WORLD.W, WORLD.H) * 0.9 / (2 * isl.r);
 const wToScreen = (x, y) => [(x - WORLD.cam.x) * WORLD.cam.z + WORLD.W / 2, (y - WORLD.cam.y) * WORLD.cam.z + WORLD.H / 2];
 const wToWorld = (sx, sy) => [(sx - WORLD.W / 2) / WORLD.cam.z + WORLD.cam.x, (sy - WORLD.H / 2) / WORLD.cam.z + WORLD.cam.y];
+function wPlaceIslands() {
+  const portrait = WORLD.H > WORLD.W * 1.05, R = Math.max(900, WORLD.graphR + 700);
+  for (const i of W_ISLANDS) {
+    if (i.k === "connexions") { i.r = Math.max(260, WORLD.graphR * 1.05); continue; }
+    const v = portrait ? i.p : i.a; i.x = v[0] * R; i.y = v[1] * R;
+  }
+}
 
 /* ---------- Structure, styles ---------- */
 function worldBuild() {
@@ -4414,7 +4422,14 @@ body.world { overflow: hidden; }
 #world.focus #w-mark { opacity: 0; }
 #w-mark { transition: opacity .4s; }
 .w-bub:focus { outline: none; } .w-bub:focus-visible { box-shadow: 0 0 0 2px rgba(27,29,34,.6); }
-#world.focus #w-cv { filter: blur(14px) saturate(1.15); opacity: .85; }
+#world.focus #w-cv { opacity: .85; }
+#world.focus .w-glass-ui { -webkit-backdrop-filter: none; backdrop-filter: none; background: linear-gradient(150deg, rgba(255,255,255,.78), rgba(255,255,255,.5)); }
+#w-node { position: absolute; left: 0; top: 0; z-index: 4; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: 999px; font-size: 11px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
+#w-node.open { opacity: 1; pointer-events: auto; }
+#world.focus #w-node { display: none; }
+#w-node .w-info { opacity: .7; margin-right: 4px; }
+#w-node button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(27,29,34,.12); background: rgba(255,255,255,.7); font: inherit; font-size: 13px; cursor: pointer; padding: 0; color: inherit; }
+#w-node button[aria-pressed="true"] { background: rgba(27,29,34,.88); color: #fff; }
 .w-glass-ui { background: rgba(255,255,255,.26); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); border: 1px solid rgba(255,255,255,.75); box-shadow: 0 12px 40px rgba(40,40,80,.10), inset 0 1px 0 rgba(255,255,255,.85); }
 #w-hint { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .5; pointer-events: none; transition: opacity 1.2s; white-space: nowrap; }
 #w-mark { position: absolute; left: 24px; top: 20px; font-family: var(--f-main); font-size: 19px; opacity: .8; pointer-events: none; }
@@ -4432,9 +4447,9 @@ body.world { overflow: hidden; }
 .w-pill.dark { background: rgba(27,29,34,.88); color: #fff; border-color: rgba(27,29,34,.9); }
 .w-pill[aria-pressed="true"] { background: rgba(27,29,34,.88); color: #fff; }
 .w-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 30px 26px; max-width: 1180px; margin: 0 auto; padding: 86px 36px 150px; perspective: 900px; }
-.w-card { position: relative; animation: wfloat 7s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.w-card { position: relative; will-change: transform; animation: wfloat 7s ease-in-out infinite; animation-delay: var(--d, 0s); }
 @keyframes wfloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(var(--fy, -7px)) } }
-.w-card .w-glass { position: relative; aspect-ratio: 1; border-radius: 24px; background: rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px) saturate(1.4); backdrop-filter: blur(8px) saturate(1.4);
+.w-card .w-glass { position: relative; aspect-ratio: 1; border-radius: 24px; background: linear-gradient(150deg, rgba(255,255,255,.62), rgba(255,255,255,.22) 55%, rgba(255,255,255,.34)); contain: layout paint;
   border: 1px solid rgba(255,255,255,.8); box-shadow: 0 10px 30px rgba(40,40,90,.10), inset 0 1px 0 rgba(255,255,255,.9), inset 0 -10px 30px rgba(255,255,255,.12);
   transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s; transform-style: preserve-3d; overflow: hidden; cursor: pointer; }
 .w-card .w-glass::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s;
@@ -4463,7 +4478,7 @@ body.world { overflow: hidden; }
 .w-box h3 { margin: 0 0 6px; font-family: var(--f-main); font-weight: 400; font-size: 26px; line-height: 1.1; }
 .w-box p { margin: 0 0 12px; opacity: .75; }
 .w-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 12px; margin-top: 10px; }
-.w-thumb { aspect-ratio: 1; border-radius: 16px; position: relative; cursor: pointer; padding: 0; transition: transform .25s; overflow: hidden; }
+.w-thumb { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; background: rgba(255,255,255,.45) !important; aspect-ratio: 1; border-radius: 16px; position: relative; cursor: pointer; padding: 0; transition: transform .25s; overflow: hidden; }
 .w-thumb:hover { transform: translateY(-3px) scale(1.04); }
 .w-thumb canvas { position: absolute; inset: 8%; width: 84%; height: 84%; }
 .w-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
@@ -4497,7 +4512,7 @@ body.world { overflow: hidden; }
 @media (max-width: 640px) {
   .w-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; padding: 74px 16px 140px; }
   .w-head { padding: 14px 16px; } .w-head .w-title { display: none; } .w-head .w-pill { padding: 7px 11px; font-size: 11px; } .w-head [data-act=back] { margin-right: auto; }
-  #w-hint { bottom: 100px; font-size: 10px; }
+  #w-hint { bottom: 96px; font-size: 9px; letter-spacing: .08em; white-space: normal; width: 86vw; text-align: center; line-height: 1.5; }
   .w-bub { width: 52px; height: 52px; } .w-bub.mid { width: 58px; height: 58px; }
   .w-sheet { bottom: 90px; }
 }
@@ -4508,8 +4523,9 @@ body.world { overflow: hidden; }
   el.innerHTML = `
 <canvas id="w-cv"></canvas>
 <div id="w-mark">TwoNightBaby · formfinding</div>
-<div id="w-hint">Glisse pour te déplacer · zoome · touche un îlot</div>
+<div id="w-hint">Glisse pour te déplacer · zoome · touche une forme ou un îlot</div>
 <div id="w-panel"></div>
+<div id="w-node" class="w-glass-ui" role="dialog" aria-label="Forme choisie"><span class="w-info"></span><button class="w-n" title="Non">✕</button><button class="w-m" title="Voir sur un vêtement">◐</button><button class="w-y" title="Oui">✓</button></div>
 <div class="w-sheet w-glass-ui" id="w-coll" role="dialog" aria-label="Ma collection"></div>
 <div class="w-sheet w-glass-ui" id="w-pop" role="dialog" aria-label="Profil"></div>
 <nav id="w-bubbles" aria-label="Raccourcis">
@@ -4529,19 +4545,20 @@ function setWorld(on) {
   document.body.classList.toggle("world", on);
   WORLD.el.hidden = !on;
   document.getElementById("w-classic").hidden = on;
-  if (on) { wResize(); wFitAll(false); WORLD.dirty = true; wSync(true); requestAnimationFrame(wLoop); }
+  if (on) { wResize(); wSync(true); wPlaceIslands(); wFitAll(false); WORLD.dirty = true; requestAnimationFrame(wLoop); }
+  else if (typeof showFocus === "function") setTimeout(() => showFocus(focusIdx), 0);
 }
 
 /* ---------- Caméra ---------- */
 function wResize() {
-  const dpr = Math.min(2, window.devicePixelRatio || 1), W = WORLD.el.clientWidth || innerWidth, H = WORLD.el.clientHeight || innerHeight;
+  const dpr = Math.min(1.5, window.devicePixelRatio || 1), W = WORLD.el.clientWidth || innerWidth, H = WORLD.el.clientHeight || innerHeight;
   Object.assign(WORLD, { W, H, dpr }); WORLD.cv.width = Math.round(W * dpr); WORLD.cv.height = Math.round(H * dpr); WORLD.dirty = true;
 }
 function wFitAll(anim = true) {
   const isl = wIslands(); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-  for (const i of isl) { x0 = Math.min(x0, i.x - i.r); x1 = Math.max(x1, i.x + i.r); y0 = Math.min(y0, i.y - i.r); y1 = Math.max(y1, i.y + i.r + 120); }
-  const z = Math.min(WORLD.W / (x1 - x0), (WORLD.H - 120) / (y1 - y0)) * 0.94;
-  wFly({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 60 / z * 0, z }, anim ? 0.95 : 0);
+  for (const i of isl) { x0 = Math.min(x0, i.x - i.r); x1 = Math.max(x1, i.x + i.r); y0 = Math.min(y0, i.y - i.r); y1 = Math.max(y1, i.y + i.r + 90); }
+  const z = Math.min(WORLD.W / (x1 - x0 + 160), (WORLD.H - 110) / (y1 - y0)) * 0.95;
+  wFly({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 40 / z, z }, anim ? 0.95 : 0);
 }
 function wFly(to, dur = 0.9) {
   if (!dur) { Object.assign(WORLD.cam, to); WORLD.fly = null; WORLD.dirty = true; wCheckActive(); return; }
@@ -4549,19 +4566,19 @@ function wFly(to, dur = 0.9) {
 }
 function wFlyIsland(isl) {
   if (!isl) return;
-  uisSwoosh(true, 0.7);
+  uisSwoosh(true, 0.7); wSelect(null);
   wFly({ x: isl.x, y: isl.y, z: wFit(isl) }, 1.0);
 }
 function wZoomAt(sx, sy, f) {
   const [wx, wy] = wToWorld(sx, sy), c = WORLD.cam;
-  c.z = Math.max(0.04, Math.min(5, c.z * f));
+  c.z = Math.max(0.04, Math.min(6, c.z * f));
   c.x = wx - (sx - WORLD.W / 2) / c.z; c.y = wy - (sy - WORLD.H / 2) / c.z;
   WORLD.fly = null; WORLD.dirty = true; wCheckActive();
 }
 function wCheckActive() {
   const c = WORLD.cam; let act = null;
   for (const i of wIslands()) {
-    if (i.k === "connexions" && !WORLD.series) continue;   // l'îlot central se parcourt librement ; la série s'ouvre par la bulle
+    if (i.k === "connexions" && !WORLD.series) continue;   // le graphe se parcourt librement ; la série s'ouvre par la bulle
     const d = Math.hypot(c.x - i.x, c.y - i.y);
     if (d < i.r * 0.4 && c.z >= wFit(i) * 0.78) act = i;
   }
@@ -4569,26 +4586,29 @@ function wCheckActive() {
     const prev = WORLD.active; WORLD.active = act;
     if (!act) WORLD.series = false;
     WORLD.el.classList.toggle("focus", !!act);
-    if (act) { wPanel(act.k); uisChord(act.note); document.getElementById("w-hint").style.opacity = 0; }
+    if (act) { wSelect(null); wPanel(act.k); uisChord(act.note); document.getElementById("w-hint").style.opacity = 0; }
     else { if (prev) uisSwoosh(false, 0.5); wPanel(null); }
+    WORLD.dirty = true;
   }
 }
 
-/* ---------- Événements : glisser, zoomer, pincer ---------- */
+/* ---------- Événements : glisser, zoomer, pincer, attraper un nœud ---------- */
 function worldEvents() {
   const el = WORLD.el;
-  addEventListener("resize", () => { if (WORLD.on) { wResize(); wCheckActive(); } });
-  const blocked = t => t.closest("button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, label, select, textarea");
+  addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
+  const blocked = t => t.closest("button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { el.setPointerCapture(e.pointerId); } catch {}
-    if (WORLD.ptrs.size === 1) WORLD.drag = { x: e.clientX, y: e.clientY, moved: 0, cx: WORLD.cam.x, cy: WORLD.cam.y };
-    else { WORLD.drag = null; WORLD.pinch = wPinchState(); }
-    WORLD.fly = null; wCloseSheets();
+    if (WORLD.ptrs.size === 1) {
+      const n = e.target === WORLD.cv ? wNodeAt(e.clientX, e.clientY, e.pointerType !== "mouse") : null;
+      WORLD.drag = { x: e.clientX, y: e.clientY, moved: 0, cx: WORLD.cam.x, cy: WORLD.cam.y, node: n };
+    } else { if (WORLD.drag && WORLD.drag.node) WORLD.drag.node.fixed = false; WORLD.drag = null; WORLD.pinch = wPinchState(); }
+    WORLD.fly = null; WORLD.touched = true; wCloseSheets();
   });
   el.addEventListener("pointermove", e => {
-    if (!WORLD.ptrs.has(e.pointerId)) { if (e.target === WORLD.cv) wHover(e.clientX, e.clientY); return; }
+    if (!WORLD.ptrs.has(e.pointerId)) { if (e.target === WORLD.cv && e.pointerType === "mouse") wHover(e.clientX, e.clientY); return; }
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (WORLD.ptrs.size >= 2 && WORLD.pinch) {
       const p = wPinchState(), f = p.d / WORLD.pinch.d;
@@ -4598,18 +4618,22 @@ function worldEvents() {
     }
     const d = WORLD.drag; if (!d) return;
     const dx = e.clientX - d.x, dy = e.clientY - d.y; d.moved = Math.max(d.moved, Math.hypot(dx, dy));
-    if (d.moved > 4) {
-      el.classList.add("drag");
-      WORLD.cam.x = d.cx - dx / WORLD.cam.z; WORLD.cam.y = d.cy - dy / WORLD.cam.z; WORLD.dirty = true; wCheckActive();
-      if (Math.random() < 0.06) uisNoise(0.12, 500, 900, 0.8, 0.02, 0.3);
+    if (d.moved <= 4) return;
+    el.classList.add("drag");
+    if (d.node) {                                     // on attrape un nœud, le graphe suit (comme Obsidian)
+      const [wx, wy] = wToWorld(e.clientX, e.clientY), n = d.node;
+      n.x = wx; n.y = wy; n.vx = n.vy = 0; n.fixed = true; SIM.alpha = Math.max(SIM.alpha, 0.25); WORLD.dirty = true;
+      return;
     }
+    WORLD.cam.x = d.cx - dx / WORLD.cam.z; WORLD.cam.y = d.cy - dy / WORLD.cam.z; WORLD.dirty = true; wCheckActive();
   });
   const up = e => {
     if (!WORLD.ptrs.has(e.pointerId)) return;
     WORLD.ptrs.delete(e.pointerId); el.classList.remove("drag");
     const d = WORLD.drag; WORLD.drag = null;
+    if (d && d.node) d.node.fixed = false;
     if (WORLD.ptrs.size < 2 && WORLD.pinch) { WORLD.pinch = null; wSnapSoon(); }
-    if (d && d.moved <= 4 && e.type === "pointerup") wTap(e.clientX, e.clientY);
+    if (d && d.moved <= 4 && e.type === "pointerup") wTap(e.clientX, e.clientY, d.node);
   };
   el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
   el.addEventListener("pointerleave", () => { if (WORLD.hover) { WORLD.hover = null; WORLD.dirty = true; } });
@@ -4617,7 +4641,7 @@ function worldEvents() {
     const sc = e.target.closest(".w-scroll");
     if (sc && !e.ctrlKey && sc.scrollHeight > sc.clientHeight + 2) return;
     if (e.target.closest(".w-sheet")) return;
-    e.preventDefault();
+    e.preventDefault(); WORLD.touched = true;
     const lineMode = e.deltaMode !== 0, mouseWheel = lineMode || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
     if (e.ctrlKey || mouseWheel) {
       const dy = lineMode ? e.deltaY * 33 : e.deltaY, f = Math.exp(-dy * (e.ctrlKey ? 0.012 : 0.0016));
@@ -4626,12 +4650,12 @@ function worldEvents() {
       WORLD.cam.x += e.deltaX / WORLD.cam.z; WORLD.cam.y += e.deltaY / WORLD.cam.z; WORLD.fly = null; WORLD.dirty = true; wCheckActive();
     }
   }, { passive: false });
-  el.addEventListener("dblclick", e => { if (!blocked(e.target)) { const i = wIslandAt(e.clientX, e.clientY); if (i) wFlyIsland(i); } });
+  el.addEventListener("dblclick", e => { if (!blocked(e.target) && !wNodeAt(e.clientX, e.clientY)) { const i = wIslandAt(e.clientX, e.clientY); if (i && i.k !== "connexions") wFlyIsland(i); } });
 
   // Bulles
   const bub = (id, fn) => {
     const b = document.getElementById(id); let lp = null, long = false;
-    b.addEventListener("pointerenter", () => uisPlop());
+    b.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") uisPlop(); });
     b.addEventListener("pointerdown", () => { long = false; lp = setTimeout(() => { long = true; uisSetOn(!UIS.on); wToast(UIS.on ? "Sons d'interface : oui" : "Sons d'interface : coupés"); }, 650); });
     ["pointerup", "pointerleave", "pointercancel"].forEach(t => b.addEventListener(t, () => clearTimeout(lp)));
     b.addEventListener("click", e => { if (long) return; uisClick(); fn(e); });
@@ -4644,11 +4668,17 @@ function worldEvents() {
     WORLD.series = true; uisYes(); wFlyIsland(W_ISLANDS[0]);
   });
 
+  // Carte d'un nœud choisi
+  const nd = document.getElementById("w-node");
+  nd.querySelector(".w-y").onclick = () => wVoteNode(1);
+  nd.querySelector(".w-n").onclick = () => wVoteNode(-1);
+  nd.querySelector(".w-m").onclick = () => { const n = WORLD.sel; if (n) { uisClick(); openMockup(n.scene); } };
+
   // Clavier : quand le monde est affiché, les raccourcis de l'ancienne vue sont coupés
   window.addEventListener("keydown", e => {
     if (!WORLD.on || document.querySelector(".modal:not([hidden])")) return;
     if (e.target.closest && e.target.closest("input, textarea, select")) return;
-    if (e.key === "Escape") { if (wCloseSheets()) return; if (WORLD.active) { wFitAll(); uisSwoosh(false); } }
+    if (e.key === "Escape") { if (wCloseSheets()) return; if (WORLD.sel) { wSelect(null); return; } if (WORLD.active) { wFitAll(); uisSwoosh(false); } }
     else if (e.key === "m" || e.key === "M") return;
     else if (e.key === "n" || e.key === "N") document.getElementById("w-b-new").click();
     e.stopImmediatePropagation();
@@ -4668,25 +4698,55 @@ function wSnapSoon() {
 }
 function wIslandAt(sx, sy) {
   const [wx, wy] = wToWorld(sx, sy);
-  return wIslands().find(i => Math.hypot(wx - i.x, wy - i.y) < i.r * 1.05) || null;
+  return wIslands().find(i => i.k !== "connexions" && Math.hypot(wx - i.x, wy - i.y) < i.r) || null;
 }
-function wNodeAt(sx, sy) {
+const wNodeR = n => 4 + Math.sqrt(n.yes) * 2.4 + (n.cur ? 1.5 : 0);          // rayon du point (monde)
+const wThumbK = () => Math.min(1, Math.max(0, (WORLD.cam.z * 9 - 9) / 9));    // 0 = points, 1 = formes
+function wNodeAt(sx, sy, touch = false) {
   if (WORLD.active) return null;
-  const [wx, wy] = wToWorld(sx, sy); let best = null, bd = 1e9;
-  for (const n of WORLD.nodes) { const d = Math.hypot(wx - n.x, wy - n.y); if (d < n.r * 1.1 && d < bd) { bd = d; best = n; } }
+  const [wx, wy] = wToWorld(sx, sy), z = WORLD.cam.z, k = wThumbK(); let best = null, bd = 1e9;
+  for (const n of WORLD.nodes) {
+    const r = Math.max(wNodeR(n) * (1 + 1.6 * k), (touch ? 16 : 7) / z), d = Math.hypot(wx - n.x, wy - n.y);
+    if (d < r && d < bd) { bd = d; best = n; }
+  }
   return best;
 }
 function wHover(sx, sy) {
   if (WORLD.active) return;
   const n = wNodeAt(sx, sy);
   if (n !== WORLD.hover) { WORLD.hover = n; WORLD.dirty = true; if (n) uisChime(wDegOf(n.scene), 0.45); }
-  WORLD.cv.style.cursor = n || wIslandAt(sx, sy) ? "pointer" : "";
+  WORLD.cv.style.cursor = n ? "pointer" : wIslandAt(sx, sy) ? "zoom-in" : "";
 }
-function wTap(sx, sy) {
+function wTap(sx, sy, node) {
   if (WORLD.active) return;
-  const n = wNodeAt(sx, sy);
-  if (n) { uisClick(1.3); uisSwoosh(true, 0.5); wFly({ x: n.x, y: n.y, z: Math.max(WORLD.cam.z * 1.8, 2.4) }, 0.8); return; }
+  const n = node || wNodeAt(sx, sy, true);
+  if (n) {
+    uisClick(1.3); uisChime(wDegOf(n.scene), 0.6);
+    const zt = Math.max(WORLD.cam.z, 1.6);
+    if (zt > WORLD.cam.z * 1.1) wFly({ x: n.x, y: n.y, z: zt }, 0.7);
+    wSelect(n); return;
+  }
+  if (WORLD.sel) { wSelect(null); return; }
   const i = wIslandAt(sx, sy); if (i) wFlyIsland(i);
+}
+function wSelect(n) {
+  WORLD.sel = n; WORLD.dirty = true;
+  const nd = document.getElementById("w-node"); if (!nd) return;
+  nd.classList.toggle("open", !!n);
+  if (n) wNodeCard();
+}
+function wNodeCard() {
+  const n = WORLD.sel, nd = document.getElementById("w-node"); if (!n) return;
+  const v = votes[n.id] && isMine(votes[n.id]) ? votes[n.id].v : 0;
+  nd.querySelector(".w-info").textContent = `${n.yes ? "♥ " + n.yes : "pas encore aimée"} · ${wFamLab(W_FAMS[n.fam])}`;
+  nd.querySelector(".w-y").setAttribute("aria-pressed", v > 0); nd.querySelector(".w-n").setAttribute("aria-pressed", v < 0);
+}
+function wVoteNode(v) {
+  const n = WORLD.sel; if (!n) return;
+  const was = votes[n.id] && isMine(votes[n.id]) ? votes[n.id].v : 0;
+  castVote(n.scene, v);
+  if (was !== v) (v > 0 ? uisYes : uisNo)(); else uisSwitch(false);
+  setTimeout(wNodeCard, 30);
 }
 const wDegOf = sc => { const s = (sc.stars && sc.stars[0] && sc.stars[0].seed) || 0; return Math.floor(hash01(s) * 10); };
 function wToast(txt) {
@@ -4694,7 +4754,7 @@ function wToast(txt) {
   clearTimeout(wToast.t); wToast.t = setTimeout(() => (h.style.opacity = 0), 1800);
 }
 
-/* ---------- Vignettes : rendu sur fond transparent ---------- */
+/* ---------- Vignettes : rendu sur fond transparent, seulement à la demande ---------- */
 function wClearBg(rgba, T) {
   const r0 = rgba[0], g0 = rgba[1], b0 = rgba[2];
   if (0.299 * r0 + 0.587 * g0 + 0.114 * b0 < 200) return rgba;   // fonds sombres : on garde tel quel
@@ -4711,13 +4771,14 @@ async function wRender(scene, T) {
   const cv = document.createElement("canvas"); cv.width = cv.height = T;
   cv.getContext("2d").putImageData(new ImageData(wClearBg(finish(mask, T, scene.stars[0].seed), T), T, T), 0, 0);
   WORLD.thumbs.set(key, cv);
-  if (WORLD.thumbs.size > 900) WORLD.thumbs.delete(WORLD.thumbs.keys().next().value);
+  if (WORLD.thumbs.size > 700) WORLD.thumbs.delete(WORLD.thumbs.keys().next().value);
   return cv;
 }
+function wWant(n) { if (!n.img && !n.q) { n.q = true; WORLD.queue.push(n); wPump(); } }
 function wPump() {
   while (WORLD.busy < 2 && WORLD.queue.length) {
-    const n = WORLD.queue.shift(); if (n.img) continue; WORLD.busy++;
-    wRender(n.scene, 96).then(cv => { n.img = cv; WORLD.dirty = true; }).catch(() => {}).finally(() => { WORLD.busy--; wPump(); });
+    const n = WORLD.queue.pop(); WORLD.busy++;                     // les derniers demandés d'abord (ce qu'on regarde)
+    wRender(n.scene, 128).then(cv => { n.img = cv; WORLD.dirty = true; }).catch(() => {}).finally(() => { WORLD.busy--; n.q = false; wPump(); });
   }
 }
 async function wPaintInto(canvas, scene, T) {
@@ -4733,156 +4794,180 @@ function wVec(scene) {
     GENES.forEach((G, i) => { const d = Math.abs((g[i] ?? neutral(G)) - neutral(G)); const f = W_FAMS.indexOf(G.fam); v[f] += d; cnt[f]++; tot += d; nt++; });
   }
   for (let f = 0; f < v.length; f++) v[f] = cnt[f] ? v[f] / cnt[f] : 0;
-  const n = Math.hypot(...v) || 1;
-  return { u: v.map(x => x / n), raw: v, inten: nt ? tot / nt : 0 };
+  return { raw: v, inten: nt ? tot / nt : 0 };
 }
 function wSync(force = false) {
+  const key = WORLD.ver + "|" + current.length + "|" + (current[0] ? current[0].id : "");
+  if (!force && key === WORLD.key) return; WORLD.key = key;
   const agg = new Map();
-  for (const [key, vt] of Object.entries(votes)) {
+  for (const [k, vt] of Object.entries(votes)) {
     if (!vt || !Array.isArray(vt.stars) || !vt.stars.length) continue;
-    const id = key.split("|")[0];
-    let a = agg.get(id); if (!a) { a = { id, key, vt, y: 0, n: 0, mine: false, t: 0 }; agg.set(id, a); }
+    const id = k.split("|")[0];
+    let a = agg.get(id); if (!a) { a = { id, key: k, vt, y: 0, n: 0, mine: false, t: 0 }; agg.set(id, a); }
     if (vt.v > 0) a.y++; else a.n++;
     if (isMine(vt)) a.mine = true; a.t = Math.max(a.t, vt.t || 0);
   }
-  for (const sc of current) if (!agg.has(sc.id)) agg.set(sc.id, { id: sc.id, scene: sc, y: 0, n: 0, cur: true, t: Date.now() });
-  const list = [...agg.values()].sort((a, b) => (b.t || 0) - (a.t || 0)).slice(0, 420);
-  const sig = list.map(a => a.id + ":" + a.y + ":" + a.n).join(",");
-  if (!force && sig === WORLD.sig) return; WORLD.sig = sig;
+  for (const sc of current) if (!agg.has(sc.id)) agg.set(sc.id, { id: sc.id, scene: sc, y: 0, n: 0, t: Date.now() });
+  const list = [...agg.values()].sort((a, b) => (b.t || 0) - (a.t || 0)).slice(0, 600);
   const old = WORLD.byId, nodes = [], byId = new Map(), curIds = new Set(current.map(s => s.id));
+  let added = 0;
   for (const a of list) {
     let n = old.get(a.id);
     if (!n) {
       const scene = a.scene || scenesFromEntries([[a.key, a.vt]])[0]; if (!scene) continue;
-      const h = hash01([...a.id].reduce((s, c) => (s * 31 + c.charCodeAt(0)) | 0, 7)), ang = h * Math.PI * 2, rr = W_GRAPH_R * (0.25 + 0.7 * hash01(h * 1e9 | 0));
+      const h = hash01([...a.id].reduce((s, c) => (s * 31 + c.charCodeAt(0)) | 0, 7)), ang = h * Math.PI * 2, rr = 40 + 260 * hash01((h * 1e9) | 0);
       n = { id: a.id, scene, x: Math.cos(ang) * rr, y: Math.sin(ang) * rr, vx: 0, vy: 0, img: null, ...wVec(scene) };
+      added++;
     }
-    Object.assign(n, { yes: a.y, no: a.n, mine: !!a.mine, cur: curIds.has(a.id) });
-    n.r = 16 + Math.min(5, n.yes) * 4 + (n.cur ? 3 : 0) - (n.no && !n.yes ? 4 : 0);
+    Object.assign(n, { yes: a.y, no: a.n, mine: !!a.mine, cur: curIds.has(a.id), nb: [] });
     nodes.push(n); byId.set(n.id, n);
-    if (!n.img && !WORLD.queue.includes(n)) WORLD.queue.push(n);
   }
-  // profils centrés sur la moyenne : ce qui distingue chaque forme, pas ce qu'elles ont toutes
-  if (nodes.length) {
-    const mean = new Array(W_FAMS.length).fill(0);
+  const structural = added || nodes.length !== old.size;
+  if (structural && nodes.length) {
+    // ce qui distingue chaque forme de la moyenne : c'est ce profil qui crée les liens
+    const F = W_FAMS.length, mean = new Array(F).fill(0);
     for (const n of nodes) n.raw.forEach((v, f) => mean[f] += v / nodes.length);
-    for (const n of nodes) { const c = n.raw.map((v, f) => v - mean[f]), m = Math.hypot(...c) || 1; n.u = c.map(v => v / m); }
+    for (const n of nodes) {
+      const c = n.raw.map((v, f) => v - mean[f]), m = Math.hypot(...c) || 1; n.u = c.map(v => v / m);
+      let fi = 0; for (let f = 1; f < F; f++) if (c[f] > c[fi]) fi = f; n.fam = fi;
+    }
+    const links = [], seen = new Set(), K = nodes.length > 150 ? 2 : 3;
+    for (const a of nodes) {
+      const best = [];
+      for (const b of nodes) {
+        if (a === b) continue;
+        let s = 0; for (let f = 0; f < F; f++) s += a.u[f] * b.u[f];
+        s -= Math.abs(a.inten - b.inten) * 1.5;
+        if (best.length < K || s > best[best.length - 1][0]) { best.push([s, b]); best.sort((p, q) => q[0] - p[0]); if (best.length > K) best.pop(); }
+      }
+      for (const [s, b] of best) {
+        if (s < 0.35 && best[0][1] !== b) continue;
+        const k = a.id < b.id ? a.id + b.id : b.id + a.id; if (seen.has(k)) continue; seen.add(k);
+        links.push({ a, b, s: Math.max(0, Math.min(1, s)) });
+      }
+    }
+    WORLD.links = links;
+    SIM.alpha = Math.max(SIM.alpha, old.size ? 0.5 : 1);
+  } else {
+    WORLD.links = WORLD.links.filter(l => byId.has(l.a.id) && byId.has(l.b.id));
   }
-  // liens : les 2 voisines les plus proches par profil de déformation, et l'intensité
-  const links = [], seen = new Set();
-  for (const a of nodes) {
-    const best = [];
-    for (const b of nodes) {
-      if (a === b) continue;
-      let s = 0; for (let f = 0; f < a.u.length; f++) s += a.u[f] * b.u[f];
-      s -= Math.abs(a.inten - b.inten) * 1.5;
-      best.push([s, b]);
-    }
-    best.sort((p, q) => q[0] - p[0]);
-    for (const [s, b] of best.slice(0, nodes.length > 120 ? 1 : 2)) {
-      const k = a.id < b.id ? a.id + b.id : b.id + a.id; if (seen.has(k)) continue; seen.add(k);
-      let fi = 0; for (let f = 1; f < a.raw.length; f++) if (a.raw[f] + b.raw[f] > a.raw[fi] + b.raw[fi]) fi = f;
-      links.push({ a, b, s: Math.max(0, Math.min(1, s)), fam: fi });
-    }
-  }
-  Object.assign(WORLD, { nodes, byId, links });
-  wLayout(old.size ? 90 : 240);
-  wPump(); WORLD.dirty = true;
-}
-function wLayout(iter) {
-  const N = WORLD.nodes, L = WORLD.links, R = W_GRAPH_R;
-  for (let it = 0; it < iter; it++) {
-    const cool = 1 - it / iter;
-    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
-      const a = N[i], b = N[j]; let dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
-      if (d2 > 160000) continue; if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-      const min = (a.r + b.r) * 1.25, f = 7000 / d2 + (d2 < min * min ? 0.5 : 0);
-      const d = Math.sqrt(d2); a.vx += dx / d * f; a.vy += dy / d * f; b.vx -= dx / d * f; b.vy -= dy / d * f;
-    }
-    for (const l of L) {
-      const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1, f = (d - (150 - 60 * l.s)) * 0.01;
-      l.a.vx += dx / d * f; l.a.vy += dy / d * f; l.b.vx -= dx / d * f; l.b.vy -= dy / d * f;
-    }
-    for (const n of N) {
-      n.vx -= n.x * 0.0018; n.vy -= n.y * 0.0018;
-      n.x += Math.max(-30, Math.min(30, n.vx)) * cool; n.y += Math.max(-30, Math.min(30, n.vy)) * cool; n.vx *= 0.55; n.vy *= 0.55;
-      const d = Math.hypot(n.x, n.y), lim = R - n.r; if (d > lim) { n.x *= lim / d; n.y *= lim / d; }
-    }
-  }
+  for (const l of WORLD.links) { l.a.nb.push(l.b); l.b.nb.push(l.a); }
+  Object.assign(WORLD, { nodes, byId });
+  if (structural && !old.size) { for (let i = 0; i < 160; i++) simTick(); wMeasure(); wPlaceIslands(); }
+  if (WORLD.sel && !byId.has(WORLD.sel.id)) wSelect(null); else if (WORLD.sel) wNodeCard();
+  WORLD.dirty = true;
 }
 
-/* ---------- Dessin du monde ---------- */
-const W_HUES = [265, 205, 330, 160, 30, 290, 190, 0];
+/* Simulation de forces, comme le graphe d'Obsidian : répulsion, ressorts, rappel au centre. */
+function simTick() {
+  const N = WORLD.nodes, a = SIM.alpha, cell = 200, grid = new Map();
+  for (const n of N) { const k = Math.floor(n.x / cell) * 73856093 ^ Math.floor(n.y / cell) * 19349663; let b = grid.get(k); if (!b) grid.set(k, b = []); b.push(n); }
+  for (const n of N) {
+    const gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell), rn = wNodeR(n);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const b = grid.get((gx + i) * 73856093 ^ (gy + j) * 19349663); if (!b) continue;
+      for (const m of b) {
+        if (m === n) continue;
+        let dx = n.x - m.x, dy = n.y - m.y, d2 = dx * dx + dy * dy;
+        if (d2 > cell * cell) continue;
+        if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+        const f = 140 * a / Math.max(d2, 36);
+        n.vx += dx * f; n.vy += dy * f;
+        const min = (rn + wNodeR(m)) * 1.6;
+        if (d2 < min * min) { const d = Math.sqrt(d2), p = (min - d) / d * 0.25; n.vx += dx * p; n.vy += dy * p; }
+      }
+    }
+  }
+  for (const l of WORLD.links) {
+    const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1, f = (d - (34 + 46 * (1 - l.s))) / d * a * 0.3;
+    l.a.vx += dx * f; l.a.vy += dy * f; l.b.vx -= dx * f; l.b.vy -= dy * f;
+  }
+  for (const n of N) {
+    if (n.fixed) { n.vx = n.vy = 0; continue; }
+    n.vx -= n.x * 0.012 * a; n.vy -= n.y * 0.012 * a;
+    n.vx *= 0.6; n.vy *= 0.6;
+    n.x += Math.max(-40, Math.min(40, n.vx)); n.y += Math.max(-40, Math.min(40, n.vy));
+  }
+  SIM.alpha *= 0.985; if (SIM.alpha < 0.004) SIM.alpha = 0;
+  if (++SIM.ticks % 40 === 0) wMeasure();
+}
+function wMeasure() {
+  const N = WORLD.nodes; if (!N.length) { WORLD.graphR = 300; return; }
+  const ds = N.map(n => Math.hypot(n.x, n.y)).sort((p, q) => p - q);
+  const r = ds[Math.floor(ds.length * 0.96)] + 30;
+  if (Math.abs(r - WORLD.graphR) / WORLD.graphR > 0.15) { WORLD.graphR = r; wPlaceIslands(); if (!WORLD.touched && !WORLD.active && !WORLD.fly) wFitAll(false); }
+}
+
+/* ---------- Dessin du monde : seulement quand quelque chose bouge ---------- */
+const W_HUES = [265, 205, 330, 160, 30, 290, 190, 0, 120, 45, 300, 220];
 function wLoop(now) {
   if (!WORLD.on) return;
   requestAnimationFrame(wLoop);
+  if (document.hidden) return;
   if (WORLD.fly) {
     const f = WORLD.fly, k = Math.min(1, (now - f.t0) / f.dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
     const lz = Math.log(f.from.z) + (Math.log(f.to.z) - Math.log(f.from.z)) * e;
     WORLD.cam.z = Math.exp(lz); WORLD.cam.x = f.from.x + (f.to.x - f.from.x) * e; WORLD.cam.y = f.from.y + (f.to.y - f.from.y) * e;
     if (k >= 1) WORLD.fly = null; WORLD.dirty = true; wCheckActive();
   }
-  if (WORLD.active && !WORLD.dirty) return;
-  if (!WORLD.active && !WORLD.dirty && now - (WORLD.lastDraw || 0) < 33) return;   // respiration douce à ~30 i/s
-  WORLD.lastDraw = now; WORLD.dirty = false;
-  wDraw(now / 1000);
+  if (SIM.alpha > 0 && !WORLD.active) { simTick(); WORLD.dirty = true; }
+  if (!WORLD.dirty) return;
+  WORLD.dirty = false;
+  wDraw();
+  if (WORLD.active) wBlurCanvas();
 }
-function wDraw(t) {
+/* Fond flouté quand un îlot est ouvert : on réduit puis agrandit l'image (bien plus léger qu'un filtre CSS) */
+function wBlurCanvas() {
+  const c = WORLD.cv, a = WORLD.blurA || (WORLD.blurA = document.createElement("canvas")), b = WORLD.blurB || (WORLD.blurB = document.createElement("canvas"));
+  a.width = Math.max(8, c.width >> 2); a.height = Math.max(8, c.height >> 2); b.width = Math.max(4, c.width >> 4); b.height = Math.max(4, c.height >> 4);
+  const ax = a.getContext("2d"), bx = b.getContext("2d"), x = WORLD.ctx;
+  ax.drawImage(c, 0, 0, a.width, a.height); bx.drawImage(a, 0, 0, b.width, b.height);
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+  x.drawImage(b, 0, 0, c.width, c.height);
+}
+function wDraw() {
   const { ctx: x, W, H, dpr, cam } = WORLD, z = cam.z;
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
   // points du fond
-  let step = 60; while (step * z < 16) step *= 3;
+  let step = 60; while (step * z < 18) step *= 3;
   const [ax, ay] = wToWorld(0, 0), [bx, by] = wToWorld(W, H);
-  x.fillStyle = "rgba(27,29,34,.13)";
+  x.fillStyle = "rgba(27,29,34,.11)";
   for (let gx = Math.floor(ax / step) * step; gx <= bx; gx += step) for (let gy = Math.floor(ay / step) * step; gy <= by; gy += step) {
-    const [sx, sy] = wToScreen(gx, gy); x.fillRect(sx - 0.7, sy - 0.7, 1.4, 1.4);
+    const [sx, sy] = wToScreen(gx, gy); x.fillRect(sx - 0.6, sy - 0.6, 1.2, 1.2);
   }
-  const breathe = WORLD.active ? 0 : t;
-  for (const isl of wIslands()) wDrawIsland(x, isl, z, breathe);
-  wDrawGraph(x, z, breathe);
-  // étiquettes
-  x.textAlign = "center"; x.textBaseline = "top";
-  const font = WORLD.font || (WORLD.font = "11px " + getComputedStyle(document.body).getPropertyValue("--f-accent"));
-  for (const isl of wIslands()) {
-    const [sx, sy] = wToScreen(isl.x, isl.y + isl.r); if (sy > H + 40 || sy < -40) continue;
-    x.font = font;
-    x.fillStyle = "rgba(27,29,34,.62)"; x.letterSpacing = "2px";
-    x.fillText(isl.lab.toUpperCase(), sx, sy + 14);
-    if (isl.k === "connexions" && WORLD.nodes.length) { x.fillStyle = "rgba(27,29,34,.4)"; x.fillText(`${WORLD.nodes.length} formes`, sx, sy + 30); }
-  }
-  x.letterSpacing = "0px";
+  const font = WORLD.font || (WORLD.font = getComputedStyle(document.body).getPropertyValue("--f-accent"));
+  for (const isl of wIslands()) if (isl.k !== "connexions") wDrawIsland(x, isl, z, font);
+  wDrawGraph(x, z, font);
+  if (WORLD.sel) wPlaceNodeCard();
 }
-function wDrawIsland(x, isl, z, t) {
-  const [cx, cy] = wToScreen(isl.x, isl.y), r = isl.r * z * (1 + Math.sin(t * 0.6 + isl.x) * 0.006);
-  if (cx + r < -50 || cx - r > WORLD.W + 50 || cy + r < -50 || cy - r > WORLD.H + 50) return;
-  const g = x.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.05, cx, cy, r);
-  g.addColorStop(0, "rgba(255,255,255,.62)"); g.addColorStop(0.7, "rgba(255,255,255,.22)"); g.addColorStop(1, "rgba(255,255,255,.08)");
-  x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fillStyle = g; x.fill();
-  if (x.createConicGradient) {
-    const cg = x.createConicGradient(t * 0.15 + isl.y, cx, cy);
-    [[0, "rgba(255,190,225,.55)"], [0.25, "rgba(190,215,255,.55)"], [0.5, "rgba(200,255,235,.5)"], [0.75, "rgba(230,200,255,.55)"], [1, "rgba(255,190,225,.55)"]].forEach(([o, c]) => cg.addColorStop(o, c));
-    x.strokeStyle = cg; x.lineWidth = Math.max(1, 2.2 * z * 3);
-  } else { x.strokeStyle = "rgba(255,255,255,.9)"; x.lineWidth = 1.2; }
-  x.stroke();
-  x.beginPath(); x.arc(cx, cy, r - 1, Math.PI * 1.05, Math.PI * 1.45); x.strokeStyle = "rgba(255,255,255,.95)"; x.lineWidth = Math.max(1, r * 0.012); x.stroke();
-  if (isl.k !== "connexions") wGlyph(x, isl.k, cx, cy, r * 0.42, t);
+function wDrawIsland(x, isl, z, font) {
+  const [cx, cy] = wToScreen(isl.x, isl.y), r = isl.r * z;
+  if (cx + r < -60 || cx - r > WORLD.W + 60 || cy + r < -60 || cy - r > WORLD.H + 90) return;
+  // halo doux, sans bord
+  const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, "rgba(255,255,255,.7)"); g.addColorStop(0.55, "rgba(255,255,255,.28)"); g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g; x.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+  wGlyph(x, isl.k, cx, cy, r * 0.38);
+  x.textAlign = "center"; x.textBaseline = "top"; x.font = `${Math.round(Math.min(13, Math.max(10, r * 0.06)))}px ${font}`;
+  x.fillStyle = "rgba(27,29,34,.6)"; x.letterSpacing = "2px";
+  x.fillText(isl.lab.toUpperCase(), cx, cy + r * 0.5); x.letterSpacing = "0px";
 }
-function wGlyph(x, k, cx, cy, s, t) {
-  x.save(); x.strokeStyle = "rgba(27,29,34,.55)"; x.fillStyle = "rgba(27,29,34,.55)"; x.lineWidth = Math.max(1, s * 0.025); x.lineJoin = x.lineCap = "round";
+function wGlyph(x, k, cx, cy, s) {
+  x.save(); x.strokeStyle = "rgba(27,29,34,.5)"; x.fillStyle = "rgba(27,29,34,.5)"; x.lineWidth = Math.max(1, s * 0.025); x.lineJoin = x.lineCap = "round";
   x.beginPath();
   if (k === "production") {
     const p = [[-.35, -.8], [-.15, -.68], [.15, -.68], [.35, -.8], [.95, -.45], [.75, -.1], [.45, -.28], [.45, .85], [-.45, .85], [-.45, -.28], [-.75, -.1], [-.95, -.45]];
     p.forEach(([u, v], i) => (i ? x.lineTo : x.moveTo).call(x, cx + u * s, cy + v * s)); x.closePath(); x.stroke();
-    x.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + t * 0.2; x.moveTo(cx, cy + 0.12 * s); x.lineTo(cx + Math.cos(a) * 0.25 * s, cy + 0.12 * s + Math.sin(a) * 0.25 * s); } x.stroke();
+    x.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; x.moveTo(cx, cy + 0.12 * s); x.lineTo(cx + Math.cos(a) * 0.25 * s, cy + 0.12 * s + Math.sin(a) * 0.25 * s); } x.stroke();
   } else if (k === "sampler") {
     for (let i = 0; i < 48; i++) {
-      const a = i / 48 * Math.PI * 2, h = 0.12 + 0.18 * (0.5 + 0.5 * Math.sin(i * 1.7 + t * 2.2)) * (0.5 + 0.5 * Math.sin(i * 0.37 - t));
+      const a = i / 48 * Math.PI * 2, h = 0.1 + 0.2 * (0.5 + 0.5 * Math.sin(i * 1.7)) * (0.5 + 0.5 * Math.sin(i * 0.37));
       x.moveTo(cx + Math.cos(a) * 0.55 * s, cy + Math.sin(a) * 0.55 * s); x.lineTo(cx + Math.cos(a) * (0.55 + h) * s, cy + Math.sin(a) * (0.55 + h) * s);
     }
     x.stroke(); x.beginPath(); x.arc(cx, cy, 0.38 * s, 0, Math.PI * 2); x.stroke();
   } else if (k === "labo") {
     for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
-      const w = Math.sin(t * 1.3 + i * 0.9 + j * 0.6) * 0.06;
+      const w = Math.sin(i * 0.9 + j * 0.6) * 0.06;
       x.moveTo(cx + (i * 0.3 + w) * s + 0.05 * s, cy + (j * 0.3 - w) * s); x.arc(cx + (i * 0.3 + w) * s, cy + (j * 0.3 - w) * s, 0.05 * s, 0, Math.PI * 2);
     }
     x.fill();
@@ -4893,32 +4978,80 @@ function wGlyph(x, k, cx, cy, s, t) {
   }
   x.restore();
 }
-function wDrawGraph(x, z, t) {
+function wDrawGraph(x, z, font) {
   const N = WORLD.nodes; if (!N.length) return;
-  const [cx, cy] = wToScreen(0, 0), R = W_GRAPH_R * z;
-  if (cx + R < 0 || cx - R > WORLD.W || cy + R < 0 || cy - R > WORLD.H) return;
-  const pos = n => { const w = t ? Math.sin(t * 0.7 + n.x * 0.01) * 3 : 0, v = t ? Math.cos(t * 0.6 + n.y * 0.013) * 3 : 0; return wToScreen(n.x + w, n.y + v); };
-  for (const n of N) n._s = pos(n);
-  x.lineCap = "round";
-  for (const l of WORLD.links) {
-    const [x1, y1] = l.a._s, [x2, y2] = l.b._s, hl = WORLD.hover && (l.a === WORLD.hover || l.b === WORLD.hover);
-    x.strokeStyle = `hsla(${W_HUES[l.fam % W_HUES.length]}, 45%, ${hl ? 45 : 55}%, ${hl ? 0.75 : (WORLD.nodes.length > 120 ? 0.08 : 0.16) + 0.25 * l.s})`;
-    x.lineWidth = Math.max(0.5, (0.5 + 1.8 * l.s) * z * 2) * (hl ? 1.8 : 1);
-    x.beginPath(); x.moveTo(x1, y1);
-    const mx = (x1 + x2) / 2 + (y2 - y1) * 0.12, my = (y1 + y2) / 2 - (x2 - x1) * 0.12; x.quadraticCurveTo(mx, my, x2, y2); x.stroke();
+  const W = WORLD.W, H = WORLD.H, k = wThumbK(), hov = WORLD.hover || WORLD.sel;
+  const near = hov ? new Set([hov, ...hov.nb]) : null;
+  for (const n of N) { const s = wToScreen(n.x, n.y); n.sx = s[0]; n.sy = s[1]; }
+  const vis = n => n.sx > -60 && n.sx < W + 60 && n.sy > -60 && n.sy < H + 60;
+  // liens : traits fins, gris ; au survol, ceux du nœud s'allument
+  const lw = Math.max(0.4, Math.min(1.4, 0.9 * z));
+  x.lineWidth = lw; x.strokeStyle = near ? "rgba(27,29,34,.05)" : "rgba(27,29,34,.16)";
+  x.beginPath();
+  for (const l of WORLD.links) { if (!vis(l.a) && !vis(l.b)) continue; x.moveTo(l.a.sx, l.a.sy); x.lineTo(l.b.sx, l.b.sy); }
+  x.stroke();
+  if (near) {
+    x.lineWidth = lw * 1.8; x.strokeStyle = "rgba(124,92,230,.75)"; x.beginPath();
+    for (const m of hov.nb) { x.moveTo(hov.sx, hov.sy); x.lineTo(m.sx, m.sy); }
+    x.stroke();
   }
+  // nœuds : des points qui deviennent des formes quand on s'approche
+  const dotA = 1 - k;
   for (const n of N) {
-    const [sx, sy] = n._s, hov = n === WORLD.hover, r = n.r * z * (hov ? 1.5 : 1);
-    if (sx + r < 0 || sx - r > WORLD.W || sy + r < 0 || sy - r > WORLD.H) continue;
-    if (n.yes) { const g = x.createRadialGradient(sx, sy, 0, sx, sy, r * 1.6); g.addColorStop(0, `rgba(255,255,255,${0.5 + 0.08 * n.yes})`); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.beginPath(); x.arc(sx, sy, r * 1.6, 0, Math.PI * 2); x.fill(); }
-    if (r < 3.5 || !n.img) {
-      x.fillStyle = n.yes ? "rgba(27,29,34,.75)" : n.no ? "rgba(27,29,34,.22)" : "rgba(27,29,34,.45)";
-      x.beginPath(); x.arc(sx, sy, Math.max(1.4, r * 0.35), 0, Math.PI * 2); x.fill();
-    } else {
-      x.globalAlpha = n.no && !n.yes ? 0.35 : 1; x.drawImage(n.img, sx - r, sy - r, r * 2, r * 2); x.globalAlpha = 1;
+    if (!vis(n)) continue;
+    const r = wNodeR(n) * z, fade = near && !near.has(n) ? 0.18 : 1;
+    if (dotA > 0.02) {
+      x.globalAlpha = dotA * fade;
+      x.fillStyle = n === hov ? "rgb(124,92,230)" : n.yes ? `hsl(${W_HUES[n.fam % W_HUES.length]}, 32%, 38%)` : n.no ? "rgba(27,29,34,.28)" : "rgba(27,29,34,.55)";
+      x.beginPath(); x.arc(n.sx, n.sy, Math.max(1.3, r), 0, Math.PI * 2); x.fill();
+      if (n.cur && r > 2) { x.strokeStyle = "rgba(124,92,230,.6)"; x.lineWidth = 1; x.beginPath(); x.arc(n.sx, n.sy, Math.max(1.3, r) + 2.5, 0, Math.PI * 2); x.stroke(); }
     }
-    if (n.cur && r > 4) { x.setLineDash([2, 3]); x.strokeStyle = "rgba(27,29,34,.35)"; x.lineWidth = 1; x.beginPath(); x.arc(sx, sy, r * 1.08, 0, Math.PI * 2); x.stroke(); x.setLineDash([]); }
+    if (k > 0.02) {
+      wWant(n);
+      if (n.img) {
+        const R = r * 2.6 * (n === hov ? 1.15 : 1);
+        x.globalAlpha = k * fade * (n.no && !n.yes ? 0.4 : 1);
+        x.drawImage(n.img, n.sx - R, n.sy - R, R * 2, R * 2);
+      }
+    }
   }
+  x.globalAlpha = 1;
+  // repère de sélection
+  if (WORLD.sel && vis(WORLD.sel)) {
+    const n = WORLD.sel, r = wNodeR(n) * z * (1 + 1.6 * k) + 6;
+    x.strokeStyle = "rgba(124,92,230,.8)"; x.lineWidth = 1.2; x.setLineDash([3, 4]); x.beginPath(); x.arc(n.sx, n.sy, r, 0, Math.PI * 2); x.stroke(); x.setLineDash([]);
+  }
+  // étiquettes, comme les titres d'Obsidian, quand on est assez près
+  const la = Math.min(1, Math.max(0, (z - 1.1) / 0.6));
+  x.textAlign = "center"; x.textBaseline = "top";
+  if (la > 0.02) {
+    x.font = `10px ${font}`;
+    for (const n of N) {
+      if (!vis(n) || (near && !near.has(n))) continue;
+      const r = wNodeR(n) * z * (1 + 1.6 * k);
+      x.fillStyle = `rgba(27,29,34,${0.55 * la})`;
+      x.fillText(n.yes ? `♥ ${n.yes} · ${wFamLab(W_FAMS[n.fam])}` : wFamLab(W_FAMS[n.fam]), n.sx, n.sy + r + 4);
+    }
+  } else if (hov && vis(hov)) {
+    x.font = `10px ${font}`; x.fillStyle = "rgba(27,29,34,.7)";
+    x.fillText(hov.yes ? `♥ ${hov.yes} · ${wFamLab(W_FAMS[hov.fam])}` : wFamLab(W_FAMS[hov.fam]), hov.sx, hov.sy + wNodeR(hov) * z + 6);
+  }
+  // nom de l'îlot central, sous le nuage
+  const [cx, cy] = wToScreen(0, WORLD.graphR + 40);
+  if (cy < H + 20 && cy > -20) {
+    x.font = `11px ${font}`; x.letterSpacing = "2px"; x.fillStyle = "rgba(27,29,34,.55)";
+    x.fillText("CONNEXIONS", cx, cy); x.letterSpacing = "0px";
+    x.fillStyle = "rgba(27,29,34,.35)"; x.fillText(`${N.length} formes`, cx, cy + 16);
+  }
+}
+function wPlaceNodeCard() {
+  const n = WORLD.sel, nd = document.getElementById("w-node");
+  const r = wNodeR(n) * WORLD.cam.z * (1 + 1.6 * wThumbK());
+  let sx = n.sx, sy = n.sy + r + 14;
+  const w = nd.offsetWidth || 180, h = nd.offsetHeight || 44;
+  sx = Math.max(w / 2 + 10, Math.min(WORLD.W - w / 2 - 10, sx));
+  if (sy + h > WORLD.H - 100) sy = n.sy - r - 14 - h;
+  nd.style.transform = `translate(${Math.round(sx - w / 2)}px, ${Math.round(sy)}px)`;
 }
 
 /* ---------- Panneaux des îlots ---------- */
@@ -5161,9 +5294,12 @@ function wFillProf(s) {
 /* ---------- Liaison avec le moteur ---------- */
 {
   const prevVotes = onVotesChanged;
-  onVotesChanged = function () { prevVotes.apply(this, arguments); if (WORLD.on) { wSync(); wSyncCards(); } };
+  onVotesChanged = function () { prevVotes.apply(this, arguments); WORLD.ver++; if (WORLD.on) { wSync(); wSyncCards(); } };
+  // l'ancienne vue « une à la fois » ne calcule plus rien tant que le monde est affiché
+  const prevFocus = showFocus; showFocus = function () { if (WORLD.on) return; return prevFocus.apply(this, arguments); };
+  const prevKick = touchKick; touchKick = function () { if (WORLD.on) return; return prevKick.apply(this, arguments); };
 }
-setInterval(() => { if (!WORLD.on) return; wSync(); wSyncCards(); }, 400);
+setInterval(() => { if (!WORLD.on) return; wSync(); wSyncCards(); }, 500);
 worldBuild();
 {
   const q = new URLSearchParams(location.search);
