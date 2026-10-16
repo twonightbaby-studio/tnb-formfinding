@@ -4601,7 +4601,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5066,7 +5066,7 @@ function wHead(title, extra = "") {
 function wPanel(k) {
   const p = document.getElementById("w-panel");
   if (k === WORLD.panelKey && k) return;
-  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") spPlay(false);
+  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); }
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
   const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin }[k];
@@ -5338,7 +5338,8 @@ function spPlay(on) {
 }
 function spRec() {
   if (SP.rec) return spRecStop();
-  if (!SP.playing) spPlay(true);
+  const synth = store.get("atelier-sampler-mode", "synthe") === "synthe";
+  if (synth ? !SY.playing : !SP.playing) synth ? syRun(true) : spPlay(true);
   if (!SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
   const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
   const r = new MediaRecorder(SP.dest.stream, type ? { mimeType: type } : undefined), chunks = [];
@@ -5359,8 +5360,22 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 
 /* Interface */
 function wPSampler(p) {
-  const mode = store.get("atelier-sampler-mode", "radial");
-  p.innerHTML = wHead("Sampler · musique procédurale", `<button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+  const mode = store.get("atelier-sampler-mode", "synthe");
+  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS; document.head.append(css); }
+  if (mode === "synthe") {
+    p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+      + `<div class="w-scroll w-live" id="sy-host"></div>`;
+    wPSynth(p.querySelector("#sy-host"));
+    p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
+    p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
+    p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m === "synthe") return; uisSwitch(true); syRun(false); store.set("atelier-sampler-mode", b.dataset.m); WORLD.panelKey = null; wPanel("sampler"); });
+    const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); };
+    requestAnimationFrame(loop);
+    p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", e => e.pointerType === "mouse" && uisPlop()); b.dataset.snd = 1; } });
+    p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
+    return;
+  }
+  p.innerHTML = wHead("Sampler · images en musique", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="false">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
     + `<div class="w-scroll w-live"><div class="sp">
       <section class="sp-pads sp-card"><div class="w-sec">Pads <span>touche : dans la boucle</span></div><div class="sp-grid" id="sp-grid"></div>
         <div class="w-row"><label class="w-pill w-glass-ui" style="cursor:pointer">Importer une image<input type="file" accept="image/*" id="sp-file" hidden></label><button class="w-pill w-glass-ui" id="sp-series">Formes de la série</button></div>
@@ -5380,6 +5395,7 @@ function wPSampler(p) {
 .sp { display: grid; grid-template-columns: 270px minmax(0, 1fr) 250px; grid-template-areas: "pads center side" "seq seq seq"; gap: 20px; max-width: 1240px; margin: 0 auto; padding: 80px 24px 150px; align-items: start; font-size: 12px; }
 .sp-card { border-radius: 26px; padding: 16px; background: rgba(250,250,253,.86); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); display: flex; flex-direction: column; gap: 10px; }
 .sp-pads { grid-area: pads; } .sp-side { grid-area: side; } .sp-seq { grid-area: seq; } .sp-center { grid-area: center; position: relative; }
+.sy, .w-head { }
 .w-head { overflow-x: auto; scrollbar-width: none; } .w-head::-webkit-scrollbar { display: none; }
 .sp-center canvas { width: 100%; max-width: 560px; aspect-ratio: 1; display: block; margin: 0 auto; touch-action: none; }
 .sp-bpm { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; opacity: .55; }
@@ -5408,7 +5424,7 @@ function wPSampler(p) {
 }`;
     document.head.append(css);
   }
-  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); if (b.dataset.m === "synthe") { spPlay(false); WORLD.panelKey = null; wPanel("sampler"); return; } p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
   p.querySelector("#sp-play").onclick = () => { uisClick(); spPlay(!SP.playing); };
   p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
   p.querySelectorAll("[data-mood]").forEach(r => r.oninput = () => { SP.mood[r.dataset.mood] = +r.value; spApplyMood(); spSave(); spBpmLabel(); });
@@ -5422,6 +5438,326 @@ function wPSampler(p) {
   const loop = () => { if (WORLD.panelKey !== "sampler" || !cv.isConnected) return; requestAnimationFrame(loop); spDraw(cv, store.get("atelier-sampler-mode", "radial")); spStepView(); };
   requestAnimationFrame(loop);
 }
+/* SYNTH */
+/* ---------- Synthé : une boîte à rythmes + synthés, pour faire des prods ---------- */
+// Chaque piste = un instrument synthétisé + 16 pas + 4 boutons analogiques (Timbre, Grain, Espace, Mouvement).
+const SY_INST = {
+  kick:   { lab: "Kick", kind: "drum", hue: 10 },
+  k808:   { lab: "808", kind: "mel", hue: 0, oct: -2 },
+  snare:  { lab: "Snare", kind: "drum", hue: 30 },
+  clap:   { lab: "Clap", kind: "drum", hue: 40 },
+  hat:    { lab: "Charley", kind: "drum", hue: 55, roll: true },
+  shaker: { lab: "Shaker", kind: "drum", hue: 70, roll: true },
+  rim:    { lab: "Rim", kind: "drum", hue: 85 },
+  tom:    { lab: "Tom", kind: "mel", hue: 20, oct: -1 },
+  sub:    { lab: "Sub", kind: "mel", hue: 220, oct: -2 },
+  reese:  { lab: "Reese", kind: "mel", hue: 235, oct: -2 },
+  pluck:  { lab: "Pluck", kind: "mel", hue: 170, oct: 0 },
+  bell:   { lab: "Cloche", kind: "mel", hue: 190, oct: 1 },
+  keys:   { lab: "Keys", kind: "mel", hue: 140, oct: 0, chord: true },
+  pad:    { lab: "Nappe", kind: "mel", hue: 265, oct: 0, chord: true },
+  lead:   { lab: "Supersaw", kind: "mel", hue: 300, oct: 0 },
+  vox:    { lab: "Voix", kind: "mel", hue: 320, oct: 0 },
+  choir:  { lab: "Chœur", kind: "mel", hue: 280, oct: 0, chord: true },
+  glass:  { lab: "Verre", kind: "mel", hue: 200, oct: 1 },
+  flute:  { lab: "Souffle", kind: "mel", hue: 120, oct: 1 },
+  riser:  { lab: "Montée", kind: "drum", hue: 250 },
+};
+const SY_KEYS = ["Do", "Do#", "Ré", "Mi♭", "Mi", "Fa", "Fa#", "Sol", "La♭", "La", "Si♭", "Si"];
+const SY_SCALE = [0, 2, 3, 5, 7, 8, 10];                 // mineur naturel
+const SY_PROGS = { "i–VI–III–VII": [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], "i–iv–VI–V": [[0, 3, 7], [5, 8, 12], [-4, 0, 3], [-5, -1, 2]], "i–VII–VI–VII": [[0, 3, 7], [-2, 2, 5], [-4, 0, 3], [-2, 2, 5]], "i seul (drone)": [[0, 3, 7], [0, 3, 7], [0, 3, 7], [0, 3, 7]], "VI–VII–i–i": [[-4, 0, 3], [-2, 2, 5], [0, 3, 7], [0, 3, 7]] };
+const syTrack = (inst, steps, k = {}) => ({ inst, steps, mute: false, vol: k.vol ?? 0.8, tone: k.tone ?? 0.6, drive: k.drive ?? 0.15, space: k.space ?? 0.3, move: k.move ?? 0.5 });
+const syS = (str, deg = []) => [...str].map((c, i) => c === "." ? 0 : { v: c === "x" ? 1 : c === "2" ? 2 : c === "3" ? 3 : 1, d: deg[i] ?? 0 });
+const SY_VIBES = {
+  "Éthéré": { bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [
+    syTrack("kick", syS("x.......x.x....."), { tone: 0.4, move: 0.6 }), syTrack("clap", syS("....x.......x..."), { space: 0.6 }),
+    syTrack("shaker", syS("..x...x...x...xx"), { vol: 0.5, space: 0.5 }), syTrack("sub", syS("x.......x.....x.", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1]), { tone: 0.3 }),
+    syTrack("pad", syS("x..............."), { space: 0.8, move: 0.7, tone: 0.45 }), syTrack("bell", syS("..x..x....x..x..", [0, 0, 4, 0, 0, 6, 0, 0, 0, 0, 7, 0, 0, 4]), { space: 0.85 }),
+    syTrack("vox", syS("x.......x.......", [7, 0, 0, 0, 0, 0, 0, 0, 5]), { space: 0.9, vol: 0.5 }) ] },
+  "Rage 808": { bpm: 150, swing: 0, key: 1, prog: "i–VII–VI–VII", tracks: [
+    syTrack("k808", syS("x.....x...x..x..", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 3]), { drive: 0.55, move: 0.75 }), syTrack("snare", syS("........x......."), { drive: 0.3 }),
+    syTrack("hat", syS("x.x.x.x2x.x.x3x."), { vol: 0.6, tone: 0.8 }), syTrack("lead", syS("x..x..x...x..x..", [7, 0, 0, 5, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0]), { drive: 0.4, space: 0.5, tone: 0.7 }),
+    syTrack("glass", syS("x.x.x.x.x.x.x.x.", [0, 0, 2, 0, 4, 0, 7, 0, 4, 0, 2, 0, 0, 0, -1]), { vol: 0.45, space: 0.6 }), syTrack("riser", syS("............x..."), { vol: 0.4 }) ] },
+  "Alt-pop": { bpm: 104, swing: 0.15, key: 9, prog: "i–iv–VI–V", tracks: [
+    syTrack("kick", syS("x.....x...x....."), { tone: 0.5 }), syTrack("rim", syS("....x..x....x..."), { space: 0.4 }),
+    syTrack("hat", syS("..x...x...x...x."), { vol: 0.5 }), syTrack("reese", syS("x..x....x..x....", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]), { tone: 0.35, drive: 0.25 }),
+    syTrack("pluck", syS("x.xx.x.x.xx.x.x.", [0, 0, 2, 4, 0, 2, 0, 4, 0, 5, 4, 0, 2, 0, 0]), { space: 0.45, move: 0.35 }), syTrack("keys", syS("x.......x......."), { space: 0.55 }),
+    syTrack("flute", syS("......x.......x.", [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.8, vol: 0.45 }) ] },
+  "Nuit douce": { bpm: 72, swing: 0.2, key: 7, prog: "VI–VII–i–i", tracks: [
+    syTrack("kick", syS("x.........x....."), { tone: 0.3, move: 0.7 }), syTrack("snare", syS("....x.......x..."), { tone: 0.35, space: 0.7 }),
+    syTrack("shaker", syS("x.x.x.x.x.x.x.x."), { vol: 0.35 }), syTrack("sub", syS("x.........x.....")),
+    syTrack("choir", syS("x..............."), { space: 0.9, move: 0.8 }), syTrack("keys", syS("..x...x...x...x."), { space: 0.6, tone: 0.4 }),
+    syTrack("glass", syS(".....x.......x..", [0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.9, vol: 0.5 }) ] },
+};
+const SY = Object.assign({ bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [], vibe: "Éthéré", sel: 0 }, store.get("atelier-synthe", null) || {});
+if (!SY.tracks.length) syLoadVibe("Éthéré", false);
+function syLoadVibe(name, ui = true) {
+  const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0 });
+  sySave(); if (ui) syRender();
+}
+function sySave() { clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe }), 300); }
+
+/* Chaîne d'effets par piste : drive → filtre → volume → (sortie + espace) */
+function syChain(i) {
+  const c = SP.ctx; SY.ch = SY.ch || [];
+  if (SY.ch[i]) return SY.ch[i];
+  const inp = c.createGain(), sh = c.createWaveShaper(), lp = c.createBiquadFilter(), vol = c.createGain(), send = c.createGain();
+  sh.oversample = "2x"; lp.type = "lowpass"; lp.Q.value = 0.9;
+  inp.connect(sh); sh.connect(lp); lp.connect(vol); vol.connect(SP.master); vol.connect(send); send.connect(SP.rev);
+  SY.ch[i] = { inp, sh, lp, vol, send, d: -1 }; syChainSet(i); return SY.ch[i];
+}
+function syChainSet(i) {
+  const T = SY.tracks[i], C = SY.ch && SY.ch[i]; if (!T || !C || !SP.ctx) return;
+  const t = SP.ctx.currentTime;
+  if (Math.abs(C.d - T.drive) > 0.01) {
+    const k = T.drive * 60, n = 1024, cu = new Float32Array(n);
+    for (let j = 0; j < n; j++) { const x = j / (n - 1) * 2 - 1; cu[j] = k ? (1 + k) * x / (1 + k * Math.abs(x)) : x; }
+    C.sh.curve = cu; C.d = T.drive;
+  }
+  C.lp.frequency.setTargetAtTime(160 * Math.pow(2, T.tone * 7.2), t, 0.03);
+  C.vol.gain.setTargetAtTime(T.mute ? 0 : T.vol * (1 - T.drive * 0.45), t, 0.03);
+  C.send.gain.setTargetAtTime(T.space * 0.9, t, 0.05);
+}
+const syHz = m => 440 * Math.pow(2, (m - 69) / 12);
+function syEnv(g, t, a, peak, d, sus = 0.0001) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(Math.max(0.0001, sus), t + a + d); }
+function syOsc(type, f, t, end, out, det = 0) { const o = SP.ctx.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = det; o.connect(out); o.start(t); o.stop(end); return o; }
+function syNoise(t, end, out) { const s = SP.ctx.createBufferSource(); s.buffer = SP.noise; s.loop = true; s.connect(out); s.start(t, Math.random() * 0.5); s.stop(end); return s; }
+// Joue une note d'un instrument. m = note midi (ou accord), v = vélocité, mv = bouton Mouvement (0..1), sec = durée d'un pas
+function syPlay(inst, out, t, m, v, mv, sec, glideFrom) {
+  const c = SP.ctx, g = c.createGain(); g.connect(out);
+  const notes = Array.isArray(m) ? m : [m], f = syHz(notes[0]);
+  switch (inst) {
+    case "kick": { const o = syOsc("sine", 150, t, t + 0.6, g); o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.05 + mv * 0.08); syEnv(g, t, 0.002, 1.1 * v, 0.18 + mv * 0.4); const ck = c.createGain(); syEnv(ck, t, 0.001, 0.3 * v, 0.012); ck.connect(out); syNoise(t, t + 0.02, ck); break; }
+    case "k808": { const o = syOsc("sine", f, t, t + 2.5, g); if (glideFrom) { o.frequency.setValueAtTime(syHz(glideFrom), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.09); } else { o.frequency.setValueAtTime(f * 2.2, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.04); } syEnv(g, t, 0.003, 0.95 * v, 0.3 + mv * 1.8, 0.0001); break; }
+    case "snare": { const n = c.createBiquadFilter(); n.type = "bandpass"; n.frequency.value = 1800 + mv * 2400; n.Q.value = 0.7; const gn = c.createGain(); n.connect(gn); gn.connect(out); syNoise(t, t + 0.4, n); syEnv(gn, t, 0.001, 0.7 * v, 0.12 + mv * 0.2); const o = syOsc("triangle", 190, t, t + 0.2, g); o.frequency.exponentialRampToValueAtTime(120, t + 0.08); syEnv(g, t, 0.001, 0.5 * v, 0.09); break; }
+    case "clap": { const n = c.createBiquadFilter(); n.type = "bandpass"; n.frequency.value = 1300; n.Q.value = 1.1; n.connect(g); syNoise(t, t + 0.5, n); g.gain.setValueAtTime(0.0001, t); [0, 0.011, 0.023].forEach(o => { g.gain.setValueAtTime(0.75 * v, t + o); g.gain.exponentialRampToValueAtTime(0.08, t + o + 0.009); }); g.gain.setValueAtTime(0.65 * v, t + 0.034); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15 + mv * 0.25); break; }
+    case "hat": case "shaker": { const n = c.createBiquadFilter(); n.type = inst === "hat" ? "highpass" : "bandpass"; n.frequency.value = inst === "hat" ? 7200 : 5200; n.Q.value = inst === "hat" ? 0.5 : 1.2; n.connect(g); syNoise(t, t + 0.6, n); syEnv(g, t, inst === "hat" ? 0.001 : 0.012, (inst === "hat" ? 0.42 : 0.3) * v, 0.03 + mv * 0.28); break; }
+    case "rim": { const b = c.createBiquadFilter(); b.type = "bandpass"; b.frequency.value = 1700; b.Q.value = 6; b.connect(g); syOsc("square", 820, t, t + 0.06, b); syEnv(g, t, 0.001, 0.6 * v, 0.03 + mv * 0.06); break; }
+    case "tom": { const o = syOsc("sine", f * 2, t, t + 0.8, g); o.frequency.exponentialRampToValueAtTime(f, t + 0.12); syEnv(g, t, 0.002, 0.8 * v, 0.2 + mv * 0.4); break; }
+    case "sub": { syOsc("sine", f, t, t + sec * 8, g); syOsc("triangle", f, t, t + sec * 8, g).detune.value = 3; syEnv(g, t, 0.006, 0.5 * v, sec * (1.5 + mv * 5), 0.0001); break; }
+    case "reese": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(300, t); lp.frequency.linearRampToValueAtTime(300 + mv * 1400, t + sec * 2); lp.connect(g); [-14, 14, 0].forEach(d => syOsc("sawtooth", f, t, t + sec * 6, lp, d)); syEnv(g, t, 0.01, 0.28 * v, sec * (2 + mv * 4), 0.0001); break; }
+    case "pluck": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 4; lp.frequency.setValueAtTime(5000, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.08 + mv * 0.4); lp.connect(g); syOsc("sawtooth", f, t, t + 1.2, lp); syOsc("square", f * 2, t, t + 1.2, lp, 5); syEnv(g, t, 0.002, 0.3 * v, 0.25 + mv * 0.8); break; }
+    case "bell": case "glass": {
+      const ratios = inst === "bell" ? [[1, 1, 2], [2.76, 0.4, 1], [5.4, 0.2, 0.5], [8.93, 0.1, 0.3]] : [[1, 1, 1.4], [2, 0.5, 0.9], [3, 0.25, 0.6], [4.2, 0.12, 0.3]];
+      ratios.forEach(([r, a, d]) => { const gg = c.createGain(); gg.connect(g); syOsc(inst === "glass" ? "triangle" : "sine", f * r, t, t + d * (1 + mv * 2) + 0.1, gg); syEnv(gg, t, 0.002, a * 0.3 * v, d * (0.5 + mv * 2)); });
+      g.gain.value = 1; break; }
+    case "keys": { for (const n of notes) { const mod = c.createOscillator(), mg = c.createGain(), car = c.createOscillator(), hz = syHz(n); mod.frequency.value = hz * 1; mg.gain.setValueAtTime(hz * (1.4 + mv), t); mg.gain.exponentialRampToValueAtTime(hz * 0.05, t + 0.6); mod.connect(mg); mg.connect(car.frequency); car.frequency.value = hz; car.connect(g); mod.start(t); car.start(t); mod.stop(t + 3); car.stop(t + 3); } syEnv(g, t, 0.004, 0.16 * v, 0.6 + mv * 2.2); break; }
+    case "pad": case "choir": {
+      const dur = sec * 16, lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = inst === "pad" ? 2200 : 1400; lp.connect(g);
+      for (const n of notes) for (const d of [-9, 8, 0]) syOsc(inst === "pad" ? "sawtooth" : "triangle", syHz(n), t, t + dur * 1.3, lp, d);
+      if (inst === "choir") { const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 750; bp.Q.value = 3; lp.disconnect(); lp.connect(bp); bp.connect(g); }
+      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.15 + mv * 3; lg.gain.value = 600 * mv; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(t); lfo.stop(t + dur * 1.3);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.07 * v / Math.sqrt(notes.length), t + dur * 0.25); g.gain.setValueAtTime(0.07 * v / Math.sqrt(notes.length), t + dur * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + dur * 1.25); break; }
+    case "lead": { const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 5200; lp.connect(g); [-24, -12, 0, 11, 23].forEach(d => syOsc("sawtooth", f, t, t + sec * 4, lp, d)); const vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 5.5; vg.gain.value = mv * 14; vib.connect(vg); vib.start(t); vib.stop(t + sec * 4); syEnv(g, t, 0.01, 0.1 * v, sec * (1 + mv * 3)); break; }
+    case "vox": case "flute": {
+      const dur = sec * (2 + mv * 6), src = c.createGain();
+      if (inst === "vox") syOsc("sawtooth", f, t, t + dur + 0.3, src);
+      else { syOsc("sine", f, t, t + dur + 0.3, g); const nb = c.createBiquadFilter(); nb.type = "bandpass"; nb.frequency.value = f * 2; nb.Q.value = 8; syNoise(t, t + dur + 0.3, nb); nb.connect(src); }
+      (inst === "vox" ? [[800, 1, 8], [1150, 0.6, 9], [2900, 0.25, 10]] : [[f * 2, 1, 6]]).forEach(([fr, a, q]) => { const bp = c.createBiquadFilter(), ga = c.createGain(); bp.type = "bandpass"; bp.frequency.value = fr; bp.Q.value = q; ga.gain.value = a * (inst === "vox" ? 2.2 : 1.4); src.connect(bp); bp.connect(ga); ga.connect(g); });
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.32 * v, t + 0.06 + mv * 0.25); g.gain.setValueAtTime(0.32 * v, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); break; }
+    case "riser": { const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 2; bp.frequency.setValueAtTime(300, t); bp.frequency.exponentialRampToValueAtTime(6000, t + sec * 4); bp.connect(g); syNoise(t, t + sec * 4.2, bp); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4 * v, t + sec * 4); g.gain.linearRampToValueAtTime(0.0001, t + sec * 4.2); break; }
+  }
+}
+function syNote(T, st, bar) {
+  const I = SY_INST[T.inst], chord = SY_PROGS[SY.prog][bar % 4], base = 48 + SY.key + (I.oct || 0) * 12;
+  if (I.chord) return chord.map(x => base + 12 + x);
+  const deg = st.d || 0, oct = Math.floor(deg / 7), sc = SY_SCALE[((deg % 7) + 7) % 7];
+  return base + 12 + chord[0] + sc + oct * 12;
+}
+function sySchedule(s, t) {
+  const sec = 60 / SY.bpm / 4, bar = SY.bar || 0, tt = t + (s % 2 ? SY.swing * sec * 0.5 : 0);
+  SY.tracks.forEach((T, i) => {
+    const st = T.steps[s]; if (!st || T.mute) return;
+    const ch = syChain(i), I = SY_INST[T.inst], m = I.kind === "drum" ? 60 : syNote(T, st, bar);
+    const reps = I.roll ? (st.v || 1) : 1;
+    for (let r = 0; r < reps; r++) syPlay(T.inst, ch.inp, tt + r * sec / reps, m, r ? 0.6 : 1, T.move, sec, T.inst === "k808" && T.last && T.last !== m && T.steps[(s + 15) % 16] ? T.last : null);
+    if (I.kind !== "drum") T.last = Array.isArray(m) ? m[0] : m;
+    SY.flash = SY.flash || {}; SY.flash[i] = performance.now() + (tt - SP.ctx.currentTime) * 1000;
+  });
+}
+function syTick() {
+  const c = SP.ctx; if (!c) return;
+  const sec = 60 / SY.bpm / 4;
+  while (SY.nextT < c.currentTime + 0.12) {
+    sySchedule(SY.step, SY.nextT);
+    const s = SY.step, at = SY.nextT; setTimeout(() => { SY.view = s; }, Math.max(0, (at - c.currentTime) * 1000));
+    SY.nextT += sec; SY.step = (SY.step + 1) % 16; if (SY.step === 0) { SY.bar = (SY.bar || 0) + 1; if (SP.rec && --SP.rec.bars <= 0) spRecStop(); }
+  }
+}
+function syRun(on) {
+  if (on === !!SY.playing) return;
+  if (on) {
+    if (!spAudio()) return; if (SP.playing) spPlay(false);
+    if (typeof SON !== "undefined" && SON.on) sonToggle();
+    SY.tracks.forEach((_, i) => syChain(i));
+    SY.step = 0; SY.bar = 0; SY.nextT = SP.ctx.currentTime + 0.06; SY.timer = setInterval(syTick, 25); SY.playing = true;
+  } else { clearInterval(SY.timer); SY.playing = false; SY.view = -1; if (SP.rec) spRecStop(); }
+  const b = document.getElementById("sy-play"); if (b) { b.textContent = SY.playing ? "■ Stop" : "▶ Jouer"; b.setAttribute("aria-pressed", SY.playing); }
+}
+// « bidouiller » : tirer un motif au hasard, ou faire muter un peu toute la prod
+function syRoll(T) {
+  const I = SY_INST[T.inst], dens = { kick: 0.2, k808: 0.25, snare: 0.1, clap: 0.1, hat: 0.6, shaker: 0.6, rim: 0.2, riser: 0.05, pad: 0.06, choir: 0.06, keys: 0.2 }[T.inst] ?? 0.35;
+  T.steps = T.steps.map((_, s) => {
+    let p = dens * (s % 4 === 0 ? 1.8 : s % 2 === 0 ? 1.1 : 0.7);
+    if (T.inst === "snare" || T.inst === "clap") p = s === 4 || s === 12 ? 0.9 : 0.04;
+    if (T.inst === "kick" && s === 0) p = 1;
+    if (Math.random() > p) return 0;
+    return { v: I.roll && Math.random() < 0.15 ? 2 + (Math.random() < 0.4 ? 1 : 0) : 1, d: I.kind === "mel" && !I.chord ? Math.floor(Math.random() * 9) - 1 : 0 };
+  });
+}
+function syMutate() {
+  for (const T of SY.tracks) {
+    for (const k of ["tone", "drive", "space", "move"]) T[k] = Math.min(1, Math.max(0, T[k] + (Math.random() - 0.5) * 0.25));
+    T.steps = T.steps.map((st, s) => { if (Math.random() < 0.12) { if (st) return 0; return { v: 1, d: Math.floor(Math.random() * 7) }; } if (st && SY_INST[T.inst].kind === "mel" && Math.random() < 0.15) st.d += Math.random() < 0.5 ? -1 : 1; return st; });
+  }
+  SY.tracks.forEach((_, i) => syChainSet(i)); sySave(); syRender();
+}
+
+/* Interface */
+function wPSynth(host) {
+  host.innerHTML = `<div class="sy">
+    <div class="sy-top sp-card">
+      <div class="sy-vibes" id="sy-vibes"></div>
+      <div class="sy-ctl">
+        <div class="sy-knob-w" data-g="bpm"><div class="sy-knob" tabindex="0"></div><span></span></div>
+        <div class="sy-knob-w" data-g="swing"><div class="sy-knob" tabindex="0"></div><span></span></div>
+        <label class="sy-sel">Tonalité<select id="sy-key">${SY_KEYS.map((k, i) => `<option value="${i}">${k} mineur</option>`).join("")}</select></label>
+        <label class="sy-sel">Accords<select id="sy-prog">${Object.keys(SY_PROGS).map(k => `<option>${k}</option>`).join("")}</select></label>
+        <button class="w-pill w-glass-ui" id="sy-mut" title="Fait bouger un peu tous les boutons et quelques pas">↻ Muter</button>
+      </div>
+    </div>
+    <div class="sy-tracks" id="sy-tracks"></div>
+    <div class="w-row"><button class="w-pill w-glass-ui" id="sy-add">+ Piste</button><span class="sp-hint">Touche le nom d'une piste pour changer de son. Pas : touche pour allumer · glisse vers le haut / bas pour la note${""} · sur les charleys, re-touche pour des roulements.</span></div>
+  </div>`;
+  const vb = host.querySelector("#sy-vibes");
+  for (const k of Object.keys(SY_VIBES)) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = k; b.setAttribute("aria-pressed", SY.vibe === k); b.onclick = () => { uisClick(); syLoadVibe(k); if (SY.playing) { SY.ch = []; SY.tracks.forEach((_, i) => syChain(i)); } }; vb.append(b); }
+  const ks = host.querySelector("#sy-key"), ps = host.querySelector("#sy-prog"); ks.value = SY.key; ps.value = SY.prog;
+  ks.onchange = () => { SY.key = +ks.value; sySave(); uisClick(); }; ps.onchange = () => { SY.prog = ps.value; sySave(); uisClick(); };
+  host.querySelector("#sy-mut").onclick = () => { uisChime(5, 0.5); syMutate(); };
+  host.querySelector("#sy-add").onclick = () => { if (SY.tracks.length >= 10) return; const pool = Object.keys(SY_INST); SY.tracks.push(syTrack(pool[Math.floor(Math.random() * pool.length)], new Array(16).fill(0))); syRoll(SY.tracks[SY.tracks.length - 1]); uisPlop(); sySave(); syRender(); };
+  syKnob(host.querySelector('[data-g="bpm"]'), () => (SY.bpm - 60) / 120, v => { SY.bpm = Math.round(60 + v * 120); sySave(); }, () => `${SY.bpm} bpm`);
+  syKnob(host.querySelector('[data-g="swing"]'), () => SY.swing / 0.6, v => { SY.swing = +(v * 0.6).toFixed(2); sySave(); }, () => `swing ${Math.round(SY.swing / 0.6 * 100)} %`);
+  syRender();
+}
+// Bouton rotatif : glisser vers le haut / bas (ou molette), double-clic = valeur par défaut
+function syKnob(w, get, set, label, def = null) {
+  const k = w.querySelector(".sy-knob"), l = w.querySelector("span");
+  const draw = () => { const v = get(); k.style.setProperty("--a", (-135 + v * 270) + "deg"); k.style.setProperty("--p", v); if (l) l.textContent = label(); };
+  let drag = null, last = -1;
+  k.addEventListener("pointerdown", e => { e.stopPropagation(); e.preventDefault(); drag = { y: e.clientY, v: get() }; try { k.setPointerCapture(e.pointerId); } catch {} k.classList.add("on"); });
+  k.addEventListener("pointermove", e => { if (!drag) return; const v = Math.min(1, Math.max(0, drag.v + (drag.y - e.clientY) / 160)); set(v); draw(); const st = Math.round(v * 24); if (st !== last) { last = st; if (UIS.ctx) uisNoise(0.01, 1500 + st * 90, 1400 + st * 90, 5, 0.06, 0.03); } });
+  const up = () => { drag = null; k.classList.remove("on"); }; k.addEventListener("pointerup", up); k.addEventListener("pointercancel", up);
+  k.addEventListener("wheel", e => { e.preventDefault(); e.stopPropagation(); set(Math.min(1, Math.max(0, get() - e.deltaY / 1500))); draw(); }, { passive: false });
+  k.addEventListener("dblclick", () => { if (def != null) { set(def); draw(); uisSwitch(false); } });
+  k.addEventListener("keydown", e => { if (e.key === "ArrowUp" || e.key === "ArrowRight") { set(Math.min(1, get() + 0.05)); draw(); } if (e.key === "ArrowDown" || e.key === "ArrowLeft") { set(Math.max(0, get() - 0.05)); draw(); } });
+  draw(); w.redraw = draw;
+}
+function syRender() {
+  const box = document.getElementById("sy-tracks"); if (!box) return;
+  document.querySelectorAll("#sy-vibes .w-chip").forEach(b => b.setAttribute("aria-pressed", b.textContent === SY.vibe));
+  const ks = document.getElementById("sy-key"), ps = document.getElementById("sy-prog"); if (ks) ks.value = SY.key; if (ps) ps.value = SY.prog;
+  document.querySelectorAll(".sy-top .sy-knob-w").forEach(w => w.redraw && w.redraw());
+  box.replaceChildren(...SY.tracks.map((T, i) => {
+    const I = SY_INST[T.inst], row = document.createElement("div"); row.className = "sy-tr" + (T.mute ? " mute" : ""); row.style.setProperty("--h", I.hue);
+    row.innerHTML = `<div class="sy-head"><button class="sy-name" title="Changer de son"><i></i>${I.lab}</button><button class="sy-mini" data-a="mute" title="Couper">${T.mute ? "○" : "●"}</button><button class="sy-mini" data-a="roll" title="Tirer un motif au hasard">↻</button><button class="sy-mini" data-a="del" title="Retirer la piste">✕</button></div>
+      <div class="sy-steps"></div>
+      <div class="sy-knobs">${[["tone", "Timbre"], ["drive", "Grain"], ["space", "Espace"], ["move", "Mouvement"], ["vol", "Volume"]].map(([k, l]) => `<div class="sy-knob-w" data-k="${k}"><div class="sy-knob" tabindex="0" aria-label="${l}"></div><span>${l}</span></div>`).join("")}</div>`;
+    const steps = row.querySelector(".sy-steps");
+    T.steps.forEach((st, s) => {
+      const b = document.createElement("button"); b.className = "sy-st"; b.dataset.s = s; syStepLook(b, st, I);
+      let dr = null;
+      b.addEventListener("pointerdown", e => { e.stopPropagation(); dr = { y: e.clientY, d: (T.steps[s] && T.steps[s].d) || 0, moved: false }; try { b.setPointerCapture(e.pointerId); } catch {} });
+      b.addEventListener("pointermove", e => {
+        if (!dr || I.kind !== "mel" || I.chord) return; const dd = Math.round((dr.y - e.clientY) / 14); if (!dd && !dr.moved) return;
+        dr.moved = true; if (!T.steps[s]) T.steps[s] = { v: 1, d: 0 }; const nd = Math.max(-7, Math.min(14, dr.d + dd));
+        if (nd !== T.steps[s].d) { T.steps[s].d = nd; syStepLook(b, T.steps[s], I); syAudition(T, i, T.steps[s]); }
+      });
+      b.addEventListener("pointerup", () => {
+        if (!dr) return; const moved = dr.moved; dr = null; if (moved) { sySave(); return; }
+        const st0 = T.steps[s];
+        if (!st0) T.steps[s] = { v: 1, d: Math.max(-7, Math.min(14, (T.steps[(s + 15) % 16] && T.steps[(s + 15) % 16].d) || 0)) };
+        else if (I.roll && st0.v < 3) st0.v++;
+        else T.steps[s] = 0;
+        syStepLook(b, T.steps[s], I); uisSwitch(!!T.steps[s]); if (T.steps[s]) syAudition(T, i, T.steps[s]); sySave();
+      });
+      b.addEventListener("pointercancel", () => { dr = null; });
+      steps.append(b);
+    });
+    row.querySelectorAll(".sy-knobs .sy-knob-w").forEach(w => { const k = w.dataset.k; syKnob(w, () => T[k], v => { T[k] = v; syChainSet(i); sySave(); }, () => ({ tone: "Timbre", drive: "Grain", space: "Espace", move: "Mouvement", vol: "Volume" })[k], { tone: 0.6, drive: 0.15, space: 0.3, move: 0.5, vol: 0.8 }[k]); });
+    row.querySelector(".sy-name").onclick = e => syPicker(e.currentTarget, T, i);
+    row.querySelector('[data-a="mute"]').onclick = () => { T.mute = !T.mute; uisSwitch(!T.mute); syChainSet(i); sySave(); syRender(); };
+    row.querySelector('[data-a="roll"]').onclick = () => { syRoll(T); uisChime(i, 0.5); sySave(); syRender(); };
+    row.querySelector('[data-a="del"]').onclick = () => { SY.tracks.splice(i, 1); if (SY.ch) { SY.ch.forEach(c => c && c.vol.disconnect()); SY.ch = []; if (SY.playing) SY.tracks.forEach((_, j) => syChain(j)); } uisNo(); sySave(); syRender(); };
+    return row;
+  }));
+}
+function syStepLook(b, st, I) {
+  b.classList.toggle("on", !!st); b.textContent = st && I.roll && st.v > 1 ? "×" + st.v : "";
+  b.style.setProperty("--d", st && I.kind === "mel" && !I.chord ? Math.max(0, Math.min(1, (st.d + 7) / 21)) : 0.5);
+  b.classList.toggle("mel", I.kind === "mel" && !I.chord);
+}
+function syAudition(T, i, st) {
+  if (!spAudio()) return; syChain(i); syChainSet(i);
+  const I = SY_INST[T.inst]; syPlay(T.inst, SY.ch[i].inp, SP.ctx.currentTime + 0.01, I.kind === "drum" ? 60 : syNote(T, st, 0), 0.8, Math.min(T.move, I.chord ? 0.2 : 1), 60 / SY.bpm / 4 * (I.chord ? 0.25 : 1));
+}
+function syPicker(anchor, T, i) {
+  document.querySelectorAll(".sy-pick").forEach(x => x.remove());
+  const m = document.createElement("div"); m.className = "sy-pick";
+  const groups = [["Batterie", Object.keys(SY_INST).filter(k => SY_INST[k].kind === "drum" || k === "tom" || k === "k808")], ["Basses", ["sub", "reese", "k808"]], ["Mélodie", ["pluck", "bell", "glass", "lead", "vox", "flute"]], ["Accords", ["keys", "pad", "choir"]]];
+  m.innerHTML = groups.map(([g, ks]) => `<div class="w-sec">${g}</div><div class="sy-pick-g">${ks.map(k => `<button class="w-chip" data-k="${k}" aria-pressed="${T.inst === k}">${SY_INST[k].lab}</button>`).join("")}</div>`).join("");
+  m.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); T.inst = b.dataset.k; T.steps = T.steps.map(st => st ? { v: SY_INST[T.inst].roll ? st.v : 1, d: st.d || 0 } : 0); syAudition(T, i, T.steps.find(Boolean) || { v: 1, d: 0 }); sySave(); m.remove(); syRender(); });
+  anchor.closest(".sy-tr").append(m);
+  setTimeout(() => document.addEventListener("pointerdown", function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("pointerdown", off, true); } }, true), 0);
+}
+function syStepView() {
+  if (!SY.playing) { if (SY.lastV !== -1) { SY.lastV = -1; document.querySelectorAll(".sy-st.now").forEach(b => b.classList.remove("now")); } return; }
+  const s = SY.view; if (s === SY.lastV) return; SY.lastV = s;
+  document.querySelectorAll(".sy-steps").forEach(r => r.querySelectorAll(".sy-st").forEach(b => b.classList.toggle("now", +b.dataset.s === s)));
+  document.querySelectorAll(".sy-tr").forEach((r, i) => { if (SY.tracks[i] && SY.tracks[i].steps[s] && !SY.tracks[i].mute) { const n = r.querySelector(".sy-name i"); n.classList.remove("hit"); void n.offsetWidth; n.classList.add("hit"); } });
+}
+const SY_CSS = `
+.sy .sp-card { border-radius: 26px; padding: 16px; background: rgba(250,250,253,.86); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); display: flex; }
+.sy .sp-hint { margin: 0; opacity: .55; font-size: 10px; line-height: 1.5; }
+.sy-top { row-gap: 18px; }
+.sy { display: flex; flex-direction: column; gap: 14px; max-width: 1240px; margin: 0 auto; padding: 80px 24px 150px; font-size: 12px; }
+.sy-top { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.sy-vibes { display: flex; flex-wrap: wrap; gap: 6px; }
+.sy-ctl { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.sy-sel { display: flex; flex-direction: column; gap: 3px; font-size: 10px; opacity: .85; }
+.sy-sel select { font: inherit; font-size: 12px; border-radius: 10px; border: 1px solid rgba(27,29,34,.14); background: rgba(255,255,255,.7); padding: 5px 8px; }
+.sy-tracks { display: flex; flex-direction: column; gap: 8px; }
+.sy-tr { position: relative; display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 14px; border-radius: 22px; background: rgba(250,250,253,.86); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 8px 24px rgba(40,40,90,.06); }
+.sy-tr.mute { opacity: .45; }
+.sy-head { display: flex; align-items: center; gap: 4px; }
+.sy-name { flex: 1; min-width: 0; text-align: left; border: 0; background: none; font: inherit; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 10px; color: inherit; }
+.sy-name:hover { background: rgba(27,29,34,.05); }
+.sy-name i { width: 12px; height: 12px; border-radius: 50%; background: hsl(var(--h), 55%, 55%); flex: none; }
+.sy-name i.hit { animation: syhit .25s ease-out; } @keyframes syhit { 0% { transform: scale(1.8); box-shadow: 0 0 12px hsl(var(--h), 70%, 60%); } 100% { transform: none; } }
+.sy-mini { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(27,29,34,.1); background: rgba(255,255,255,.7); cursor: pointer; font-size: 11px; padding: 0; color: inherit; }
+.sy-steps { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; touch-action: none; }
+.sy-st { height: 34px; border-radius: 8px; border: 0; padding: 0; cursor: pointer; background: rgba(27,29,34,.06); position: relative; font: inherit; font-size: 9px; color: #fff; transition: transform .08s; overflow: hidden; }
+.sy-st:nth-child(4n+1) { background: rgba(27,29,34,.1); }
+.sy-st.on { background: hsl(var(--h), 45%, 48%); }
+.sy-st.on.mel { background: linear-gradient(to top, hsl(var(--h), 45%, 46%) calc(var(--d) * 100%), hsl(var(--h), 40%, 70%) calc(var(--d) * 100%)); }
+.sy-st.now { transform: scaleY(1.12); box-shadow: 0 0 0 1.5px rgba(27,29,34,.6); }
+.sy-knobs { display: flex; gap: 10px; }
+.sy-knob-w { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 9px; opacity: .85; user-select: none; }
+.sy-knob { width: 34px; height: 34px; border-radius: 50%; position: relative; cursor: ns-resize; touch-action: none;
+  background: radial-gradient(circle at 35% 30%, #fff, #e9e9ef 70%); box-shadow: 0 2px 6px rgba(0,0,0,.15), inset 0 -2px 4px rgba(0,0,0,.06);
+  --p: .5; --a: 0deg; }
+.sy-knob::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: conic-gradient(from -135deg, hsl(var(--h, 262), 45%, 50%) calc(var(--p) * 270deg), rgba(27,29,34,.08) 0 270deg, transparent 0); -webkit-mask: radial-gradient(circle, transparent 19px, #000 19.5px); mask: radial-gradient(circle, transparent 19px, #000 19.5px); }
+.sy-knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: rgba(27,29,34,.8); transform-origin: 1px 13px; transform: rotate(var(--a)); }
+.sy-knob.on { box-shadow: 0 0 0 2px hsl(var(--h, 262), 50%, 60%), 0 2px 8px rgba(0,0,0,.2); }
+.sy-top .sy-knob { width: 40px; height: 40px; } .sy-top .sy-knob::after { transform-origin: 1px 16px; } .sy-top .sy-knob::before { -webkit-mask: radial-gradient(circle, transparent 22px, #000 22.5px); mask: radial-gradient(circle, transparent 22px, #000 22.5px); }
+.sy-pick { position: absolute; left: 10px; top: 52px; z-index: 6; width: min(420px, calc(100vw - 48px)); padding: 12px; border-radius: 20px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-direction: column; gap: 6px; }
+.sy-pick-g { display: flex; flex-wrap: wrap; gap: 5px; }
+@media (max-width: 900px) {
+  .sy { padding: 72px 12px 150px; }
+  .sy-tr { grid-template-columns: 1fr; gap: 8px; padding: 10px; }
+  .sy-st { height: 30px; border-radius: 6px; } .sy-steps { gap: 3px; }
+  .sy-knobs { justify-content: space-between; }
+}`;
+
 const spBpmLabel = () => { const e = document.getElementById("sp-bpm"); if (e) e.textContent = `${spBpm()} bpm · fa mineur`; };
 function spImport(file, i) {
   const url = URL.createObjectURL(file), img = new Image();
