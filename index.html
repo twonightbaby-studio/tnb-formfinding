@@ -5472,7 +5472,7 @@ const SY_INST = {
 };
 const SY_KEYS = ["Do", "Do#", "Ré", "Mi♭", "Mi", "Fa", "Fa#", "Sol", "La♭", "La", "Si♭", "Si"];
 const SY_SCALE = [0, 2, 3, 5, 7, 8, 10];                 // mineur naturel
-const SY_PROGS = { "i–VI–III–VII": [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], "i–iv–VI–V": [[0, 3, 7], [5, 8, 12], [-4, 0, 3], [-5, -1, 2]], "i–VII–VI–VII": [[0, 3, 7], [-2, 2, 5], [-4, 0, 3], [-2, 2, 5]], "i seul (drone)": [[0, 3, 7], [0, 3, 7], [0, 3, 7], [0, 3, 7]], "VI–VII–i–i": [[-4, 0, 3], [-2, 2, 5], [0, 3, 7], [0, 3, 7]] };
+const SY_PROGS = { "i–VI–III–VII": [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], "i–iv–VI–V": [[0, 3, 7], [5, 8, 12], [-4, 0, 3], [-5, -1, 2]], "i–VII–VI–VII": [[0, 3, 7], [-2, 2, 5], [-4, 0, 3], [-2, 2, 5]], "i seul (drone)": [[0, 3, 7], [0, 3, 7], [0, 3, 7], [0, 3, 7]], "VI–VII–i–i": [[-4, 0, 3], [-2, 2, 5], [0, 3, 7], [0, 3, 7]], "i–iv (reggae)": [[0, 3, 7], [5, 8, 12], [0, 3, 7], [5, 8, 12]], "VI–v–i (néo-soul)": [[-4, 0, 3], [-5, -2, 2], [0, 3, 7], [3, 7, 10]] };
 const syTrack = (inst, steps, k = {}) => ({ inst, steps, mute: false, vol: k.vol ?? 0.8, tone: k.tone ?? 0.6, drive: k.drive ?? 0.15, space: k.space ?? 0.3, move: k.move ?? 0.5 });
 const syS = (str, deg = []) => [...str].map((c, i) => c === "." ? 0 : { v: c === "x" ? 1 : c === "2" ? 2 : c === "3" ? 3 : 1, d: deg[i] ?? 0 });
 const SY_VIBES = {
@@ -5490,6 +5490,29 @@ const SY_VIBES = {
     syTrack("hat", syS("..x...x...x...x."), { vol: 0.5 }), syTrack("reese", syS("x..x....x..x....", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]), { tone: 0.35, drive: 0.25 }),
     syTrack("pluck", syS("x.xx.x.x.xx.x.x.", [0, 0, 2, 4, 0, 2, 0, 4, 0, 5, 4, 0, 2, 0, 0]), { space: 0.45, move: 0.35 }), syTrack("keys", syS("x.......x......."), { space: 0.55 }),
     syTrack("flute", syS("......x.......x.", [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.8, vol: 0.45 }) ] },
+  "R&B": { bpm: 92, swing: 0.18, key: 3, prog: "VI–v–i (néo-soul)", tracks: [
+    syTrack("kick", syS("x......x..x....."), { tone: 0.45, move: 0.55 }), syTrack("clap", syS("....x.......x..."), { space: 0.45, vol: 0.7 }),
+    syTrack("hat", syS("x.x.x.x2x.x.x.x3"), { vol: 0.45, tone: 0.7 }), syTrack("sub", syS("x......x..x.....", [0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0]), { tone: 0.3 }),
+    syTrack("keys", syS("x.....x........."), { space: 0.5, move: 0.7, tone: 0.55 }), syTrack("vox", syS("....x.......x...", [0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.75, vol: 0.5 }),
+    syTrack("pluck", syS("..x...x...xx..x.", [0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 5, 0, 0, 2]), { space: 0.5, vol: 0.55, move: 0.3 }) ] },
+  "Sade-like": { bpm: 88, swing: 0.22, key: 2, prog: "VI–v–i (néo-soul)", tracks: [
+    syTrack("kick", syS("x.......x.x....."), { tone: 0.35, move: 0.5 }), syTrack("rim", syS("....x.......x..."), { space: 0.55, vol: 0.6 }),
+    syTrack("shaker", syS("x.xxx.xxx.xxx.xx"), { vol: 0.32, tone: 0.55 }), syTrack("sub", syS("x...x.x...x...x.", [0, 0, 0, 0, 2, 0, 4, 0, 0, 0, 0, 0, 0, 0, -1]), { tone: 0.32, move: 0.3 }),
+    syTrack("keys", syS("x.......x......."), { space: 0.6, move: 0.85, tone: 0.42, vol: 0.75 }), syTrack("flute", syS("x.....x.......x.", [9, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 4]), { space: 0.75, vol: 0.5, move: 0.6 }),
+    syTrack("pad", syS("x..............."), { space: 0.8, vol: 0.4, tone: 0.35, move: 0.4 }) ] },
+  "Trap": { bpm: 140, swing: 0, key: 7, prog: "i–VI–III–VII", tracks: [
+    syTrack("k808", syS("x.....x.x.....x.", [0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0, 0, 0, 3]), { drive: 0.45, move: 0.8 }), syTrack("kick", syS("x.....x.x......."), { tone: 0.55, vol: 0.7 }),
+    syTrack("snare", syS("........x......."), { drive: 0.25, space: 0.35 }), syTrack("hat", syS("xxx2xxx.xx3xxx2x"), { vol: 0.5, tone: 0.85, move: 0.15 }),
+    syTrack("bell", syS("x..x..x.x..x..x.", [7, 0, 0, 6, 0, 0, 4, 0, 7, 0, 0, 9, 0, 0, 7]), { space: 0.6, vol: 0.55 }), syTrack("pad", syS("x..............."), { space: 0.7, vol: 0.35, tone: 0.4 }) ] },
+  "E-trap (TH)": { bpm: 150, swing: 0.05, key: 9, prog: "i seul (drone)", tracks: [
+    syTrack("k808", syS("x.......x..x....", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3]), { drive: 0.5, move: 0.7 }), syTrack("clap", syS("........x......."), { space: 0.3 }),
+    syTrack("hat", syS("x.x2x.x.x.x3x.xx"), { vol: 0.5, tone: 0.9, move: 0.1 }), syTrack("rim", syS("..x...x....x..x."), { vol: 0.45, space: 0.3 }),
+    syTrack("pluck", syS("xx.x.xx.x.xx.x.x", [7, 6, 0, 4, 0, 3, 4, 0, 7, 0, 9, 7, 0, 6, 0, 4]), { space: 0.35, move: 0.15, tone: 0.75, drive: 0.2 }),
+    syTrack("choir", syS("x..............."), { space: 0.6, vol: 0.4, tone: 0.5, move: 0.3 }), syTrack("glass", syS("....x.......x...", [0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 9]), { space: 0.7, vol: 0.4 }) ] },
+  "Reggae": { bpm: 76, swing: 0.25, key: 0, prog: "i–iv (reggae)", tracks: [
+    syTrack("kick", syS("........x......."), { tone: 0.4, move: 0.55 }), syTrack("rim", syS("........x......."), { space: 0.45, vol: 0.8 }),
+    syTrack("hat", syS("x.xxx.xxx.xxx.xx"), { vol: 0.35, tone: 0.65 }), syTrack("keys", syS("..x...x...x...x."), { move: 0.03, space: 0.35, tone: 0.6, vol: 0.7 }),
+    syTrack("sub", syS("x..x..x...x.x...", [0, 0, 0, 2, 0, 0, 4, 0, 0, 0, 3, 0, 2]), { tone: 0.4, move: 0.25, vol: 0.9 }), syTrack("flute", syS("x.......x.......", [7, 0, 0, 0, 0, 0, 0, 0, 4]), { space: 0.8, vol: 0.4 }) ] },
   "Nuit douce": { bpm: 72, swing: 0.2, key: 7, prog: "VI–VII–i–i", tracks: [
     syTrack("kick", syS("x.........x....."), { tone: 0.3, move: 0.7 }), syTrack("snare", syS("....x.......x..."), { tone: 0.35, space: 0.7 }),
     syTrack("shaker", syS("x.x.x.x.x.x.x.x."), { vol: 0.35 }), syTrack("sub", syS("x.........x.....")),
