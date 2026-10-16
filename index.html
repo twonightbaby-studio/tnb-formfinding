@@ -4602,7 +4602,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4681,9 +4681,12 @@ function worldEvents() {
   nd.querySelector(".w-m").onclick = () => { const n = WORLD.sel; if (n) { uisClick(); openMockup(n.scene); } };
 
   // Clavier : quand le monde est affiché, les raccourcis de l'ancienne vue sont coupés
+  const smOn = () => WORLD.panelKey === "sampler" && store.get("atelier-sampler-mode", "synthe") === "echant" && typeof SM !== "undefined" && SM.buf;
+  window.addEventListener("keyup", e => { if (WORLD.on && smOn() && !(e.target.closest && e.target.closest("input, textarea, select")) && smKey(e, false)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   window.addEventListener("keydown", e => {
     if (!WORLD.on || document.querySelector(".modal:not([hidden])")) return;
     if (e.target.closest && e.target.closest("input, textarea, select")) return;
+    if (smOn() && !e.metaKey && !e.ctrlKey && smKey(e, true)) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (e.key === "Escape") { if (wCloseSheets()) return; if (WORLD.sel) { wSelect(null); return; } if (WORLD.active) { wFitAll(); uisSwoosh(false); } }
     else if (e.key === "m" || e.key === "M") return;
     else if (e.key === "n" || e.key === "N") document.getElementById("w-b-new").click();
@@ -5070,7 +5073,7 @@ function wHead(title, extra = "") {
 function wPanel(k) {
   const p = document.getElementById("w-panel");
   if (k === WORLD.panelKey && k) return;
-  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); }
+  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); smLoopStop(); if (SM.rec) smRecToggle(); }
   if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
@@ -5370,20 +5373,29 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
   if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS + FX2_CSS; document.head.append(css); }
+  const tabs = cur => [["synthe", "Synthé"], ["echant", "Échantillons"], ["radial", "Images"]].map(([m, l]) => `<button class="w-pill w-glass-ui w-live" data-m="${m}" aria-pressed="${cur === m || (m === "radial" && (cur === "radial" || cur === "patch"))}">${l}</button>`).join("");
+  const go = m => { uisSwitch(true); syRun(false); spPlay(false); smLoopStop(); store.set("atelier-sampler-mode", m); WORLD.panelKey = null; wPanel("sampler"); };
+  if (mode === "echant") {
+    p.innerHTML = wHead("Sampler · échantillons", tabs("echant") + `<button class="w-pill w-glass-ui w-live" id="sm-recb" aria-pressed="${!!SM.rec}">${SM.rec ? "■ Arrêter et garder" : "● Enregistrer"}</button>`) + `<div class="w-scroll w-live" id="sm-host"></div>`;
+    wPSmp(p.querySelector("#sm-host"));
+    p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "echant") go(b.dataset.m); });
+    p.querySelector("#sm-recb").onclick = () => { uisClick(); smRecToggle(); };
+    return;
+  }
   if (mode === "synthe") {
-    p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button>`)
+    p.innerHTML = wHead("Sampler · fais ta prod", tabs("synthe") + `<button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button>`)
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
     wPSynth(p.querySelector("#sy-host"));
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
     p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
-    p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m === "synthe") return; uisSwitch(true); syRun(false); store.set("atelier-sampler-mode", b.dataset.m); WORLD.panelKey = null; wPanel("sampler"); });
+    p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "synthe") go(b.dataset.m); });
     const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); syLoopView(); };
     requestAnimationFrame(loop);
     p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", e => e.pointerType === "mouse" && uisPlop()); b.dataset.snd = 1; } });
     p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
     return;
   }
-  p.innerHTML = wHead("Sampler · images en musique", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="false">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+  p.innerHTML = wHead("Sampler · images en musique", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="false">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="echant" aria-pressed="false">Échantillons</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
     + `<div class="w-scroll w-live"><div class="sp">
       <section class="sp-pads sp-card"><div class="w-sec">Pads <span>touche : dans la boucle</span></div><div class="sp-grid" id="sp-grid"></div>
         <div class="w-row"><label class="w-pill w-glass-ui" style="cursor:pointer">Importer une image<input type="file" accept="image/*" id="sp-file" hidden></label><button class="w-pill w-glass-ui" id="sp-series">Formes de la série</button></div>
@@ -5432,7 +5444,7 @@ function wPSampler(p) {
 }`;
     document.head.append(css);
   }
-  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); if (b.dataset.m === "synthe") { spPlay(false); WORLD.panelKey = null; wPanel("sampler"); return; } p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); if (b.dataset.m === "synthe" || b.dataset.m === "echant") { spPlay(false); WORLD.panelKey = null; wPanel("sampler"); return; } p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
   p.querySelector("#sp-play").onclick = () => { uisClick(); spPlay(!SP.playing); };
   p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
   p.querySelectorAll("[data-mood]").forEach(r => r.oninput = () => { SP.mood[r.dataset.mood] = +r.value; spApplyMood(); spSave(); spBpmLabel(); });
@@ -6534,6 +6546,260 @@ const FX2_CSS = `
 .sy-post { flex-direction: column; gap: 10px; }
 .po-fx { display: flex; flex-wrap: wrap; gap: 8px; }
 `;
+
+/* ECHANTILLONS */
+/* ---------- Échantillons : on glisse un mp3 / mp4, on découpe, on joue au clavier (ou en MIDI) ---------- */
+const SM_KEYS = ["Digit1", "Digit2", "Digit3", "Digit4", "KeyQ", "KeyW", "KeyE", "KeyR", "KeyA", "KeyS", "KeyD", "KeyF", "KeyZ", "KeyX", "KeyC", "KeyV"];
+const SM = { buf: null, rev: null, name: "", video: null, url: null, pads: [], sel: 0, bpm: 0, keys: store.get("atelier-smp-keys", SM_KEYS.slice()), labels: {}, voices: new Map(), bind: -1, loop: null, midi: false, peaks: null };
+const smPad = (a, b) => ({ a, b, pitch: 0, vol: 0.9, mode: "coup", rev: false, fade: 0.004 });
+(async () => { try { if (navigator.keyboard && navigator.keyboard.getLayoutMap) { const m = await navigator.keyboard.getLayoutMap(); m.forEach((v, k) => SM.labels[k] = v.toUpperCase()); } } catch {} })();
+const SM_AZERTY = { KeyQ: "A", KeyW: "Z", KeyA: "Q", KeyZ: "W", KeyM: ",", Semicolon: "M" };
+const smLab = code => SM.labels[code] || (/^fr/i.test(navigator.language || "") && SM_AZERTY[code]) || (code || "").replace(/^Key|^Digit/, "") || "—";
+function smBus() { if (!spAudio()) return null; if (!SM.bus) { SM.bus = SP.ctx.createGain(); SM.bus.gain.value = 0.9; SM.bus.connect(SP.master); } return SM.bus; }
+async function smLoad(file) {
+  if (!file) return; if (file.size > 250e6) { wToast("Fichier trop lourd (250 Mo max)"); return; }
+  if (!smBus()) return;
+  smMsg("Lecture du fichier…");
+  try {
+    const ab = await file.arrayBuffer(), buf = await SP.ctx.decodeAudioData(ab.slice(0));
+    const rev = SP.ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+    for (let c = 0; c < buf.numberOfChannels; c++) { const s = buf.getChannelData(c), d = rev.getChannelData(c); for (let i = 0, n = s.length; i < n; i++) d[i] = s[n - 1 - i]; }
+    if (SM.url) URL.revokeObjectURL(SM.url);
+    const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(file.name);
+    Object.assign(SM, { buf, rev, name: file.name, isVideo, url: isVideo ? URL.createObjectURL(file) : null, peaks: smPeaks(buf) });
+    SM.bpm = smBpm(buf); smChop("attaques"); uisYes(); smRender();
+  } catch (e) { const t = "Ce fichier n'a pas pu être lu par ce navigateur (essaie mp3, wav ou mp4)."; smMsg(t); wToast(t); uisNo(); }
+}
+function smMono(buf, hop = 512) {               // énergie par tranche de 512 échantillons
+  const d0 = buf.getChannelData(0), d1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : d0, n = Math.floor(d0.length / hop), e = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0; for (let j = i * hop; j < (i + 1) * hop; j += 2) { const v = (d0[j] + d1[j]) * 0.5; s += v * v; } e[i] = Math.sqrt(s / (hop / 2)); }
+  return e;
+}
+function smOnsets(buf) {
+  const hop = 512, e = smMono(buf, hop), flux = new Float32Array(e.length), sr = buf.sampleRate;
+  for (let i = 1; i < e.length; i++) flux[i] = Math.max(0, e[i] - e[i - 1]);
+  const W = 16, out = [];
+  for (let i = 1; i < flux.length - 1; i++) {
+    let m = 0; for (let j = Math.max(0, i - W); j < Math.min(flux.length, i + W); j++) m += flux[j]; m /= 2 * W;
+    if (flux[i] > m * 1.8 + 0.004 && flux[i] >= flux[i - 1] && flux[i] >= flux[i + 1]) out.push({ t: i * hop / sr, s: flux[i] });
+  }
+  const kept = []; for (const o of out.sort((a, b) => b.s - a.s)) if (kept.every(k => Math.abs(k.t - o.t) > 0.09)) kept.push(o);
+  return { list: kept, flux, hop };
+}
+function smBpm(buf) {                            // tempo par autocorrélation des attaques
+  const { flux, hop } = smOnsets(buf), sr = buf.sampleRate, fps = sr / hop, N = Math.min(flux.length, Math.floor(fps * 30));
+  let best = 0, bl = 0;
+  for (let bpm = 70; bpm <= 180; bpm += 0.5) { const lag = fps * 60 / bpm, L = Math.round(lag); let s = 0; for (let i = L; i < N; i++) s += flux[i] * flux[i - L]; s /= (N - L) || 1; if (s > best) { best = s; bl = bpm; } }
+  return bl ? Math.round(bl) : 0;
+}
+function smZero(t) {                             // recale sur un passage à zéro (pas de clic)
+  const d = SM.buf.getChannelData(0), sr = SM.buf.sampleRate, i0 = Math.round(t * sr);
+  for (let k = 0; k < 400; k++) for (const i of [i0 + k, i0 - k]) if (i > 0 && i < d.length && Math.sign(d[i]) !== Math.sign(d[i - 1])) return i / sr;
+  return t;
+}
+function smChop(kind) {
+  const B = SM.buf; if (!B) return; const D = B.duration; let starts = [];
+  if (kind === "egal") for (let k = 0; k < 16; k++) starts.push(D * k / 16);
+  else if (kind === "temps" && SM.bpm) { const o = smOnsets(B).list.sort((a, b) => a.t - b.t), t0 = o.length ? o[0].t : 0, beat = 60 / SM.bpm; const step = D - t0 > beat * 16 ? beat : beat / 2; for (let k = 0; k < 16 && t0 + k * step < D; k++) starts.push(t0 + k * step); }
+  else { starts = smOnsets(B).list.slice(0, 16).map(o => o.t).sort((a, b) => a - b); if (starts.length < 4) return smChop("egal"); }
+  starts = starts.map(smZero);
+  SM.pads = starts.map((a, k) => { const old = SM.pads[k]; const b = k + 1 < starts.length ? starts[k + 1] : Math.min(D, a + (kind === "attaques" ? 1.5 : D / 16)); const p = smPad(a, Math.max(a + 0.02, b)); if (old) Object.assign(p, { pitch: old.pitch, vol: old.vol, mode: old.mode, rev: old.rev }); return p; });
+  while (SM.pads.length < 16) SM.pads.push(null);
+  smRender();
+}
+function smPeaks(buf) { const n = 1200, d = buf.getChannelData(0), per = Math.max(1, Math.floor(d.length / n)), out = new Float32Array(n); for (let i = 0; i < n; i++) { let m = 0; for (let j = i * per; j < (i + 1) * per; j += 8) m = Math.max(m, Math.abs(d[j] || 0)); out[i] = m; } const mx = Math.max(...out) || 1; return out.map(v => v / mx); }
+
+/* Jouer un pad */
+function smTrigger(i, vel = 1) {
+  const p = SM.pads[i]; if (!p || !SM.buf || !smBus()) return;
+  smRelease(i, true);
+  const c = SP.ctx, rate = Math.pow(2, p.pitch / 12), src = c.createBufferSource(), g = c.createGain(), t = c.currentTime;
+  src.buffer = p.rev ? SM.rev : SM.buf; src.playbackRate.value = rate;
+  const D = SM.buf.duration, a = p.rev ? D - p.b : p.a, len = p.b - p.a;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(p.vol * vel, t + p.fade);
+  src.connect(g); g.connect(SM.bus);
+  if (p.mode === "boucle") { src.loop = true; src.loopStart = a; src.loopEnd = a + len; src.start(t, a); }
+  else { src.start(t, a, p.mode === "tenir" ? undefined : len + 0.02); g.gain.setValueAtTime(p.vol * vel, t + len / rate - 0.01); g.gain.linearRampToValueAtTime(0, t + len / rate + 0.01); }
+  SM.voices.set(i, { src, g });
+  src.onended = () => { if (SM.voices.get(i) && SM.voices.get(i).src === src) SM.voices.delete(i); };
+  smVideo(p, rate);
+  const el = document.querySelector(`.sm-pad[data-i="${i}"]`); if (el) { el.classList.remove("hit"); void el.offsetWidth; el.classList.add("hit"); }
+  if (SM.loop && SM.loop.rec) smLoopRec(i, vel);
+}
+function smRelease(i, hard) {
+  const v = SM.voices.get(i); if (!v) return; const p = SM.pads[i];
+  if (!hard && p && p.mode === "coup") return;
+  const t = SP.ctx.currentTime; v.g.gain.cancelScheduledValues(t); v.g.gain.setValueAtTime(v.g.gain.value, t); v.g.gain.linearRampToValueAtTime(0, t + 0.03);
+  try { v.src.stop(t + 0.04); } catch {} SM.voices.delete(i);
+  if (!hard && SM.video && p && p.mode !== "coup") SM.video.pause();
+}
+function smVideo(p, rate) {
+  const v = SM.video; if (!v || !SM.isVideo) return;
+  clearTimeout(SM.vt); v.playbackRate = Math.max(0.25, Math.min(4, rate)); v.currentTime = p.rev ? p.b : p.a;
+  if (p.rev) { v.pause(); return; }
+  const pr = v.play(); if (pr && pr.catch) pr.catch(() => {});
+  if (p.mode === "coup") SM.vt = setTimeout(() => v.pause(), (p.b - p.a) / rate * 1000);
+}
+/* Clavier et MIDI */
+function smKey(e, down) {
+  if (e.repeat) return true;
+  if (down && SM.bind >= 0) { SM.keys = SM.keys.map(k => k === e.code ? null : k); SM.keys[SM.bind] = e.code; store.set("atelier-smp-keys", SM.keys); SM.bind = -1; uisSwitch(true); smRender(); return true; }
+  const i = SM.keys.indexOf(e.code); if (i < 0) return false;
+  if (down) smTrigger(i); else smRelease(i, false);
+  return true;
+}
+function smMidi() {
+  if (SM.midiTried || !navigator.requestMIDIAccess) return; SM.midiTried = true;
+  navigator.requestMIDIAccess().then(acc => {
+    const hook = () => acc.inputs.forEach(inp => inp.onmidimessage = m => {
+      const [st, note, vel] = m.data, on = (st & 0xf0) === 0x90 && vel > 0, off = (st & 0xf0) === 0x80 || ((st & 0xf0) === 0x90 && vel === 0);
+      const i = (note - 36) % 16; if (i < 0) return;
+      if (on) smTrigger(i, 0.4 + vel / 127 * 0.6); else if (off) smRelease(i, false);
+    });
+    hook(); acc.onstatechange = hook; SM.midi = acc.inputs.size > 0; smRender();
+  }).catch(() => {});
+}
+/* Boucler mon jeu : on joue sur N mesures, c'est calé sur la grille puis rejoué en boucle */
+function smLoopStart(bars) {
+  if (!smBus()) return; smLoopStop();
+  const bpm = SM.bpm || SY.bpm || 90, sec = 60 / bpm / 4, t0 = SP.ctx.currentTime + sec * 16;       // une mesure de décompte
+  SM.loop = { bars, bpm, sec, t0, rec: false, hits: [], len: bars * 16, timer: 0, next: t0, step: 0 };
+  for (let k = 0; k < 4; k++) smTick(SP.ctx.currentTime + 0.05 + k * sec * 4, k === 0);
+  setTimeout(() => { if (SM.loop) { SM.loop.rec = true; smRender(); } }, sec * 16 * 1000 - 30);
+  SM.loop.timer = setInterval(smLoopTickF, 25); smRender();
+}
+function smTick(t, hi) { const c = SP.ctx, o = c.createOscillator(), g = c.createGain(); o.frequency.value = hi ? 1760 : 1320; g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05); o.connect(g); g.connect(SM.bus); o.start(t); o.stop(t + 0.06); }
+function smLoopRec(i, vel) { const L = SM.loop, step = Math.round((SP.ctx.currentTime - L.t0) / L.sec) % L.len; if (step >= 0) L.hits.push({ step: (step + L.len) % L.len, i, vel }); }
+function smLoopTickF() {
+  const L = SM.loop; if (!L) return; const c = SP.ctx;
+  while (L.next < c.currentTime + 0.1) {
+    const s = L.step % L.len, at = L.next;
+    if (L.rec && s === 0 && L.step > 0 && !L.play) { L.play = true; L.rec = false; setTimeout(smRender, 0); }
+    if (L.play) for (const h of L.hits) if (h.step === s) setTimeout(() => smTrigger(h.i, h.vel), Math.max(0, (at - c.currentTime) * 1000));
+    if (L.rec && s % 4 === 0) smTick(at, s === 0);
+    L.next += L.sec; L.step++;
+  }
+}
+function smLoopStop() { if (SM.loop) { clearInterval(SM.loop.timer); SM.loop = null; } }
+
+/* Interface */
+function smMsg(t) { const e = document.getElementById("sm-msg"); if (e) e.textContent = t; }
+function wPSmp(host) {
+  if (!document.getElementById("sm-css")) { const css = document.createElement("style"); css.id = "sm-css"; css.textContent = SM_CSS; document.head.append(css); }
+  host.innerHTML = `<div class="sm" id="sm-root"></div>`;
+  const root = host.querySelector("#sm-root");
+  host.ondragover = e => { e.preventDefault(); root.classList.add("drop"); }; host.ondragleave = () => root.classList.remove("drop");
+  host.ondrop = e => { e.preventDefault(); root.classList.remove("drop"); const f = [...(e.dataTransfer.files || [])].find(f => /^(audio|video)\//.test(f.type) || /\.(mp3|wav|m4a|mp4|mov|webm|ogg|aac|flac)$/i.test(f.name)); if (f) smLoad(f); };
+  smMidi(); smRender();
+}
+function smRender() {
+  const root = document.getElementById("sm-root"); if (!root) return;
+  if (!SM.buf) {
+    root.innerHTML = `<label class="sm-drop sp-card"><input type="file" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.mov" hidden id="sm-file">
+      <b>Glisse un mp3 ou un mp4 ici</b><span>ou touche pour choisir un fichier · il est découpé automatiquement en 16 pads</span><span id="sm-msg"></span></label>`;
+    root.querySelector("#sm-file").onchange = e => smLoad(e.target.files[0]); return;
+  }
+  const P = SM.pads[SM.sel];
+  root.innerHTML = `
+    <div class="sm-top sp-card">
+      <div class="sm-media">${SM.isVideo ? `<video id="sm-video" src="${SM.url}" muted playsinline preload="auto"></video>` : `<div class="sm-noimg">♪</div>`}</div>
+      <div class="sm-info"><b class="sm-name"></b><span>${SM.buf.duration.toFixed(1)} s · ${SM.bpm ? SM.bpm + " bpm détectés" : "tempo non détecté"}${SM.midi ? " · MIDI branché" : ""}</span>
+        <div class="w-sec">Découpe automatique</div>
+        <div class="dj-btns"><button class="w-chip" data-chop="attaques">Aux attaques</button><button class="w-chip" data-chop="temps" ${SM.bpm ? "" : "disabled"}>Sur les temps</button><button class="w-chip" data-chop="egal">16 parts égales</button>
+        <label class="w-chip" style="cursor:pointer">Autre fichier<input type="file" accept="audio/*,video/*" hidden id="sm-file"></label></div>
+        <div class="w-sec">Boucler mon jeu</div>
+        <div class="dj-btns">${SM.loop ? `<span class="sm-rec">${SM.loop.rec ? "● joue, ça enregistre…" : SM.loop.play ? "↻ ta boucle tourne" : "décompte…"}</span><button class="w-chip" id="sm-lstop">Arrêter la boucle</button>` : [1, 2, 4].map(n => `<button class="w-chip" data-loop="${n}">${n} mesure${n > 1 ? "s" : ""}</button>`).join("")}</div>
+        <span class="sp-hint">Un décompte de 4 temps, puis tout ce que tu joues est calé sur la grille (${SM.bpm || SY.bpm} bpm) et rejoué en boucle.</span>
+      </div>
+    </div>
+    <div class="sp-card"><canvas id="sm-wave" width="2400" height="200"></canvas><span class="sp-hint">Touche une zone pour choisir son pad · glisse un repère pour ajuster le début.</span></div>
+    <div class="sm-main">
+      <div class="sm-grid sp-card" id="sm-grid"></div>
+      <div class="sm-edit sp-card" id="sm-edit"></div>
+    </div>`;
+  root.querySelector(".sm-name").textContent = SM.name;
+  SM.video = root.querySelector("#sm-video");
+  root.querySelectorAll("[data-chop]").forEach(b => b.onclick = () => { uisClick(); smChop(b.dataset.chop); });
+  root.querySelector("#sm-file").onchange = e => smLoad(e.target.files[0]);
+  root.querySelectorAll("[data-loop]").forEach(b => b.onclick = () => { uisClick(); smLoopStart(+b.dataset.loop); });
+  const ls = root.querySelector("#sm-lstop"); if (ls) ls.onclick = () => { smLoopStop(); uisSwitch(false); smRender(); };
+  const grid = root.querySelector("#sm-grid");
+  SM.pads.forEach((p, i) => {
+    const b = document.createElement("button"); b.className = "sm-pad" + (i === SM.sel ? " sel" : "") + (p ? "" : " empty"); b.dataset.i = i; b.style.setProperty("--h", (i * 37 + 200) % 360);
+    b.innerHTML = `<i>${SM.bind === i ? "…" : smLab(SM.keys[i])}</i><span>${p ? (p.b - p.a).toFixed(2) + " s" : ""}</span>`;
+    b.addEventListener("pointerdown", e => { e.preventDefault(); SM.sel = i; smTrigger(i); smEditView(); grid.querySelectorAll(".sm-pad").forEach(x => x.classList.toggle("sel", x === b)); try { b.setPointerCapture(e.pointerId); } catch {} });
+    ["pointerup", "pointercancel"].forEach(t => b.addEventListener(t, () => smRelease(i, false)));
+    grid.append(b);
+  });
+  smEditView(); smWave();
+  const cv = root.querySelector("#sm-wave"); let drag = null;
+  cv.addEventListener("pointerdown", e => {
+    const r = cv.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * SM.buf.duration, tol = SM.buf.duration * 0.008;
+    const k = SM.pads.findIndex(p => p && Math.abs(p.a - t) < tol);
+    if (k >= 0) { drag = k; try { cv.setPointerCapture(e.pointerId); } catch {} return; }
+    const j = SM.pads.findIndex(p => p && t >= p.a && t < p.b); if (j >= 0) { SM.sel = j; smTrigger(j); smEditView(); smWave(); grid.querySelectorAll(".sm-pad").forEach(x => x.classList.toggle("sel", +x.dataset.i === j)); }
+  });
+  cv.addEventListener("pointermove", e => { if (drag == null) return; const r = cv.getBoundingClientRect(), t = Math.max(0, Math.min(SM.buf.duration - 0.02, (e.clientX - r.left) / r.width * SM.buf.duration)); const p = SM.pads[drag]; p.a = Math.min(t, p.b - 0.02); const prev = SM.pads.slice(0, drag).reverse().find(Boolean); if (prev && Math.abs(prev.b - p.a) < 0.5) prev.b = p.a; smWave(); });
+  cv.addEventListener("pointerup", () => { if (drag != null) { const p = SM.pads[drag]; p.a = smZero(p.a); SM.sel = drag; drag = null; smTrigger(SM.sel); smEditView(); smWave(); } });
+}
+function smEditView() {
+  const el = document.getElementById("sm-edit"); if (!el) return; const p = SM.pads[SM.sel], i = SM.sel;
+  if (!p) { el.innerHTML = `<p class="sp-hint">Pad vide.</p>`; return; }
+  el.innerHTML = `<div class="w-sec">Pad ${i + 1} · touche ${smLab(SM.keys[i])}</div>
+    <div class="sy-knobs"><div class="sy-knob-w" data-k="pitch"><div class="sy-knob" tabindex="0"></div><span></span></div><div class="sy-knob-w" data-k="vol"><div class="sy-knob" tabindex="0"></div><span>Volume</span></div><div class="sy-knob-w" data-k="len"><div class="sy-knob" tabindex="0"></div><span></span></div></div>
+    <div class="dj-btns">${[["coup", "Un coup"], ["tenir", "Tant qu'on tient"], ["boucle", "En boucle"]].map(([m, l]) => `<button class="w-chip" data-m2="${m}" aria-pressed="${p.mode === m}">${l}</button>`).join("")}</div>
+    <div class="dj-btns"><button class="w-chip" id="sm-rev" aria-pressed="${p.rev}">À l'envers</button><button class="w-chip" id="sm-bind">⌨ Changer la touche</button></div>
+    <span class="sp-hint">Pads aussi jouables au clavier (rangées 1-4, A-R, Q-F, W-V sur AZERTY : les touches physiques) et avec un contrôleur MIDI (notes 36 à 51).</span>`;
+  syKnob(el.querySelector('[data-k="pitch"]'), () => (p.pitch + 12) / 24, v => { p.pitch = Math.round(v * 24 - 12); }, () => `${p.pitch > 0 ? "+" : ""}${p.pitch} demi-tons`, 0.5);
+  syKnob(el.querySelector('[data-k="vol"]'), () => p.vol, v => { p.vol = v; }, () => "Volume", 0.9);
+  syKnob(el.querySelector('[data-k="len"]'), () => Math.min(1, (p.b - p.a) / 4), v => { p.b = Math.min(SM.buf.duration, p.a + Math.max(0.02, v * 4)); smWave(); }, () => `Durée ${(p.b - p.a).toFixed(2)} s`);
+  el.querySelectorAll("[data-m2]").forEach(b => b.onclick = () => { p.mode = b.dataset.m2; uisClick(); smEditView(); });
+  el.querySelector("#sm-rev").onclick = () => { p.rev = !p.rev; uisSwitch(p.rev); smEditView(); };
+  el.querySelector("#sm-bind").onclick = () => { SM.bind = i; wToast("Appuie sur une touche du clavier…"); smRender(); };
+}
+function smWave() {
+  const cv = document.getElementById("sm-wave"); if (!cv || !SM.peaks) return;
+  const x = cv.getContext("2d"), W = cv.width, H = cv.height, D = SM.buf.duration, pk = SM.peaks, bw = W / pk.length;
+  x.clearRect(0, 0, W, H);
+  SM.pads.forEach((p, i) => { if (!p) return; x.fillStyle = `hsla(${(i * 37 + 200) % 360},50%,55%,${i === SM.sel ? 0.28 : 0.1})`; x.fillRect(p.a / D * W, 0, (p.b - p.a) / D * W, H); });
+  x.fillStyle = "rgba(27,29,34,.55)"; pk.forEach((v, k) => x.fillRect(k * bw, H / 2 - v * H * 0.45, Math.max(1, bw - 0.5), v * H * 0.9));
+  SM.pads.forEach((p, i) => { if (!p) return; const px = p.a / D * W; x.fillStyle = `hsl(${(i * 37 + 200) % 360},55%,45%)`; x.fillRect(px - 1.5, 0, 3, H); x.font = "bold 22px " + (WORLD.font || "monospace"); x.fillText(String(i + 1), px + 6, 24); });
+}
+const SM_CSS = `
+.sm { display: flex; flex-direction: column; gap: 14px; max-width: 1240px; margin: 0 auto; padding: 80px 20px 150px; font-size: 12px; }
+.sm .sp-card { border-radius: 26px; padding: 16px; background: rgba(250,250,253,.88); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); display: flex; flex-direction: column; gap: 10px; }
+.sm.drop .sp-card, .sm.drop .sm-drop { box-shadow: 0 0 0 2px rgba(124,92,230,.7); }
+.sm-drop { min-height: 300px; align-items: center; justify-content: center; text-align: center; cursor: pointer; border: 1.5px dashed rgba(27,29,34,.2) !important; }
+.sm-drop b { font-family: var(--f-main); font-weight: 400; font-size: 26px; } .sm-drop span { opacity: .6; }
+.sm-top { flex-direction: row !important; flex-wrap: wrap; gap: 18px !important; }
+.sm-media { flex: 1 1 380px; min-width: 0; aspect-ratio: 16/9; border-radius: 18px; overflow: hidden; background: #0d0e12; display: grid; place-items: center; }
+.sm-media video { width: 100%; height: 100%; object-fit: contain; }
+.sm-noimg { color: rgba(255,255,255,.4); font-size: 64px; }
+.sm-info { flex: 1 1 300px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sm-name { font-family: var(--f-main); font-weight: 400; font-size: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-rec { color: rgb(200,40,60); }
+#sm-wave { width: 100%; height: 100px; cursor: pointer; touch-action: none; }
+.sm-main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+.sm-grid { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px !important; }
+.sm-pad { aspect-ratio: 1.3; border-radius: 16px; border: 0; cursor: pointer; position: relative; background: hsla(var(--h), 45%, 55%, .18); color: inherit; font: inherit; touch-action: none; transition: transform .06s; }
+.sm-pad.sel { box-shadow: 0 0 0 2px hsl(var(--h), 50%, 45%); }
+.sm-pad.hit { animation: smhit .22s ease-out; } @keyframes smhit { 0% { background: hsl(var(--h), 60%, 55%); transform: scale(.94); } 100% { } }
+.sm-pad.empty { opacity: .35; }
+.sm-pad i { position: absolute; left: 10px; top: 8px; font-style: normal; font-size: 16px; font-weight: 700; }
+.sm-pad span { position: absolute; right: 10px; bottom: 8px; font-size: 10px; opacity: .6; }
+@media (max-width: 900px) { .sm { padding: 72px 12px 150px; } .sm-main { grid-template-columns: 1fr; } .sm-pad i { font-size: 13px; } }
+`;
+
+function smRecToggle() {
+  const b = document.getElementById("sm-recb");
+  if (SM.rec) { try { SM.rec.stop(); } catch {} SM.rec = null; if (b) { b.textContent = "● Enregistrer"; b.setAttribute("aria-pressed", false); } return; }
+  if (!smBus() || !SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
+  const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(SP.dest.stream, type ? { mimeType: type } : undefined), chunks = [];
+  r.ondataavailable = e => e.data.size && chunks.push(e.data);
+  r.onstop = () => offerBlob(new Blob(chunks, { type: r.mimeType || "audio/webm" }), `sample_tnb.${(r.mimeType || "").includes("mp4") ? "m4a" : "webm"}`);
+  r.start(); SM.rec = r; if (b) { b.textContent = "■ Arrêter et garder"; b.setAttribute("aria-pressed", true); }
+}
 
 const spBpmLabel = () => { const e = document.getElementById("sp-bpm"); if (e) e.textContent = `${spBpm()} bpm · fa mineur`; };
 function spImport(file, i) {
