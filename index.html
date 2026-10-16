@@ -4596,7 +4596,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest("button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, #w-node, label, select, textarea");
+  const blocked = t => t.closest("button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4640,7 +4640,7 @@ function worldEvents() {
   el.addEventListener("wheel", e => {
     const sc = e.target.closest(".w-scroll");
     if (sc && !e.ctrlKey && sc.scrollHeight > sc.clientHeight + 2) return;
-    if (e.target.closest(".w-sheet")) return;
+    if (e.target.closest(".w-sheet, .w-fx-side")) return;
     e.preventDefault(); WORLD.touched = true;
     const lineMode = e.deltaMode !== 0, mouseWheel = lineMode || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
     if (e.ctrlKey || mouseWheel) {
@@ -5071,9 +5071,15 @@ function wPanel(k) {
 
 // Connexions : la série en cours, en grille de verre flottante
 function wPConnexions(p) {
-  p.innerHTML = wHead("Connexions · série en cours", `<span class="w-pill w-glass-ui w-live" id="w-cnt" style="cursor:default"></span><button class="w-pill dark w-live" id="w-regen">Nouvelle série</button>`)
-    + `<div class="w-scroll w-live"><div class="w-grid" id="w-grid"></div></div>`;
+  p.innerHTML = wHead("Connexions · série en cours", `<span class="w-pill w-glass-ui w-live" id="w-cnt" style="cursor:default"></span><button class="w-pill w-glass-ui w-live" id="w-fx-btn" aria-pressed="false">Effets</button><button class="w-pill dark w-live" id="w-regen">Nouvelle série</button>`)
+    + `<div class="w-scroll w-live"><div class="w-grid" id="w-grid"></div></div><div class="w-fx-side w-glass-ui w-live" id="w-fx-side"></div>`;
   p.querySelector("#w-regen").onclick = () => { uisClick(); uisYes(); newSeries(); };
+  const side = p.querySelector("#w-fx-side"), fb = p.querySelector("#w-fx-btn");
+  fb.onclick = () => {
+    const open = !side.classList.contains("open");
+    if (open && !side.childElementCount) wFx(side, false);
+    side.classList.toggle("open", open); fb.setAttribute("aria-pressed", open); uisSwoosh(open, 0.35);
+  };
   wSyncCards();
 }
 function wSyncCards() {
@@ -5185,11 +5191,8 @@ function wPSampler(p) {
 }
 
 function wPLabo(p) {
-  p.innerHTML = wHead("Labo · bac à sable") + `<div class="w-center"><div class="w-box w-glass-ui w-live">
-  <h3>Le labo</h3><p>Ici on jouera librement avec les déformations, les trames et les effets, sans voter : curseurs directs, accidents heureux, recettes à garder.</p>
-  <p><span class="w-soon">en construction</span> &nbsp; En attendant, tous les réglages sont dans l'atelier classique.</p>
-  <div class="w-row"><button class="w-pill dark" id="w-l-classic">Ouvrir l'atelier classique</button></div></div></div>`;
-  p.querySelector("#w-l-classic").onclick = () => { uisSwitch(false); setWorld(false); };
+  p.innerHTML = wHead("Labo · rendu, effets, déformations") + `<div class="w-scroll w-live"><div class="w-fx" id="w-fx-host"></div></div>`;
+  wFx(p.querySelector("#w-fx-host"), true);
 }
 function wPDiffusion(p) {
   p.innerHTML = wHead("Diffusion · réseaux sociaux") + `<div class="w-center"><div class="w-box w-glass-ui w-live">
@@ -5245,6 +5248,136 @@ function wPAdmin(p) {
     offerBlob(new Blob([rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n")], { type: "text/csv" }), "observatoire_votes.csv");
   };
 }
+
+
+/* ---------- Effets : rendu, effets, déformations (labo + tiroir de la grille) ---------- */
+const WFX = { scene: null, prevT: 0, thumbsT: 0 };
+function wFxCss() {
+  const css = document.createElement("style");
+  css.textContent = `
+.w-fx { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: 28px; max-width: 1180px; margin: 0 auto; padding: 84px 28px 150px; align-items: start; }
+.w-fx-prev { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.w-fx-stage { width: min(100%, 62vh); aspect-ratio: 1; border-radius: 32px; position: relative; background: linear-gradient(150deg, rgba(255,255,255,.7), rgba(255,255,255,.3)); border: 1px solid rgba(255,255,255,.9); box-shadow: 0 20px 60px rgba(40,40,90,.12), inset 0 1px 0 #fff; }
+.w-fx-stage canvas { position: absolute; inset: 8%; width: 84%; height: 84%; transition: opacity .25s; }
+.w-fx-stage.busy canvas { opacity: .55; }
+.w-fx-ctl { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+.w-sec { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; opacity: .6; margin-top: 8px; display: flex; justify-content: space-between; gap: 8px; }
+.w-sec span { letter-spacing: 0; text-transform: none; opacity: .8; }
+.w-fx-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.w-fx-p { border: 1px solid rgba(27,29,34,.08); background: rgba(255,255,255,.55); border-radius: 16px; padding: 6px 6px 7px; cursor: pointer; font: inherit; font-size: 10px; color: inherit; display: flex; flex-direction: column; gap: 4px; align-items: center; transition: transform .2s, box-shadow .2s; }
+.w-fx-p:hover { transform: translateY(-2px); }
+.w-fx-p canvas { width: 100%; aspect-ratio: 1; border-radius: 11px; display: block; }
+.w-fx-p[aria-pressed="true"] { box-shadow: 0 0 0 1.5px rgba(27,29,34,.85); background: rgba(255,255,255,.9); }
+.w-fx-st { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; padding: 7px 10px; border-radius: 14px; background: rgba(255,255,255,.45); border: 1px solid rgba(27,29,34,.05); }
+.w-fx-st b { font-weight: 400; } .w-fx-st small { grid-column: 2; opacity: .55; font-size: 10px; line-height: 1.4; }
+.w-fx-st input { grid-column: 1 / -1; display: none; }
+.w-fx-st.on input { display: block; }
+.w-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: rgba(27,29,34,.14); margin: 8px 0 4px; }
+.w-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.25); cursor: pointer; }
+.w-range::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.25); cursor: pointer; }
+.w-fx-fams { display: flex; flex-wrap: wrap; gap: 6px; }
+.w-chip { border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 11px; cursor: pointer; border: 1px solid rgba(27,29,34,.14); background: rgba(255,255,255,.5); color: inherit; transition: background .2s, color .2s; }
+.w-chip[aria-pressed="true"] { background: rgba(27,29,34,.86); color: #fff; border-color: transparent; }
+.w-fx-side { position: absolute; right: 16px; top: 72px; bottom: 100px; width: min(380px, calc(100vw - 32px)); border-radius: 26px; padding: 4px 16px 16px; box-sizing: border-box; z-index: 4; overflow-y: auto; overscroll-behavior: contain; transform: translateX(calc(100% + 30px)); transition: transform .4s cubic-bezier(.2,.9,.25,1.1); scrollbar-width: none; }
+.w-fx-side.open { transform: none; }
+#world.focus .w-pill.dark, #world.focus .w-pill[aria-pressed="true"] { background: rgba(27,29,34,.88); color: #fff; }
+.w-head .w-pill { white-space: nowrap; }
+@media (max-width: 440px) { #w-cnt { display: none; } .w-head { gap: 6px; } }
+@media (max-width: 760px) {
+  .w-fx { grid-template-columns: 1fr; padding: 72px 16px 150px; gap: 18px; }
+  .w-fx-prev { position: static; }
+  .w-fx-stage { width: min(100%, 46vh); }
+  .w-fx-side { left: 12px; right: 12px; width: auto; top: auto; height: 58vh; bottom: 96px; transform: translateY(calc(100% + 120px)); }
+}`;
+  document.head.append(css);
+}
+function wFxSample() {
+  if (WFX.scene && (current.includes(WFX.scene) || WORLD.byId.has(WFX.scene.id))) return WFX.scene;
+  return WFX.scene = (WORLD.sel && WORLD.sel.scene) || current.find(s => votes[s.id] && votes[s.id].v > 0) || current[0] || null;
+}
+// Construit les réglages dans « host ». Avec preview : grande forme en direct (labo).
+function wFx(host, preview) {
+  host.innerHTML = `${preview ? `<div class="w-fx-prev"><div class="w-fx-stage"><canvas></canvas></div>
+    <div class="w-row" style="justify-content:center"><button class="w-pill w-glass-ui" data-fx="other">Autre forme</button><button class="w-pill w-glass-ui" data-fx="studio">Voir sur un vêtement</button></div></div>` : ""}
+  <div class="w-fx-ctl">
+    <div class="w-sec">Rendu</div><div class="w-fx-presets"></div>
+    <div class="w-sec">Effets <span>cumulables</span></div><div class="w-fx-styles" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div class="w-sec">Déformations <span>relance une série</span></div><div class="w-fx-fams"></div>
+    <div class="w-row"><button class="w-pill w-glass-ui" data-fx="clear">Enlever tous les effets</button>${preview ? `<button class="w-pill w-glass-ui" data-fx="classic">Plus de réglages (atelier classique)</button>` : ""}</div>
+  </div>`;
+  const pres = host.querySelector(".w-fx-presets"), sty = host.querySelector(".w-fx-styles"), fams = host.querySelector(".w-fx-fams");
+  for (const [k, p] of Object.entries(PRESETS)) {
+    const b = document.createElement("button"); b.className = "w-fx-p"; b.dataset.k = k; b.title = p.desc; b.setAttribute("aria-pressed", S.preset === k);
+    const cv = document.createElement("canvas"); cv.width = cv.height = 72; const t = document.createElement("span"); t.textContent = p.lab;
+    b.append(cv, t); pres.append(b);
+    b.onclick = () => { uisClick(); uisChime(Object.keys(PRESETS).indexOf(k), 0.4); S.preset = k; pres.querySelectorAll(".w-fx-p").forEach(x => x.setAttribute("aria-pressed", x === b)); wFxApply(); };
+  }
+  for (const [k, [lab, desc]] of Object.entries(STYLES)) {
+    const row = document.createElement("div"); row.className = "w-fx-st" + (S.styles[k].on ? " on" : "");
+    row.innerHTML = `<button class="w-sw" role="switch" aria-checked="${S.styles[k].on}" aria-label="${lab}"></button><b>${lab}</b><small>${desc}</small><input class="w-range" type="range" min="0.1" max="2" step="0.05" value="${S.styles[k].k}" aria-label="Intensité : ${lab}">`;
+    const sw = row.querySelector(".w-sw"), rg = row.querySelector("input");
+    sw.onclick = () => { const on = !S.styles[k].on; S.styles[k].on = on; sw.setAttribute("aria-checked", on); row.classList.toggle("on", on); uisSwitch(on); wFxApply(); };
+    let last = 0;
+    rg.oninput = () => { S.styles[k].k = +rg.value; const st = Math.round(+rg.value * 10); if (st !== last) { last = st; if (UIS.ctx) uisNoise(0.012, 1800 + st * 120, 1700 + st * 120, 4, 0.08, 0.05); } wFxApply(160); };
+    sty.append(row);
+  }
+  for (const [k, lab] of Object.entries(FAMS)) {
+    const c = document.createElement("button"); c.className = "w-chip"; c.textContent = lab; c.setAttribute("aria-pressed", !S.off.includes(k));
+    c.onclick = () => {
+      const on = S.off.includes(k); S.off = on ? S.off.filter(x => x !== k) : [...S.off, k];
+      c.setAttribute("aria-pressed", on); uisSwitch(on); saveS(); wFxSyncClassic();
+      if (typeof renderLearned === "function") try { renderLearned(); } catch {}
+      schedule(); wToast(on ? `${lab} : activé, nouvelle série…` : `${lab} : coupé, nouvelle série…`);
+    };
+    fams.append(c);
+  }
+  host.querySelectorAll("[data-fx]").forEach(b => b.onclick = () => {
+    uisClick();
+    const a = b.dataset.fx;
+    if (a === "other") { const pool = current.length ? current : WORLD.nodes.map(n => n.scene); WFX.scene = pool[Math.floor(Math.random() * pool.length)] || null; wFxPreview(); wFxThumbs(); }
+    if (a === "studio") { const s = wFxSample(); if (s) openMockup(s); }
+    if (a === "classic") setWorld(false);
+    if (a === "clear") { for (const k of Object.keys(STYLES)) S.styles[k].on = false; host.querySelectorAll(".w-fx-st").forEach(r => { r.classList.remove("on"); r.querySelector(".w-sw").setAttribute("aria-checked", false); }); uisSwitch(false); wFxApply(); }
+  });
+  WFX.host = host; wFxThumbs(); if (preview) wFxPreview();
+}
+// Applique un changement de rendu ou d'effet partout : grille, graphe, aperçu
+function wFxApply(delay = 60) {
+  saveS(); wFxSyncClassic();
+  clearTimeout(WFX.t); WFX.t = setTimeout(() => {
+    redrawStyles();
+    for (const n of WORLD.nodes) n.img = null;
+    WORLD.dirty = true; wSyncCards(); wFxPreview(); wFxThumbs();
+  }, delay);
+}
+function wFxPreview() {
+  const host = WFX.host; if (!host || !host.isConnected) return;
+  const stage = host.querySelector(".w-fx-stage"); if (!stage) return;
+  const sc = wFxSample(); if (!sc) return;
+  const tok = ++WFX.prevT; stage.classList.add("busy");
+  wRender(sc, 360).then(cv => { if (tok !== WFX.prevT) return; const c = stage.querySelector("canvas"); c.width = c.height = 360; const x = c.getContext("2d"); x.clearRect(0, 0, 360, 360); x.drawImage(cv, 0, 0); stage.classList.remove("busy"); });
+}
+async function wFxThumbs() {
+  const host = WFX.host; if (!host || !host.isConnected) return;
+  const sc = wFxSample(), tok = ++WFX.thumbsT, T = 72;
+  const base = sc ? renderSceneMask(sc, T).mask : renderStar(GENES.map(g => g.mu0), 7, T).mask, seed = sc ? sc.stars[0].seed : 7;
+  for (const b of host.querySelectorAll(".w-fx-p")) {
+    await new Promise(r => setTimeout(r, 0)); if (tok !== WFX.thumbsT) return;
+    const cv = b.querySelector("canvas"); cv.getContext("2d").putImageData(new ImageData(finish(base, T, seed, b.dataset.k), T, T), 0, 0);
+  }
+}
+// Garde l'atelier classique cohérent avec ce qu'on règle ici
+function wFxSyncClassic() {
+  try {
+    for (const k of Object.keys(STYLES)) {
+      const c = document.getElementById("style-" + k), r = document.getElementById("style-k-" + k);
+      if (c) c.checked = S.styles[k].on; if (r) { r.value = S.styles[k].k; r.disabled = !S.styles[k].on; }
+    }
+    for (const k of Object.keys(FAMS)) { const c = document.getElementById("fam-" + k); if (c) c.checked = !S.off.includes(k); }
+    if (typeof updateFxButton === "function") updateFxButton();
+  } catch {}
+}
+wFxCss();
 
 /* ---------- Bulles : collection et profil ---------- */
 function wCloseSheets() {
