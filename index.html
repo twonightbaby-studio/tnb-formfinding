@@ -4898,7 +4898,7 @@ function simTick() {
     n.vx *= 0.6; n.vy *= 0.6;
     n.x += Math.max(-40, Math.min(40, n.vx)); n.y += Math.max(-40, Math.min(40, n.vy));
   }
-  SIM.alpha *= 0.985; if (SIM.alpha < 0.004) SIM.alpha = 0;
+  SIM.alpha *= 0.978; if (SIM.alpha < 0.005) SIM.alpha = 0;
   if (++SIM.ticks % 40 === 0) wMeasure();
 }
 function wMeasure() {
@@ -4910,6 +4910,7 @@ function wMeasure() {
 
 /* ---------- Dessin du monde : seulement quand quelque chose bouge ---------- */
 const W_HUES = [265, 205, 330, 160, 30, 290, 190, 0, 120, 45, 300, 220];
+const W_DOTC = W_HUES.map(h => `hsl(${h}, 32%, 38%)`);
 function wLoop(now) {
   if (!WORLD.on) return;
   requestAnimationFrame(wLoop);
@@ -4920,7 +4921,7 @@ function wLoop(now) {
     WORLD.cam.z = Math.exp(lz); WORLD.cam.x = f.from.x + (f.to.x - f.from.x) * e; WORLD.cam.y = f.from.y + (f.to.y - f.from.y) * e;
     if (k >= 1) WORLD.fly = null; WORLD.dirty = true; wCheckActive();
   }
-  if (SIM.alpha > 0 && !WORLD.active) { simTick(); WORLD.dirty = true; }
+  if (SIM.alpha > 0 && !WORLD.active) { const t0 = performance.now(); let n = 0; do { simTick(); n++; } while (SIM.alpha > 0 && n < 6 && performance.now() - t0 < 7); WORLD.dirty = true; }
   if (!WORLD.dirty) return;
   WORLD.dirty = false;
   wDraw();
@@ -4941,10 +4942,10 @@ function wDraw() {
   // points du fond
   let step = 60; while (step * z < 18) step *= 3;
   const [ax, ay] = wToWorld(0, 0), [bx, by] = wToWorld(W, H);
-  x.fillStyle = "rgba(27,29,34,.11)";
-  for (let gx = Math.floor(ax / step) * step; gx <= bx; gx += step) for (let gy = Math.floor(ay / step) * step; gy <= by; gy += step) {
-    const [sx, sy] = wToScreen(gx, gy); x.fillRect(sx - 0.6, sy - 0.6, 1.2, 1.2);
-  }
+  x.fillStyle = "rgba(27,29,34,.11)"; x.beginPath();
+  const ox = W / 2 - cam.x * z - 0.6, oy = H / 2 - cam.y * z - 0.6;
+  for (let gx = Math.floor(ax / step) * step; gx <= bx; gx += step) { const sx = gx * z + ox; for (let gy = Math.floor(ay / step) * step; gy <= by; gy += step) x.rect(sx, gy * z + oy, 1.2, 1.2); }
+  x.fill();
   const font = WORLD.font || (WORLD.font = getComputedStyle(document.body).getPropertyValue("--f-accent"));
   for (const isl of wIslands()) if (isl.k !== "connexions") wDrawIsland(x, isl, z, font);
   wDrawGraph(x, z, font);
@@ -5014,16 +5015,22 @@ function wDrawGraph(x, z, font) {
   }
   // nœuds : des points qui deviennent des formes quand on s'approche
   const dotA = 1 - k;
-  for (const n of N) {
+  if (dotA > 0.02) {
+    const B = new Map(), rings = [], TAU2 = Math.PI * 2;
+    for (const n of N) {
+      if (!vis(n)) continue;
+      const r = Math.max(1.3, wNodeR(n) * z), fade = near && !near.has(n) ? 0.18 : 1;
+      const col = n === hov ? "rgb(124,92,230)" : n.yes ? W_DOTC[n.fam % W_HUES.length] : n.no ? "rgba(27,29,34,.28)" : "rgba(27,29,34,.55)", key = col + fade;
+      let b = B.get(key); if (!b) B.set(key, b = { col, a: dotA * fade, p: [] }); b.p.push(n.sx, n.sy, r);
+      if (n.cur && r > 2) rings.push(n.sx, n.sy, r + 2.5);
+    }
+    for (const b of B.values()) { x.globalAlpha = b.a; x.fillStyle = b.col; x.beginPath(); const p = b.p; for (let i = 0; i < p.length; i += 3) { x.moveTo(p[i] + p[i + 2], p[i + 1]); x.arc(p[i], p[i + 1], p[i + 2], 0, TAU2); } x.fill(); }
+    if (rings.length) { x.globalAlpha = dotA; x.strokeStyle = "rgba(124,92,230,.6)"; x.lineWidth = 1; x.beginPath(); for (let i = 0; i < rings.length; i += 3) { x.moveTo(rings[i] + rings[i + 2], rings[i + 1]); x.arc(rings[i], rings[i + 1], rings[i + 2], 0, TAU2); } x.stroke(); }
+  }
+  if (k > 0.02) for (const n of N) {
     if (!vis(n)) continue;
     const r = wNodeR(n) * z, fade = near && !near.has(n) ? 0.18 : 1;
-    if (dotA > 0.02) {
-      x.globalAlpha = dotA * fade;
-      x.fillStyle = n === hov ? "rgb(124,92,230)" : n.yes ? `hsl(${W_HUES[n.fam % W_HUES.length]}, 32%, 38%)` : n.no ? "rgba(27,29,34,.28)" : "rgba(27,29,34,.55)";
-      x.beginPath(); x.arc(n.sx, n.sy, Math.max(1.3, r), 0, Math.PI * 2); x.fill();
-      if (n.cur && r > 2) { x.strokeStyle = "rgba(124,92,230,.6)"; x.lineWidth = 1; x.beginPath(); x.arc(n.sx, n.sy, Math.max(1.3, r) + 2.5, 0, Math.PI * 2); x.stroke(); }
-    }
-    if (k > 0.02) {
+    {
       wWant(n);
       if (n.img) {
         const R = r * 2.6 * (n === hov ? 1.15 : 1);
@@ -6606,8 +6613,10 @@ function djRenderMixer() {
 function djMixerView() { const x = document.getElementById("dj-xf"); if (x) x.value = DJ.xf; }
 function djDeckFrame(d) {
   const el = document.querySelector(`.dj-deck[data-d="${d.i}"]`); if (!el) return;
-  const cv = el.querySelector(".dj-wave"), x = cv.getContext("2d"), W = cv.width, H = cv.height, pos = djPos(d);
-  x.clearRect(0, 0, W, H);
+  const cv = el.querySelector(".dj-wave"), W = cv.width, H = cv.height, pos = djPos(d);
+  const key = Math.round(pos / (d.barLen || 1) * 64) + "|" + d.loopA + "|" + d.loopB + "|" + !!d.peaks + "|" + !!d.loading + "|" + d.playing + "|" + d.rate;
+  if (cv.lastKey === key && cv.isConnected) return; cv.lastKey = key;
+  const x = cv.getContext("2d"); x.clearRect(0, 0, W, H);
   if (d.peaks) {
     const tot = d.bars * d.barLen, bw = W / d.peaks.length;
     x.fillStyle = `hsla(${d.hue},45%,50%,.12)`; x.fillRect(d.loopA / tot * W, 0, (d.loopB - d.loopA) / tot * W, H);
