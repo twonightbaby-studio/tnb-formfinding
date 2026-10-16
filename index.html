@@ -5361,7 +5361,7 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 /* Interface */
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
-  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS; document.head.append(css); }
+  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS; document.head.append(css); }
   if (mode === "synthe") {
     p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
@@ -5492,10 +5492,11 @@ const SY_VIBES = {
 const SY = Object.assign({ bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [], vibe: "Éthéré", sel: 0 }, store.get("atelier-synthe", null) || {});
 if (!SY.tracks.length) syLoadVibe("Éthéré", false);
 function syLoadVibe(name, ui = true) {
-  const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0 });
+  const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0, parent: null, from: null });
+  if (ui && typeof prRender === "function") prRender();
   sySave(); if (ui) syRender();
 }
-function sySave() { clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe }), 300); }
+function sySave() { clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null }), 300); }
 
 /* Chaîne d'effets par piste : drive → filtre → volume → (sortie + espace) */
 function syChain(i) {
@@ -5635,6 +5636,7 @@ function wPSynth(host) {
   ks.onchange = () => { SY.key = +ks.value; sySave(); uisClick(); }; ps.onchange = () => { SY.prog = ps.value; sySave(); uisClick(); };
   host.querySelector("#sy-mut").onclick = () => { uisChime(5, 0.5); syMutate(); };
   host.querySelector("#sy-add").onclick = () => { if (SY.tracks.length >= 10) return; const pool = Object.keys(SY_INST); SY.tracks.push(syTrack(pool[Math.floor(Math.random() * pool.length)], new Array(16).fill(0))); syRoll(SY.tracks[SY.tracks.length - 1]); uisPlop(); sySave(); syRender(); };
+  const pr = document.createElement("div"); pr.className = "sy-prods sp-card"; pr.id = "sy-prods"; host.querySelector(".sy").append(pr); prRender(); prLoad(true);
   syKnob(host.querySelector('[data-g="bpm"]'), () => (SY.bpm - 60) / 120, v => { SY.bpm = Math.round(60 + v * 120); sySave(); }, () => `${SY.bpm} bpm`);
   syKnob(host.querySelector('[data-g="swing"]'), () => SY.swing / 0.6, v => { SY.swing = +(v * 0.6).toFixed(2); sySave(); }, () => `swing ${Math.round(SY.swing / 0.6 * 100)} %`);
   syRender();
@@ -5757,6 +5759,137 @@ const SY_CSS = `
   .sy-st { height: 30px; border-radius: 6px; } .sy-steps { gap: 3px; }
   .sy-knobs { justify-content: space-between; }
 }`;
+
+/* PRODS */
+/* ---------- Prods partagées : chacun publie sa prod, tout le monde l'écoute et la remixe ---------- */
+// Une prod n'est pas un fichier audio : c'est sa recette (sons, pas, boutons), quelques Ko, rejouée par le synthé de chacun.
+const PR = { list: [], tab: "recent", loading: false, err: "", t: 0, backup: null, form: false };
+const prDb = () => (typeof sb !== "undefined" && sb) ? sb : null;
+const prMe = () => (typeof me !== "undefined" ? me : null);
+function syRecipe() {
+  return { v: 1, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, vibe: SY.vibe,
+    tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? { v: s.v, d: s.d || 0 } : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3) })) };
+}
+function prValid(r) {
+  if (!r || !Array.isArray(r.tracks) || !r.tracks.length || r.tracks.length > 10 || !SY_PROGS[r.prog]) return null;
+  const n = (x, a, b, d) => Number.isFinite(+x) ? Math.min(b, Math.max(a, +x)) : d;
+  const tracks = r.tracks.filter(T => T && SY_INST[T.inst] && Array.isArray(T.steps) && T.steps.length === 16).map(T => ({
+    inst: T.inst, mute: !!T.mute, vol: n(T.vol, 0, 1, 0.8), tone: n(T.tone, 0, 1, 0.6), drive: n(T.drive, 0, 1, 0.15), space: n(T.space, 0, 1, 0.3), move: n(T.move, 0, 1, 0.5),
+    steps: T.steps.map(s => s ? { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 } : 0) }));
+  return tracks.length ? { bpm: n(r.bpm, 60, 180, 90) | 0, swing: n(r.swing, 0, 0.6, 0), key: n(r.key, 0, 11, 5) | 0, prog: r.prog, vibe: String(r.vibe || "").slice(0, 30), tracks } : null;
+}
+async function prLoad(force = false) {
+  const db = prDb(); if (!db || PR.loading || (!force && Date.now() - PR.t < 20000)) return;
+  PR.loading = true; PR.err = "";
+  try {
+    const { data, error } = await db.from("atelier_prods").select("id,user_id,author,title,recipe,parent,created_at,atelier_prod_likes(user_id)").order("created_at", { ascending: false }).limit(200);
+    if (error) throw error;
+    PR.list = (data || []).map(p => ({ ...p, likes: new Set((p.atelier_prod_likes || []).map(l => l.user_id)) })); PR.t = Date.now();
+  } catch (e) { PR.err = "Impossible de charger les prods (connexion ?)."; }
+  PR.loading = false; prRender();
+}
+function prAuthorDefault() { const saved = store.get("atelier-pseudo", ""); if (saved) return saved; const n = (typeof myName !== "undefined" && myName) || ""; return n.split("@")[0].slice(0, 30); }
+async function prPublish(title, author) {
+  const db = prDb(), uid = prMe(); if (!db || !uid) return;
+  store.set("atelier-pseudo", author);
+  const { data, error } = await db.from("atelier_prods").insert({ user_id: uid, author, title, recipe: syRecipe(), parent: SY.parent || null }).select("id").single();
+  if (error) { wToast("Publication impossible, réessaie dans un instant"); uisNo(); return; }
+  SY.published = data.id; PR.form = false; uisYes(); wToast("Prod publiée ✓"); prLoad(true);
+}
+async function prLike(p) {
+  const db = prDb(), uid = prMe(); if (!db) return;
+  if (!uid) { wToast("Connecte-toi pour aimer une prod"); return; }
+  const had = p.likes.has(uid);
+  had ? p.likes.delete(uid) : p.likes.add(uid); prRender(); had ? uisSwitch(false) : uisChime(7, 0.6);
+  const q = had ? db.from("atelier_prod_likes").delete().eq("prod_id", p.id).eq("user_id", uid) : db.from("atelier_prod_likes").insert({ prod_id: p.id, user_id: uid });
+  const { error } = await q; if (error) { had ? p.likes.add(uid) : p.likes.delete(uid); prRender(); }
+}
+async function prDelete(p) {
+  const db = prDb(); if (!db) return;
+  const { error } = await db.from("atelier_prods").delete().eq("id", p.id);
+  if (error) { wToast("Suppression impossible"); return; }
+  PR.list = PR.list.filter(x => x !== p); uisNo(); prRender();
+}
+function prOpen(p, play) {
+  const r = prValid(p.recipe); if (!r) { wToast("Cette prod est illisible"); return; }
+  if (!PR.backup) PR.backup = JSON.parse(JSON.stringify(syRecipe()));
+  const was = !!SY.playing; if (was) syRun(false);
+  Object.assign(SY, r, { parent: p.id, from: p.title + " · " + p.author, ch: [] }); sySave(); syRender(); syTopSync();
+  if (play || was) syRun(true);
+  prRender(); uisSwoosh(true, 0.4); wToast(`« ${p.title} » chargée : bidouille-la, puis publie ton remix`);
+  const host = document.getElementById("sy-host"); if (host) host.scrollTo({ top: 0, behavior: "smooth" });
+}
+function prRestore() {
+  if (!PR.backup) return; const r = prValid(PR.backup); PR.backup = null; if (!r) return;
+  const was = !!SY.playing; if (was) syRun(false);
+  Object.assign(SY, r, { parent: null, from: null, ch: [] }); sySave(); syRender(); syTopSync(); prRender(); if (was) syRun(true); uisSwitch(false);
+}
+function syTopSync() {
+  const ks = document.getElementById("sy-key"), ps = document.getElementById("sy-prog"); if (ks) ks.value = SY.key; if (ps) ps.value = SY.prog;
+  document.querySelectorAll(".sy-top .sy-knob-w").forEach(w => w.redraw && w.redraw());
+  document.querySelectorAll("#sy-vibes .w-chip").forEach(b => b.setAttribute("aria-pressed", b.textContent === SY.vibe));
+}
+function prMini(r) {                 // petite partition : une ligne par piste
+  const c = document.createElement("canvas"), W = 160, H = 64; c.width = W * 2; c.height = H * 2; c.className = "pr-mini";
+  const x = c.getContext("2d"); x.scale(2, 2); const rows = r.tracks.length, rh = H / rows;
+  r.tracks.forEach((T, i) => T.steps.forEach((s, j) => { if (!s) return; x.fillStyle = `hsl(${SY_INST[T.inst].hue},45%,${T.mute ? 80 : 50}%)`; x.fillRect(j * W / 16 + 1, i * rh + 1, W / 16 - 2, rh - 2); }));
+  return c;
+}
+function prRender() {
+  const box = document.getElementById("sy-prods"); if (!box) return;
+  const db = prDb(), uid = prMe();
+  if (!db) { box.innerHTML = `<div class="w-sec">Prods de la communauté</div><p class="sp-hint">La publication se fait sur le site en ligne (twonightbaby-studio.github.io/tnb-formfinding), avec ton compte.</p>`; return; }
+  let list = PR.list.slice();
+  if (PR.tab === "aimees") list.sort((a, b) => b.likes.size - a.likes.size || (b.created_at > a.created_at ? 1 : -1));
+  if (PR.tab === "miennes") list = list.filter(p => p.user_id === uid);
+  const tabs = [["recent", "Récentes"], ["aimees", "Les plus aimées"], ["miennes", "Mes prods"]];
+  box.innerHTML = `<div class="pr-head"><div class="w-sec" style="margin:0">Prods de la communauté <span>${PR.list.length}</span></div>
+    <div class="pr-tabs">${tabs.map(([k, l]) => `<button class="w-chip" data-tab="${k}" aria-pressed="${PR.tab === k}">${l}</button>`).join("")}</div>
+    <div class="pr-act">${PR.backup ? `<button class="w-pill w-glass-ui" id="pr-back">↶ Revenir à ma prod</button>` : ""}<button class="w-pill dark" id="pr-pub">${uid ? "Publier ma prod" : "Se connecter pour publier"}</button></div></div>
+    ${SY.from ? `<p class="sp-hint">Tu remixes « ${SY.from.replace(/</g, "&lt;")} ». Ta version sera reliée à l'originale.</p>` : ""}
+    <form class="pr-form" id="pr-form" ${PR.form && uid ? "" : "hidden"}><input class="w-in" name="title" maxlength="60" placeholder="Titre de la prod" required><input class="w-in" name="author" maxlength="40" placeholder="Ton pseudo" required><button class="w-pill dark" type="submit">Publier</button><span class="sp-hint">Visible par toutes les personnes qui ont accès au site, avec ton pseudo.</span></form>
+    ${PR.err ? `<p class="sp-hint">${PR.err}</p>` : ""}
+    <div class="pr-list" id="pr-list"></div>`;
+  box.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { PR.tab = b.dataset.tab; uisClick(); prRender(); });
+  const back = box.querySelector("#pr-back"); if (back) back.onclick = prRestore;
+  const form = box.querySelector("#pr-form");
+  form.author.value = prAuthorDefault(); form.title.value = SY.from ? "remix · " + SY.from.split(" · ")[0].slice(0, 50) : "";
+  box.querySelector("#pr-pub").onclick = () => { uisClick(); if (!uid) { wToggleSheet("w-pop"); return; } PR.form = !PR.form; form.hidden = !PR.form; if (PR.form) form.title.focus(); };
+  form.onsubmit = e => { e.preventDefault(); const t = form.title.value.trim(), a = form.author.value.trim(); if (t && a) { form.querySelector("button").disabled = true; prPublish(t, a); } };
+  const ul = box.querySelector("#pr-list");
+  if (!list.length) { ul.innerHTML = `<p class="sp-hint">${PR.loading ? "Chargement…" : PR.tab === "miennes" ? "Tu n'as encore rien publié." : "Aucune prod pour l'instant : sois la première personne à publier."}</p>`; return; }
+  for (const p of list.slice(0, 60)) {
+    const r = prValid(p.recipe); if (!r) continue;
+    const parent = p.parent && PR.list.find(x => x.id === p.parent);
+    const remixes = PR.list.filter(x => x.parent === p.id).length;
+    const card = document.createElement("div"); card.className = "pr-card" + (SY.parent === p.id ? " on" : "");
+    card.append(prMini(r));
+    const info = document.createElement("div"); info.className = "pr-info";
+    info.innerHTML = `<b></b><span class="pr-by"></span><span class="pr-meta">${r.bpm} bpm · ${SY_KEYS[r.key]} m · ${r.tracks.length} pistes${remixes ? ` · ${remixes} remix` : ""}</span>`;
+    info.querySelector("b").textContent = p.title; info.querySelector(".pr-by").textContent = "par " + p.author + (parent ? " · remix de « " + parent.title + " »" : "");
+    card.append(info);
+    const acts = document.createElement("div"); acts.className = "pr-btns";
+    acts.innerHTML = `<button class="sy-mini pr-play" title="Écouter">▶</button><button class="w-chip pr-like" aria-pressed="${!!uid && p.likes.has(uid)}">♥ ${p.likes.size}</button><button class="w-chip pr-remix">Remixer</button>${p.user_id === uid || (typeof isOwner !== "undefined" && isOwner) ? `<button class="sy-mini pr-del" title="Supprimer">✕</button>` : ""}`;
+    acts.querySelector(".pr-play").onclick = () => { uisClick(); prOpen(p, true); };
+    acts.querySelector(".pr-remix").onclick = () => { uisClick(); prOpen(p, false); };
+    acts.querySelector(".pr-like").onclick = () => prLike(p);
+    const del = acts.querySelector(".pr-del"); if (del) { let armed = false; del.onclick = () => { if (!armed) { armed = true; del.textContent = "?"; del.title = "Toucher encore pour supprimer"; setTimeout(() => { armed = false; del.textContent = "✕"; }, 2500); return; } prDelete(p); }; }
+    card.append(acts); ul.append(card);
+  }
+}
+const PR_CSS = `
+.sy-prods { flex-direction: column; gap: 12px; }
+.pr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.pr-tabs, .pr-act { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .pr-form .w-in { flex: 1 1 180px; }
+.pr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.pr-card { display: grid; grid-template-columns: 96px 1fr; grid-template-rows: auto auto; gap: 6px 12px; padding: 10px; border-radius: 18px; background: rgba(255,255,255,.7); border: 1px solid rgba(27,29,34,.06); }
+.pr-card.on { box-shadow: 0 0 0 1.5px rgba(124,92,230,.7); }
+.pr-mini { width: 96px; height: 38px; grid-row: span 2; align-self: center; border-radius: 8px; background: rgba(27,29,34,.04); }
+.pr-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .pr-info b { font-weight: 400; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-by, .pr-meta { font-size: 10px; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-btns { display: flex; gap: 6px; align-items: center; } .pr-btns .w-chip { padding: 5px 10px; }
+@media (max-width: 900px) { .pr-list { grid-template-columns: 1fr; } }`;
 
 const spBpmLabel = () => { const e = document.getElementById("sp-bpm"); if (e) e.textContent = `${spBpm()} bpm · fa mineur`; };
 function spImport(file, i) {
