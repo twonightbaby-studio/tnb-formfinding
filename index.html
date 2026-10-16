@@ -4406,7 +4406,7 @@ function worldBuild() {
   css.textContent = `
 body.world > header.top, body.world > .drawer, body.world > main, body.world > nav.dock, body.world #drawer-left, body.world #drawer-right { display: none !important; }
 body.world { overflow: hidden; }
-#world { position: fixed; inset: 0; z-index: 10; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; font-family: var(--f-accent); color: #1b1d22;
+#world { position: fixed; inset: 0; z-index: 10; overflow: hidden; user-select: none; -webkit-user-select: none; font-family: var(--f-accent); color: #1b1d22;
   background: radial-gradient(1100px 800px at 28% 18%, #fbf8ff 0%, transparent 60%), radial-gradient(900px 700px at 82% 78%, #eef5ff 0%, transparent 60%), radial-gradient(700px 600px at 70% 10%, #fff3f8 0%, transparent 60%), #eceef3; }
 #world[hidden] { display: none; }
 #w-cv { position: absolute; inset: 0; width: 100%; height: 100%; transition: filter .6s ease, opacity .6s ease; cursor: grab; }
@@ -4421,7 +4421,8 @@ body.world { overflow: hidden; }
 #w-panel { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .45s ease; }
 #world.focus #w-panel { opacity: 1; }
 #world.focus #w-panel .w-live { pointer-events: auto; }
-.w-scroll { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+#w-cv { touch-action: none; }
+.w-scroll { touch-action: pan-y; -webkit-overflow-scrolling: touch; position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .w-scroll::-webkit-scrollbar { display: none; }
 .w-head { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: 18px 22px; z-index: 3; pointer-events: none; }
 .w-head > * { pointer-events: auto; }
