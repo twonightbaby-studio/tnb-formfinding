@@ -4383,6 +4383,7 @@ const W_ISLANDS = [
   { k: "sampler", lab: "Sampler", r: 280, note: 51, a: [-1.25, -0.1], p: [-0.62, -1.05] },
   { k: "labo", lab: "Labo", r: 260, note: 58, a: [-0.62, 0.95], p: [-0.62, 1.05] },
   { k: "diffusion", lab: "Diffusion", r: 260, note: 60, a: [0.62, 0.95], p: [0.62, 1.05] },
+  { k: "dj", lab: "Platines", r: 260, note: 55, a: [-1.3, 0.9], p: [0, 1.8] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4601,7 +4602,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4978,6 +4979,9 @@ function wGlyph(x, k, cx, cy, s) {
     x.fill();
   } else if (k === "diffusion") {
     [[-0.75, -0.6, 0.42, 0.75], [-0.22, -0.45, 0.48, 0.6], [0.36, -0.3, 0.45, 0.45]].forEach(([u, v, w, h]) => x.rect(cx + u * s, cy + v * s, w * s, h * s * 1.6)); x.stroke();
+  } else if (k === "dj") {
+    [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
+    x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
   } else if (k === "admin") {
     [0.45, 0.8, 0.3, 0.62, 0.95].forEach((h, i) => x.rect(cx + (-0.6 + i * 0.27) * s, cy + (0.55 - h) * s, 0.14 * s, h * s)); x.fill();
   }
@@ -5067,9 +5071,10 @@ function wPanel(k) {
   const p = document.getElementById("w-panel");
   if (k === WORLD.panelKey && k) return;
   if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); }
+  if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5246,7 +5251,7 @@ function spAudio() {
   for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
   const rev = c.createConvolver(); rev.buffer = ir; const wet = c.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
   const nb = c.createBuffer(1, c.sampleRate, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  Object.assign(SP, { master, tone, an, dest, rev, wet, noise: nb, fbins: new Uint8Array(an.frequencyBinCount) });
+  Object.assign(SP, { master, tone, an, dest, rev, wet, comp, noise: nb, fbins: new Uint8Array(an.frequencyBinCount) });
   spApplyMood(); return c;
 }
 function spApplyMood() {
@@ -5339,7 +5344,7 @@ function spPlay(on) {
 function spRec() {
   if (SP.rec) return spRecStop();
   const synth = store.get("atelier-sampler-mode", "synthe") === "synthe";
-  if (synth && SY.song && SY.playing) syRun(false);          // la suite s'enregistre depuis le début
+  if (synth) { syExport(16); return; }                       // le synthé s'enregistre en WAV, calculé hors temps réel
   if (synth ? !SY.playing : !SP.playing) synth ? syRun(true) : spPlay(true);
   if (!SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
   const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
@@ -5365,7 +5370,7 @@ function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
   if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS; document.head.append(css); }
   if (mode === "synthe") {
-    p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+    p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button>`)
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
     wPSynth(p.querySelector("#sy-host"));
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
@@ -6027,6 +6032,287 @@ const PR_CSS = `
 .pr-by, .pr-meta { font-size: 10px; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-btns { display: flex; gap: 6px; align-items: center; } .pr-btns .w-chip { padding: 5px 10px; }
 @media (max-width: 900px) { .pr-list { grid-template-columns: 1fr; } }`;
+
+/* DJ */
+/* ---------- Rendu hors-ligne d'une prod (export WAV, platines) ---------- */
+// On rejoue le synthé dans un contexte audio « hors temps réel » : 16 mesures se calculent en quelques secondes.
+async function syOffline(recipe, bars) {
+  const r = prValid(recipe); if (!r) throw new Error("recette illisible");
+  const sr = 44100, sec = 60 / r.bpm / 4, len = bars * 16 * sec, oc = new OfflineAudioContext(2, Math.ceil(sr * (len + 3)), sr);
+  const comp = oc.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.25; comp.connect(oc.destination);
+  const master = oc.createGain(); master.gain.value = 0.8; master.connect(comp);
+  const ilen = (sr * 3.4) | 0, ir = oc.createBuffer(2, ilen, sr);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < ilen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ilen, 2.6); }
+  const rev = oc.createConvolver(); rev.buffer = ir; const wet = oc.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
+  const nb = oc.createBuffer(1, sr, sr), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const KEYS = ["tracks", "loops", "chain", "cur", "song", "bpm", "swing", "key", "prog", "ch", "pl", "pos", "bar", "started", "flash"];
+  const saveSY = {}; KEYS.forEach(k => saveSY[k] = SY[k]);
+  const saveSP = { ctx: SP.ctx, master: SP.master, rev: SP.rev, noise: SP.noise };
+  try {
+    Object.assign(SP, { ctx: oc, master, rev, noise: nb });
+    Object.assign(SY, { tracks: r.tracks, loops: r.loops || [{ name: "A", steps: r.tracks.map(t => t.steps) }], chain: r.chain && r.chain.length ? r.chain : [0], cur: r.cur || 0, song: !!r.song,
+      bpm: r.bpm, swing: r.swing, key: r.key, prog: r.prog, ch: [], pos: 0, pl: 0, bar: 0, started: false, flash: {} });
+    SY.tracks.forEach((T, i) => { T.steps = SY.loops[SY.cur].steps[i]; T.last = null; });
+    for (let b = 0; b < bars; b++) { syAdvance(b === 0); SY.bar = b; for (let s = 0; s < 16; s++) sySchedule(s, 0.02 + (b * 16 + s) * sec); }
+  } finally { Object.assign(SP, saveSP); Object.assign(SY, saveSY); }
+  const buf = await oc.startRendering();
+  return { buf, bpm: r.bpm, bars, barLen: sec * 16 };
+}
+function syWav(buf, upTo) {
+  const n = Math.min(buf.length, upTo ? Math.ceil(upTo * buf.sampleRate) : buf.length), ch = buf.numberOfChannels, data = [];
+  let peak = 0.0001; for (let c = 0; c < ch; c++) { const d = buf.getChannelData(c); data.push(d); for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(d[i])); }
+  const g = Math.min(4, 0.89 / peak), out = new DataView(new ArrayBuffer(44 + n * ch * 2)), w = (o, s) => [...s].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); out.setUint32(4, 36 + n * ch * 2, true); w(8, "WAVE"); w(12, "fmt "); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, buf.sampleRate, true); out.setUint32(28, buf.sampleRate * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, "data"); out.setUint32(40, n * ch * 2, true);
+  let o = 44; for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, data[c][i] * g)); out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }
+  return new Blob([out.buffer], { type: "audio/wav" });
+}
+async function syExport(bars = 16) {
+  const b = document.getElementById("sp-rec"); if (b) { b.textContent = "● calcul…"; b.disabled = true; }
+  try {
+    const R = await syOffline(syRecipe(), bars);
+    offerBlob(syWav(R.buf, R.barLen * bars + 2.5), `prod_tnb_${R.bpm}bpm_${bars}mesures.wav`); uisYes(); wToast(`${bars} mesures enregistrées en WAV`);
+  } catch (e) { wToast("L'enregistrement a échoué"); uisNo(); }
+  if (b) { b.textContent = "● Enregistrer 16 mesures"; b.disabled = false; }
+}
+
+/* ---------- Platines : deux decks, une table de mixage, des transitions ---------- */
+const DJ = { decks: [], xf: 0.5, rec: null, anim: null };
+function djAudio() {
+  if (!spAudio()) return null;
+  if (DJ.bus) return SP.ctx;
+  const c = SP.ctx; DJ.bus = c.createGain(); DJ.bus.gain.value = 0.9; DJ.bus.connect(SP.comp || SP.master);
+  for (let i = 0; i < 2; i++) {
+    const trim = c.createGain(), lo = c.createBiquadFilter(), mid = c.createBiquadFilter(), hi = c.createBiquadFilter(), filt = c.createBiquadFilter(), fader = c.createGain(), xg = c.createGain();
+    lo.type = "lowshelf"; lo.frequency.value = 220; mid.type = "peaking"; mid.frequency.value = 1100; mid.Q.value = 0.8; hi.type = "highshelf"; hi.frequency.value = 3800;
+    filt.type = "allpass";
+    const es = c.createGain(), dl = c.createDelay(4), fb = c.createGain(); es.gain.value = 0; fb.gain.value = 0.5;
+    trim.connect(lo); lo.connect(mid); mid.connect(hi); hi.connect(filt); filt.connect(fader); filt.connect(es); es.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(fader);
+    fader.connect(xg); xg.connect(DJ.bus);
+    const d0 = DJ.decks[i] || (DJ.decks[i] = { i }), def = { i, buf: null, bpm: 120, barLen: 2, bars: 8, rate: 1, playing: false, off: 0, t0: 0, src: null, loopA: 0, loopB: 0, eq: { hi: 0.5, mid: 0.5, lo: 0.5 }, fk: 0.5, vol: 0.85, title: "", echo: false };
+    for (const k in def) if (d0[k] === undefined) d0[k] = def[k];
+    Object.assign(d0, { trim, lo, mid, hi, filt, fader, xg, es, dl, fb });
+    djEq(DJ.decks[i]); djFilter(DJ.decks[i]); fader.gain.value = DJ.decks[i].vol;
+  }
+  djXf(DJ.xf); return c;
+}
+const djDb = v => v < 0.5 ? -40 * Math.pow(1 - v * 2, 1.6) : (v - 0.5) * 12;       // bouton EQ : coupé ↔ 0 dB ↔ +6 dB
+function djEq(d) { const t = SP.ctx.currentTime; d.hi.gain.setTargetAtTime(djDb(d.eq.hi), t, 0.02); d.mid.gain.setTargetAtTime(djDb(d.eq.mid), t, 0.02); d.lo.gain.setTargetAtTime(djDb(d.eq.lo), t, 0.02); }
+function djFilter(d) {
+  const v = d.fk, f = d.filt, t = SP.ctx.currentTime;
+  if (Math.abs(v - 0.5) < 0.03) { f.type = "allpass"; return; }
+  if (v < 0.5) { f.type = "lowpass"; f.frequency.setTargetAtTime(180 * Math.pow(2, (v / 0.5) * 6.8), t, 0.03); f.Q.value = 1.4; }
+  else { f.type = "highpass"; f.frequency.setTargetAtTime(30 * Math.pow(2, ((v - 0.5) / 0.5) * 7.2), t, 0.03); f.Q.value = 1.4; }
+}
+function djXf(x) { DJ.xf = x; const t = SP.ctx.currentTime; DJ.decks[0].xg.gain.setTargetAtTime(Math.cos(x * Math.PI / 2), t, 0.015); DJ.decks[1].xg.gain.setTargetAtTime(Math.sin(x * Math.PI / 2), t, 0.015); }
+function djPos(d) {
+  if (!d.buf) return 0; if (!d.playing) return d.off;
+  let p = d.off + Math.max(0, SP.ctx.currentTime - d.t0) * d.rate;
+  if (p > d.loopB) p = d.loopA + ((p - d.loopA) % (d.loopB - d.loopA));
+  return p;
+}
+function djStart(d, offset, when = 0) {
+  const c = SP.ctx; djStop(d, true);
+  const s = c.createBufferSource(); s.buffer = d.buf; s.loop = true; s.loopStart = d.loopA; s.loopEnd = d.loopB; s.playbackRate.value = d.rate; s.connect(d.trim);
+  const at = Math.max(c.currentTime + 0.01, when || 0); s.start(at, Math.max(0, Math.min(offset, d.loopB - 0.01)));
+  Object.assign(d, { src: s, playing: true, off: offset, t0: at });
+}
+function djStop(d, keep) { if (d.src) { try { d.src.stop(); } catch {} d.src.disconnect(); d.src = null; } if (!keep) { d.off = djPos(d); d.playing = false; } }
+function djRebase(d) { if (!d.playing) return; d.off = djPos(d); d.t0 = SP.ctx.currentTime; }
+function djSetRate(d, r) { djRebase(d); d.rate = Math.max(0.5, Math.min(2, r)); if (d.src) d.src.playbackRate.setTargetAtTime(d.rate, SP.ctx.currentTime, 0.01); }
+function djSetLoop(d, bars) {
+  djRebase(d); const p = djPos(d);
+  if (!bars) { d.loopA = 0; d.loopB = d.bars * d.barLen; }
+  else { const a = Math.floor(p / d.barLen) * d.barLen; d.loopA = Math.min(a, d.bars * d.barLen - bars * d.barLen); d.loopA = Math.max(0, d.loopA); d.loopB = d.loopA + bars * d.barLen; }
+  if (d.src) { d.src.loopStart = d.loopA; d.src.loopEnd = d.loopB; }
+  if (d.playing && (p < d.loopA || p > d.loopB)) djStart(d, d.loopA);
+}
+const djOther = d => DJ.decks[1 - d.i];
+// tempo à appliquer pour se caler sur l'autre : on accepte le double / la moitié (150 bpm se cale sur 75)
+function djRatio(o, d) { let r = o.bpm * o.rate / d.bpm; while (r < 0.72) r *= 2; while (r > 1.45) r /= 2; return Math.max(0.5, Math.min(2, r)); }
+function djSync(d) {             // même tempo et même temps que l'autre platine
+  const o = djOther(d); if (!o.buf) return;
+  djSetRate(d, djRatio(o, d));
+  if (d.playing && o.playing) { const ph = (djPos(o) - o.loopA) / o.barLen % 1, base = Math.floor((djPos(d) - d.loopA) / d.barLen) * d.barLen + d.loopA; djStart(d, base + ph * d.barLen); }
+  d.synced = true;
+}
+function djPlay(d) {             // calé sur la prochaine mesure de l'autre platine si elle joue
+  if (!d.buf) return;
+  if (d.playing) { djStop(d); return; }
+  const o = djOther(d);
+  if (o.playing && o.buf) {
+    if (d.synced !== false) d.rate = djRatio(o, d);
+    const ph = ((djPos(o) - o.loopA) / o.barLen) % 1, wait = (1 - ph) * o.barLen / o.rate;
+    const off = Math.floor(d.off / d.barLen) * d.barLen;
+    djStart(d, off, SP.ctx.currentTime + wait);
+  } else djStart(d, d.off);
+}
+async function djLoadDeck(d, recipe, title) {
+  djAudio(); d.loading = true; d.title = title; djRenderDeck(d);
+  try {
+    const r = prValid(recipe); const bars = r && r.song && r.chain ? Math.min(64, r.chain.length) : 8;
+    const R = await syOffline(recipe, bars);
+    const was = d.playing; djStop(d);
+    Object.assign(d, { buf: R.buf, bpm: R.bpm, bars, barLen: R.barLen, rate: 1, off: 0, loopA: 0, loopB: bars * R.barLen, loading: false, peaks: djPeaks(R.buf, bars * R.barLen), synced: true, hue: ((hash01(title.length * 97 + bars) * 120) + (d.i ? 180 : 280)) % 360 | 0 });
+    uisChime(d.i * 3 + 2, 0.5); if (was) djPlay(d);
+  } catch (e) { d.loading = false; wToast("Ce son n'a pas pu être préparé"); }
+  djRenderDeck(d);
+}
+function djPeaks(buf, len) {
+  const n = 480, d = buf.getChannelData(0), per = Math.floor(Math.min(buf.length, len * buf.sampleRate) / n), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let m = 0; for (let j = i * per; j < (i + 1) * per; j += 4) m = Math.max(m, Math.abs(d[j])); out[i] = m; }
+  const mx = Math.max(...out) || 1; return out.map(v => v / mx);
+}
+// Transitions automatiques
+function djAuto(kind) {
+  if (DJ.anim) { cancelAnimationFrame(DJ.anim); DJ.anim = null; }
+  const from = DJ.xf <= 0.5 ? DJ.decks[0] : DJ.decks[1], to = djOther(from);
+  if (!to.buf) { wToast("Charge un son sur l'autre platine"); return; }
+  if (!from.playing && !to.playing) { djPlay(to); djXfTo(to.i ? 1 : 0, 0.3); return; }
+  if (!to.playing) djPlay(to);
+  const startAt = to.t0, beatsTo = to.i ? 1 : 0, ctx = SP.ctx;
+  if (kind === "fondu") {
+    const dur = 8 * to.barLen / to.rate, x0 = DJ.xf;
+    to.eq.lo = 0; djEq(to);
+    const step = () => {
+      const k = Math.min(1, Math.max(0, (ctx.currentTime - startAt) / dur));
+      djXf(x0 + (beatsTo - x0) * k);
+      if (k > 0.5 && to.eq.lo === 0) { to.eq.lo = 0.5; from.eq.lo = 0; djEq(to); djEq(from); djRenderDeck(to); djRenderDeck(from); }
+      djMixerView();
+      if (k < 1) DJ.anim = requestAnimationFrame(step); else { DJ.anim = null; djStop(from); from.eq.lo = 0.5; djEq(from); djRenderDeck(from); }
+    };
+    DJ.anim = requestAnimationFrame(step); uisSwoosh(true, 0.6); wToast("Fondu sur 8 mesures, échange des basses à mi-chemin");
+  } else if (kind === "basses") {
+    const t = Math.max(0, startAt - ctx.currentTime) * 1000;
+    setTimeout(() => { from.eq.lo = 0; to.eq.lo = 0.5; djEq(from); djEq(to); djXf(0.5); djMixerView(); djRenderDeck(from); djRenderDeck(to); uisClick(); }, t);
+    wToast("Les basses changent de platine à la prochaine mesure");
+  } else if (kind === "echo") {
+    const t = Math.max(0, startAt - ctx.currentTime) * 1000;
+    from.dl.delayTime.value = Math.min(4, from.barLen / from.rate * 3 / 16); from.fb.gain.value = 0.62; from.es.gain.setTargetAtTime(1, ctx.currentTime, 0.05); from.echo = true;
+    setTimeout(() => { djStop(from); djXf(beatsTo); djMixerView(); from.es.gain.setTargetAtTime(0, SP.ctx.currentTime + 3, 0.6); setTimeout(() => { from.echo = false; djRenderDeck(from); }, 3500); djRenderDeck(from); }, t);
+    wToast("Écho sur la sortie, coupe nette à la prochaine mesure");
+  }
+}
+function djXfTo(x, s) { const x0 = DJ.xf, t0 = performance.now(); const st = n => { const k = Math.min(1, (n - t0) / (s * 1000)); djXf(x0 + (x - x0) * k); djMixerView(); if (k < 1) requestAnimationFrame(st); }; requestAnimationFrame(st); }
+function djRec() {
+  const b = document.getElementById("dj-rec");
+  if (DJ.rec) { try { DJ.rec.stop(); } catch {} DJ.rec = null; if (b) { b.textContent = "● Enregistrer le mix"; b.setAttribute("aria-pressed", false); } return; }
+  if (!djAudio() || !SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
+  const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(SP.dest.stream, type ? { mimeType: type } : undefined), chunks = [];
+  r.ondataavailable = e => e.data.size && chunks.push(e.data);
+  r.onstop = () => offerBlob(new Blob(chunks, { type: r.mimeType || "audio/webm" }), `mix_tnb.${(r.mimeType || "").includes("mp4") ? "m4a" : "webm"}`);
+  r.start(); DJ.rec = r; if (b) { b.textContent = "■ Arrêter et garder"; b.setAttribute("aria-pressed", true); }
+}
+
+/* Interface des platines */
+function wPDJ(p) {
+  if (!document.getElementById("dj-css")) { const css = document.createElement("style"); css.id = "dj-css"; css.textContent = DJ_CSS + (typeof SY_CSS !== "undefined" ? SY_CSS : ""); document.head.append(css); }
+  p.innerHTML = wHead("Platines · mixe les prods", `<button class="w-pill w-glass-ui w-live" id="dj-rec" aria-pressed="${!!DJ.rec}">${DJ.rec ? "■ Arrêter et garder" : "● Enregistrer le mix"}</button>`)
+    + `<div class="w-scroll w-live"><div class="dj">
+      <section class="dj-deck sp-card" data-d="0"></section>
+      <section class="dj-mix sp-card" id="dj-mix"></section>
+      <section class="dj-deck sp-card" data-d="1"></section>
+      <p class="sp-hint dj-help">Charge une prod sur chaque platine. ▶ démarre calé sur la mesure de l'autre. SYNC aligne le tempo. Les boutons de boucle (1, 2, 4) bouclent la mesure en cours. Le filtre : à gauche ça étouffe, à droite ça s'amincit. Les transitions automatiques font le travail en rythme.</p>
+    </div></div>`;
+  p.querySelector("#dj-rec").onclick = () => { uisClick(); djRec(); };
+  if (!DJ.decks.length) DJ.decks = [{ i: 0, eq: { hi: 0.5, mid: 0.5, lo: 0.5 }, fk: 0.5, vol: 0.85 }, { i: 1, eq: { hi: 0.5, mid: 0.5, lo: 0.5 }, fk: 0.5, vol: 0.85 }];
+  DJ.decks.forEach(djRenderDeck); djRenderMixer();
+  if (typeof prLoad === "function") prLoad(false);
+  const loop = () => { if (WORLD.panelKey !== "dj" || !p.isConnected) return; requestAnimationFrame(loop); DJ.decks.forEach(djDeckFrame); };
+  requestAnimationFrame(loop);
+}
+function djRenderDeck(d) {
+  const el = document.querySelector(`.dj-deck[data-d="${d.i}"]`); if (!el) return;
+  el.style.setProperty("--h", d.hue ?? (d.i ? 200 : 300));
+  el.innerHTML = `<div class="dj-top"><span class="dj-tag">${d.i ? "B" : "A"}</span><button class="dj-load w-chip">${d.loading ? "préparation…" : d.title ? "⇄ " + d.title.replace(/</g, "&lt;") : "Choisir un son"}</button></div>
+    <canvas class="dj-wave" width="960" height="120"></canvas>
+    <div class="dj-mid"><div class="dj-plat"><div class="dj-vinyl"><i></i></div></div>
+      <div class="dj-side"><div class="dj-bpm">${d.buf ? (d.bpm * d.rate).toFixed(1) : "—"}<small> bpm</small></div>
+        <input class="w-range dj-tempo" type="range" min="-0.12" max="0.12" step="0.001" value="${(d.rate || 1) - 1}" ${d.buf ? "" : "disabled"} aria-label="Tempo">
+        <div class="dj-btns"><button class="w-pill dark dj-play">${d.playing ? "❚❚" : "▶"}</button><button class="w-chip dj-cue">CUE</button><button class="w-chip dj-sync" aria-pressed="${!!d.synced}">SYNC</button></div>
+        <div class="dj-btns">${[1, 2, 4].map(n => `<button class="w-chip dj-loop" data-n="${n}" aria-pressed="${d.buf && d.loopB - d.loopA === n * d.barLen}">${n}</button>`).join("")}<button class="w-chip dj-loop" data-n="0" aria-pressed="${d.buf && d.loopA === 0 && d.loopB === d.bars * d.barLen}">tout</button><button class="w-chip dj-echo" aria-pressed="${!!d.echo}">Écho</button></div>
+      </div></div>
+    <div class="dj-pick" hidden></div>`;
+  const q = s => el.querySelector(s);
+  q(".dj-load").onclick = () => djPicker(d, el);
+  q(".dj-play").onclick = () => { if (!d.buf) return djPicker(d, el); djAudio(); uisClick(); djPlay(d); djRenderDeck(d); };
+  q(".dj-cue").onclick = () => { if (!d.buf) return; uisClick(); if (d.playing) djStart(d, d.loopA); else d.off = d.loopA; };
+  q(".dj-sync").onclick = () => { if (!d.buf) return; uisSwitch(true); djSync(d); djRenderDeck(d); };
+  el.querySelectorAll(".dj-loop").forEach(b => b.onclick = () => { if (!d.buf) return; uisClick(); djSetLoop(d, +b.dataset.n); djRenderDeck(d); });
+  q(".dj-echo").onclick = () => { if (!d.buf) return; d.echo = !d.echo; d.dl.delayTime.value = Math.min(4, d.barLen / d.rate * 3 / 16); d.fb.gain.value = 0.5; d.es.gain.setTargetAtTime(d.echo ? 0.8 : 0, SP.ctx.currentTime, 0.05); uisSwitch(d.echo); djRenderDeck(d); };
+  q(".dj-tempo").oninput = e => { d.synced = false; djSetRate(d, 1 + +e.target.value); q(".dj-bpm").firstChild.textContent = (d.bpm * d.rate).toFixed(1); q(".dj-sync").setAttribute("aria-pressed", false); };
+  // la galette : la tourner accélère ou freine un instant (pour caler à l'oreille)
+  const plat = q(".dj-plat"); let drag = null;
+  plat.addEventListener("pointerdown", e => { if (!d.playing) return; e.preventDefault(); drag = { x: e.clientX, r: d.rate }; try { plat.setPointerCapture(e.pointerId); } catch {} });
+  plat.addEventListener("pointermove", e => { if (!drag) return; const v = Math.max(-0.25, Math.min(0.25, (e.clientX - drag.x) / 300)); djSetRate(d, drag.r * (1 + v)); });
+  const up = () => { if (!drag) return; djSetRate(d, drag.r); drag = null; }; plat.addEventListener("pointerup", up); plat.addEventListener("pointercancel", up);
+  // cliquer dans l'onde = aller à cette mesure
+  q(".dj-wave").onclick = e => { if (!d.buf) return; const r = e.currentTarget.getBoundingClientRect(), bar = Math.floor((e.clientX - r.left) / r.width * d.bars), off = bar * d.barLen; uisClick(); if (d.playing) djStart(d, Math.max(d.loopA, Math.min(off, d.loopB - d.barLen))); else d.off = off; };
+}
+function djPicker(d, el) {
+  const pk = el.querySelector(".dj-pick"); if (!pk.hidden) { pk.hidden = true; return; }
+  uisClick();
+  const items = [{ t: "Ma prod en cours", r: () => syRecipe() }, ...(typeof PR !== "undefined" ? PR.list : []).filter(x => prValid(x.recipe)).slice(0, 40).map(x => ({ t: x.title + " · " + x.author, r: () => x.recipe }))];
+  pk.innerHTML = `<div class="w-sec">Choisir un son</div>` + items.map((it, k) => `<button class="w-chip" data-k="${k}">${it.t.replace(/</g, "&lt;")}</button>`).join("") + (items.length < 2 ? `<p class="sp-hint">Les prods publiées dans le Synthé apparaissent ici.</p>` : "");
+  pk.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { const it = items[+b.dataset.k]; pk.hidden = true; djLoadDeck(d, it.r(), it.t); });
+  pk.hidden = false;
+}
+function djRenderMixer() {
+  const el = document.getElementById("dj-mix"); if (!el) return;
+  el.innerHTML = `<div class="dj-ch">${[0, 1].map(i => `<div class="dj-strip" style="--h:${i ? 200 : 300}"><span class="dj-tag">${i ? "B" : "A"}</span>
+      ${[["hi", "Aigu"], ["mid", "Médium"], ["lo", "Grave"]].map(([k, l]) => `<div class="sy-knob-w" data-d="${i}" data-eq="${k}"><div class="sy-knob" tabindex="0"></div><span>${l}</span></div>`).join("")}
+      <div class="sy-knob-w" data-d="${i}" data-f="1"><div class="sy-knob" tabindex="0"></div><span>Filtre</span></div>
+      <div class="dj-volw"><input class="w-range dj-vol" type="range" min="0" max="1" step="0.01" value="${DJ.decks[i].vol ?? 0.85}" data-d="${i}" aria-label="Volume ${i ? "B" : "A"}"></div><span style="font-size:9px;opacity:.7">Volume</span></div>`).join("")}</div>
+    <div class="dj-xf"><span>A</span><input class="w-range" id="dj-xf" type="range" min="0" max="1" step="0.005" value="${DJ.xf}" aria-label="Crossfader"><span>B</span></div>
+    <div class="w-sec">Transitions</div>
+    <div class="dj-btns"><button class="w-chip" data-t="fondu">Fondu 8 mesures</button><button class="w-chip" data-t="basses">Échange des basses</button><button class="w-chip" data-t="echo">Sortie en écho</button></div>`;
+  el.querySelectorAll("[data-eq]").forEach(w => { const d = () => DJ.decks[+w.dataset.d], k = w.dataset.eq; syKnob(w, () => d().eq[k], v => { d().eq[k] = v; if (SP.ctx && d().lo) djEq(d()); }, () => ({ hi: "Aigu", mid: "Médium", lo: "Grave" })[k], 0.5); });
+  el.querySelectorAll("[data-f]").forEach(w => { const d = () => DJ.decks[+w.dataset.d]; syKnob(w, () => d().fk, v => { d().fk = v; if (SP.ctx && d().filt) djFilter(d()); }, () => d().fk < 0.47 ? "Étouffé" : d().fk > 0.53 ? "Aminci" : "Filtre", 0.5); });
+  el.querySelectorAll(".dj-vol").forEach(r => r.oninput = () => { const d = DJ.decks[+r.dataset.d]; d.vol = +r.value; if (d.fader) d.fader.gain.setTargetAtTime(d.vol, SP.ctx.currentTime, 0.02); });
+  el.querySelector("#dj-xf").oninput = e => { if (!djAudio()) return; djXf(+e.target.value); };
+  el.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { if (!djAudio()) return; uisClick(); djAuto(b.dataset.t); });
+}
+function djMixerView() { const x = document.getElementById("dj-xf"); if (x) x.value = DJ.xf; }
+function djDeckFrame(d) {
+  const el = document.querySelector(`.dj-deck[data-d="${d.i}"]`); if (!el) return;
+  const cv = el.querySelector(".dj-wave"), x = cv.getContext("2d"), W = cv.width, H = cv.height, pos = djPos(d);
+  x.clearRect(0, 0, W, H);
+  if (d.peaks) {
+    const tot = d.bars * d.barLen, bw = W / d.peaks.length;
+    x.fillStyle = `hsla(${d.hue},45%,50%,.12)`; x.fillRect(d.loopA / tot * W, 0, (d.loopB - d.loopA) / tot * W, H);
+    d.peaks.forEach((v, k) => { const px = k * bw, played = px / W * tot < pos; x.fillStyle = played ? `hsl(${d.hue},45%,45%)` : "rgba(27,29,34,.35)"; x.fillRect(px, H / 2 - v * H * 0.45, Math.max(1, bw - 1), v * H * 0.9); });
+    x.fillStyle = "rgba(27,29,34,.25)"; for (let b = 1; b < d.bars; b++) x.fillRect(b / d.bars * W, 0, 1, b % 4 ? 8 : H);
+    x.fillStyle = "rgb(124,92,230)"; x.fillRect(pos / tot * W - 1, 0, 3, H);
+  } else { x.fillStyle = "rgba(27,29,34,.3)"; x.font = "22px " + (WORLD.font || "monospace"); x.textAlign = "center"; x.fillText(d.loading ? "préparation du son…" : "aucun son", W / 2, H / 2 + 8); }
+  const v = el.querySelector(".dj-vinyl"); if (v) v.style.transform = `rotate(${(pos * 200) % 360}deg)`;
+  const pb = el.querySelector(".dj-play"); if (pb && pb.textContent !== (d.playing ? "❚❚" : "▶")) pb.textContent = d.playing ? "❚❚" : "▶";
+  if (d.buf && d.shownRate !== d.rate) { d.shownRate = d.rate; const bp = el.querySelector(".dj-bpm"); if (bp) bp.firstChild.textContent = (d.bpm * d.rate).toFixed(1); const tp = el.querySelector(".dj-tempo"); if (tp && document.activeElement !== tp) tp.value = Math.max(-0.12, Math.min(0.12, d.rate - 1)); }
+}
+const DJ_CSS = `
+.dj { display: grid; grid-template-columns: minmax(0, 1fr) 300px minmax(0, 1fr); gap: 16px; max-width: 1280px; margin: 0 auto; padding: 80px 20px 150px; align-items: start; font-size: 12px; }
+.dj .sp-card { border-radius: 26px; padding: 16px; background: rgba(250,250,253,.88); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); display: flex; flex-direction: column; gap: 12px; position: relative; }
+.dj-help { grid-column: 1 / -1; margin: 0; opacity: .55; font-size: 10px; line-height: 1.5; }
+.dj-top { display: flex; align-items: center; gap: 8px; min-width: 0; } .dj-top .dj-load { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.dj-tag { width: 26px; height: 26px; border-radius: 8px; background: hsl(var(--h), 45%, 50%); color: #fff; display: grid; place-items: center; font-size: 12px; flex: none; }
+.dj-wave { width: 100%; height: 60px; cursor: pointer; border-radius: 10px; background: rgba(27,29,34,.03); }
+.dj-mid { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 16px; align-items: center; }
+.dj-plat { aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, #f3f3f6 0 30%, #e6e6ec 31% 100%); box-shadow: inset 0 0 0 1px rgba(27,29,34,.08), 0 10px 30px rgba(40,40,90,.12); display: grid; place-items: center; cursor: grab; touch-action: none; }
+.dj-vinyl { width: 88%; height: 88%; border-radius: 50%; background: repeating-radial-gradient(circle, #1c1d22 0 2px, #26272d 2px 4px); position: relative; display: grid; place-items: center; }
+.dj-vinyl i { width: 36%; height: 36%; border-radius: 50%; background: hsl(var(--h), 50%, 60%); box-shadow: 0 0 0 2px rgba(255,255,255,.4); position: relative; }
+.dj-vinyl i::after { content: ""; position: absolute; left: 50%; top: 8%; width: 3px; height: 30%; margin-left: -1.5px; background: rgba(255,255,255,.85); border-radius: 2px; }
+.dj-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.dj-bpm { font-family: var(--f-main); font-size: 30px; line-height: 1; } .dj-bpm small { font-size: 11px; opacity: .55; font-family: var(--f-accent); }
+.dj-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.dj-pick { position: absolute; left: 12px; right: 12px; top: 52px; z-index: 5; padding: 12px; border-radius: 18px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-wrap: wrap; gap: 6px; max-height: 300px; overflow-y: auto; }
+.dj-pick[hidden] { display: none; } .dj-pick .w-sec { width: 100%; }
+.dj-ch { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dj-strip { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dj-strip .sy-knob-w { --h: inherit; }
+.dj-volw { position: relative; width: 30px; height: 120px; }
+.dj-volw .dj-vol { position: absolute; left: 50%; top: 50%; width: 110px; margin: 0; transform: translate(-50%, -50%) rotate(-90deg); }
+.dj-xf { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 11px; }
+@media (max-width: 1000px) { .dj { grid-template-columns: 1fr; padding: 72px 12px 150px; } .dj-mid { grid-template-columns: 120px 1fr; } }`;
 
 const spBpmLabel = () => { const e = document.getElementById("sp-bpm"); if (e) e.textContent = `${spBpm()} bpm · fa mineur`; };
 function spImport(file, i) {
