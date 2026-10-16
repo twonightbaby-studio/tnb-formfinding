@@ -4383,7 +4383,8 @@ const W_ISLANDS = [
   { k: "sampler", lab: "Sampler", r: 280, note: 51, a: [-1.25, -0.1], p: [-0.62, -1.05] },
   { k: "labo", lab: "Labo", r: 260, note: 58, a: [-0.62, 0.95], p: [-0.62, 1.05] },
   { k: "diffusion", lab: "Diffusion", r: 260, note: 60, a: [0.62, 0.95], p: [0.62, 1.05] },
-  { k: "dj", lab: "Platines", r: 260, note: 55, a: [-1.3, 0.9], p: [0, 1.8] },
+  { k: "dj", lab: "Platines", r: 260, note: 55, a: [-1.3, 0.9], p: [-0.62, 1.95] },
+  { k: "learn", lab: "Apprendre", r: 250, note: 62, a: [1.3, 0.9], p: [0.62, 1.95] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4602,7 +4603,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4985,6 +4986,10 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "learn") {                       // deux cartes, l'une retournée
+    x.save(); x.translate(cx - 0.12 * s, cy); x.rotate(-0.22); x.rect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s); x.restore(); x.stroke();
+    x.beginPath(); x.save(); x.translate(cx + 0.16 * s, cy + 0.04 * s); x.rotate(0.12); x.fillStyle = "rgba(255,255,255,.85)"; x.fillRect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s); x.strokeRect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s);
+    x.fillStyle = "rgba(27,29,34,.5)"; x.font = `${Math.round(0.6 * s)}px serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("?", 0, 0.02 * s); x.restore();
   } else if (k === "admin") {
     [0.45, 0.8, 0.3, 0.62, 0.95].forEach((h, i) => x.rect(cx + (-0.6 + i * 0.27) * s, cy + (0.55 - h) * s, 0.14 * s, h * s)); x.fill();
   }
@@ -5077,7 +5082,7 @@ function wPanel(k) {
   if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5390,7 +5395,7 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 /* Interface */
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
-  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS + FX2_CSS + LN_CSS + SD_CSS; document.head.append(css); }
+  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS + FX2_CSS + LN_CSS + SD_CSS + AR_CSS; document.head.append(css); }
   const tabs = cur => [["synthe", "Synthé"], ["echant", "Échantillons"], ["radial", "Images"]].map(([m, l]) => `<button class="w-pill w-glass-ui w-live" data-m="${m}" aria-pressed="${cur === m || (m === "radial" && (cur === "radial" || cur === "patch"))}">${l}</button>`).join("");
   const go = m => { uisSwitch(true); syRun(false); spPlay(false); smLoopStop(); store.set("atelier-sampler-mode", m); WORLD.panelKey = null; wPanel("sampler"); };
   if (mode === "echant") {
@@ -5619,7 +5624,7 @@ function syEnsureLoops() {
   SY.cur = Math.min(SY.cur || 0, SY.loops.length - 1);
   SY.chain = (SY.chain || []).filter(i => i < SY.loops.length); if (!SY.chain.length) SY.chain = [SY.cur];
   for (const L of SY.loops) { while (L.steps.length < SY.tracks.length) L.steps.push(syZero()); L.steps.length = SY.tracks.length; }
-  syBind();
+  syArFix(); syBind();
 }
 function syBind() { SY.tracks.forEach((T, i) => { T.steps = SY.loops[SY.cur].steps[i] || (SY.loops[SY.cur].steps[i] = syZero()); }); }
 function syStore() { if (SY.loops && SY.loops[SY.cur]) SY.loops[SY.cur].steps = SY.tracks.map(T => T.steps); }
@@ -5638,7 +5643,7 @@ function syNewLoop(copy) {
 function syDelLoop(i) {
   if (SY.loops.length < 2) return;
   syStore(); SY.loops.splice(i, 1);
-  SY.chain = SY.chain.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+  syArFix(); const keep = SY.chain.map((x, k) => [x, SY.tr[k]]).filter(([x]) => x !== i); SY.chain = keep.map(([x]) => x > i ? x - 1 : x); SY.tr = keep.map(([, t]) => t); SY.arSel = null;
   SY.cur = Math.max(0, Math.min(SY.cur >= i ? SY.cur - 1 : SY.cur, SY.loops.length - 1));
   if (SY.pl != null && SY.pl >= SY.loops.length) SY.pl = SY.cur;
   syEnsureLoops(); sySave(); syRender(); syRenderLoops(); uisNo();
@@ -5660,30 +5665,44 @@ function syAutoSong() {
   }));
   const pont = base.map((st, i) => isDrum(i) && SY.tracks[i].inst !== "riser" ? syZero() : isBass(i) ? st.map((s, j) => j === 0 ? s || { v: 1, d: 0 } : 0) : st);
   SY.loops = [{ name: "Intro", steps: intro }, { name: "Couplet", steps: base }, { name: "Refrain", steps: refrain }, { name: "Pont", steps: pont }];
-  SY.chain = [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 0, 0];
+  SY.chain = [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 0, 0]; SY.tr = SY.chain.map(() => 0); SY.tr[1] = "filtre"; SY.tr[5] = "roul"; SY.tr[9] = "coupe"; SY.tr[11] = "montee"; SY.arSel = null;
   SY.cur = 1; SY.song = true; syBind(); sySave(); syRender(); syRenderLoops();
   uisYes(); wToast("Morceau construit : intro, couplet, refrain, pont · 18 mesures");
 }
 // Ce que la tête de lecture doit jouer à chaque début de mesure
 function syAdvance(first) {
-  if (SY.song && SY.chain.length) { SY.pos = first ? 0 : (SY.pos + 1) % SY.chain.length; SY.pl = SY.chain[SY.pos]; }
+  SY.started2 = !first;
+  if (SY.song && SY.chain.length) { SY.pos = first ? Math.min(SY.startPos || 0, SY.chain.length - 1) : (SY.pos + 1) % SY.chain.length; SY.pl = SY.chain[SY.pos]; if (first) SY.startPos = 0; }
   else SY.pl = SY.cur;
 }
 function syRenderLoops() {
   const box = document.getElementById("sy-loops"); if (!box) return;
+  syArFix();
+  const n = SY.chain.length, S = SY.arSel && SY.arSel.b < n ? SY.arSel : (SY.arSel = null);
   box.innerHTML = `<div class="lp-row"><span class="w-sec" style="margin:0">Boucles</span><div class="lp-chips" id="lp-chips"></div>
       <button class="w-chip" id="lp-dup" title="Copie de la boucle en cours, à bidouiller">+ Copie</button><button class="w-chip" id="lp-new">+ Vide</button></div>
-    <div class="lp-row"><span class="w-sec" style="margin:0">Suite</span>
-      <button class="w-sw" id="lp-song" role="switch" aria-checked="${!!SY.song}" title="Jouer la suite au lieu de boucler"></button><span class="lp-mode">${SY.song ? `joue la suite · ${SY.chain.length} mesures` : "boucle la boucle en cours"}</span>
-      <div class="lp-chain" id="lp-chain"></div>
-      <button class="w-chip" id="lp-add" title="Ajouter la boucle en cours à la fin de la suite">+ ${SY.loops[SY.cur].name}</button>
+    <div class="lp-row"><span class="w-sec" style="margin:0">Arrangement</span>
+      <button class="w-sw" id="lp-song" role="switch" aria-checked="${!!SY.song}" title="Jouer l'arrangement au lieu de boucler"></button><span class="lp-mode">${SY.song ? `joue l'arrangement · ${n} mesure${n > 1 ? "s" : ""} · ${syArTime(n)}` : "boucle la boucle en cours"}</span>
+      <span style="flex:1"></span>
+      <button class="w-chip" id="lp-add" title="Ajouter la boucle en cours ${S ? "après la sélection" : "à la fin"}">+ ${SY.loops[SY.cur].name}</button>
       <button class="w-chip" id="lp-auto" title="Fabrique intro, couplet, refrain et pont à partir de la boucle en cours">✦ Faire un morceau</button></div>
-    <p class="sp-hint">Touche une boucle pour la modifier (pendant la lecture, elle part à la mesure suivante). Double-touche pour la renommer. Dans la suite, touche une case pour la retirer, glisse-la pour la déplacer.</p>`;
+    <div class="ar" id="ar"><div class="ar-in"><div class="ar-ruler"></div><div class="ar-track" id="ar-track"></div></div></div>
+    <div class="ar-tools" id="ar-tools"></div>
+    <p class="sp-hint">Glisse une boucle sur la frise pour la placer. Touche une mesure pour la choisir, double-touche pour prendre tout le bloc, glisse (souris) pour en prendre plusieurs. Puis : doubler, copier, coller, déplacer, remplacer, ajouter une transition.</p>`;
+  // Les boucles : toucher = modifier, glisser sur la frise = placer
   const chips = box.querySelector("#lp-chips");
   SY.loops.forEach((L, i) => {
     const b = document.createElement("button"); b.className = "lp-chip" + (i === SY.cur ? " cur" : "") + (SY.playing && SY.pl === i ? " play" : ""); b.style.setProperty("--h", SY_LOOP_HUES[i % 8]); b.dataset.i = i;
     b.innerHTML = `<span></span>${SY.loops.length > 1 && i === SY.cur ? `<i title="Supprimer cette boucle">✕</i>` : ""}`; b.querySelector("span").textContent = L.name;
-    b.onclick = e => { if (e.target.tagName === "I") { syDelLoop(i); return; } if (i !== SY.cur) syEditLoop(i); };
+    let dg = null;
+    b.addEventListener("pointerdown", e => { if (e.target.tagName === "I") return; e.stopPropagation(); dg = { x: e.clientX, y: e.clientY, on: false }; try { b.setPointerCapture(e.pointerId); } catch {} });
+    b.addEventListener("pointermove", e => {
+      if (!dg) return; if (!dg.on && Math.hypot(e.clientX - dg.x, e.clientY - dg.y) > 8) { dg.on = true; dg.ghost = document.createElement("div"); dg.ghost.className = "ar-ghost"; dg.ghost.style.setProperty("--h", SY_LOOP_HUES[i % 8]); dg.ghost.textContent = L.name; document.body.append(dg.ghost); }
+      if (dg.on) { dg.ghost.style.transform = `translate(${e.clientX - 20}px, ${e.clientY - 20}px)`; dg.at = syArIndexAt(e.clientX, e.clientY); syArMark(dg.at); }
+    });
+    const end = e => { if (!dg) return; const d = dg; dg = null; if (!d.on) return; d.ghost.remove(); syArMark(null); if (d.at != null) syArOp(() => { SY.chain.splice(d.at, 0, i); SY.tr.splice(d.at, 0, 0); SY.arSel = { a: d.at, b: d.at }; }, "plop"); b.dataset.dragged = 1; setTimeout(() => delete b.dataset.dragged, 50); };
+    b.addEventListener("pointerup", end); b.addEventListener("pointercancel", end);
+    b.onclick = e => { if (b.dataset.dragged) return; if (e.target.tagName === "I") { syDelLoop(i); return; } if (i !== SY.cur) syEditLoop(i); };
     b.ondblclick = () => {
       const inp = document.createElement("input"); inp.className = "w-in"; inp.value = L.name; inp.maxLength = 12; inp.style.width = "90px"; b.replaceWith(inp); inp.focus(); inp.select();
       const done = () => { L.name = inp.value.trim().slice(0, 12) || L.name; sySave(); syRenderLoops(); };
@@ -5691,26 +5710,142 @@ function syRenderLoops() {
     };
     chips.append(b);
   });
-  const chain = box.querySelector("#lp-chain"); let dragFrom = null;
+  // La frise
+  const track = box.querySelector("#ar-track"), ruler = box.querySelector(".ar-ruler");
+  ruler.innerHTML = SY.chain.map((_, k) => `<span>${k % 4 === 0 ? k + 1 : ""}</span>`).join("");
   SY.chain.forEach((li, k) => {
-    const c = document.createElement("button"); c.className = "lp-cell" + (SY.playing && SY.song && SY.pos === k ? " play" : ""); c.style.setProperty("--h", SY_LOOP_HUES[li % 8]); c.textContent = (SY.loops[li].name || "?").slice(0, 2); c.title = SY.loops[li].name; c.draggable = true;
-    c.onclick = () => { if (SY.chain.length < 2) return; SY.chain.splice(k, 1); if (SY.pos >= SY.chain.length) SY.pos = 0; uisSwitch(false); sySave(); syRenderLoops(); };
-    c.ondragstart = () => { dragFrom = k; }; c.ondragover = e => e.preventDefault();
-    c.ondrop = e => { e.preventDefault(); if (dragFrom == null || dragFrom === k) return; const [x] = SY.chain.splice(dragFrom, 1); SY.chain.splice(k, 0, x); dragFrom = null; uisClick(); sySave(); syRenderLoops(); };
-    chain.append(c);
+    const c = document.createElement("button"), first = k === 0 || SY.chain[k - 1] !== li, last = k === n - 1 || SY.chain[k + 1] !== li;
+    c.className = "ar-cell" + (first ? " first" : "") + (last ? " last" : "") + (S && k >= S.a && k <= S.b ? " sel" : "") + (SY.playing && SY.song && SY.pos === k ? " play" : "");
+    c.style.setProperty("--h", SY_LOOP_HUES[li % 8]); c.dataset.k = k; c.title = `Mesure ${k + 1} · ${SY.loops[li].name}`;
+    let run = 1; if (first) { while (k + run < n && SY.chain[k + run] === li) run++; }
+    c.innerHTML = (first ? `<b style="max-width:${run * 40 - 14}px">${SY.loops[li].name}${run > 1 ? ` <small>×${run}</small>` : ""}</b>` : "") + (SY.tr[k] ? `<em title="${SY_TR[SY.tr[k]][1]}">${SY_TR[SY.tr[k]][0]}</em>` : "");
+    if (SY.tr[k]) c.dataset.learn = "tr:" + SY.tr[k];
+    track.append(c);
   });
+  // Sélection : toucher, double-toucher (bloc), glisser à la souris (plage), Maj+clic
+  let sd = null;
+  track.addEventListener("pointerdown", e => {
+    const c = e.target.closest(".ar-cell"); if (!c) return; e.stopPropagation(); const k = +c.dataset.k;
+    if (e.shiftKey && SY.arSel) { SY.arSel = { a: Math.min(SY.arSel.a, k), b: Math.max(SY.arSel.b, k) }; syArPaint(); return; }
+    sd = { k, mouse: e.pointerType === "mouse", moved: false, was: SY.arSel && SY.arSel.a === k && SY.arSel.b === k };
+    if (sd.mouse) try { track.setPointerCapture(e.pointerId); } catch {}
+    SY.arSel = { a: k, b: k }; syArPaint();
+  });
+  track.addEventListener("pointermove", e => { if (!sd || !sd.mouse) return; const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest(".ar-cell"); if (!c) return; const k = +c.dataset.k; if (k !== sd.k) sd.moved = true; SY.arSel = { a: Math.min(sd.k, k), b: Math.max(sd.k, k) }; syArPaint(); });
+  track.addEventListener("pointerup", () => { if (!sd) return; const d = sd; sd = null; if (!d.moved && d.was && !(performance.now() - (track.lastTap || 0) < 350)) { SY.arSel = null; } track.lastTap = performance.now(); uisClick(); syArPaint(); });
+  track.addEventListener("dblclick", e => { const c = e.target.closest(".ar-cell"); if (!c) return; const k = +c.dataset.k, li = SY.chain[k]; let a = k, b = k; while (a > 0 && SY.chain[a - 1] === li) a--; while (b < n - 1 && SY.chain[b + 1] === li) b++; SY.arSel = { a, b }; uisSwitch(true); syArPaint(); });
+  syArTools();
   box.querySelector("#lp-dup").onclick = () => syNewLoop(true);
   box.querySelector("#lp-new").onclick = () => syNewLoop(false);
-  box.querySelector("#lp-add").onclick = () => { if (SY.chain.length >= 64) return; SY.chain.push(SY.cur); uisPlop(); sySave(); syRenderLoops(); };
+  box.querySelector("#lp-add").onclick = () => { if (SY.chain.length >= 64) return; const at = SY.arSel ? SY.arSel.b + 1 : SY.chain.length; syArOp(() => { SY.chain.splice(at, 0, SY.cur); SY.tr.splice(at, 0, 0); if (SY.arSel) SY.arSel = { a: at, b: at }; }, "plop"); };
   box.querySelector("#lp-auto").onclick = syAutoSong;
   box.querySelector("#lp-song").onclick = () => { SY.song = !SY.song; uisSwitch(SY.song); sySave(); syRenderLoops(); };
+  if (typeof syLearnTag === "function") syLearnTag();
 }
+// Transitions : jouées sur la dernière mesure avant le changement
+const SY_TR = {
+  coupe: ["✂", "Coupure : tout s'arrête sur le dernier temps, le retour frappe plus fort."],
+  roul: ["⁂", "Roulement : la caisse claire accélère sur la 2e moitié de la mesure."],
+  montee: ["⟋", "Montée : un souffle qui grimpe toute la mesure, puis une chute de grave sur le premier temps suivant."],
+  filtre: ["≋", "Filtre : tout s'étouffe pendant la mesure, puis s'ouvre d'un coup au changement."],
+};
+const syArTime = n => { const s = Math.round(n * 16 * 60 / SY.bpm / 4); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+function syArFix() { SY.tr = Array.isArray(SY.tr) ? SY.tr.slice(0, SY.chain.length) : []; while (SY.tr.length < SY.chain.length) SY.tr.push(0); SY.tr = SY.tr.map(x => SY_TR[x] ? x : 0); }
+function syArOp(fn, snd) {
+  syStore(); fn(); if (SY.chain.length > 64) { SY.chain.length = 64; } syArFix();
+  if (SY.arSel) { const n = SY.chain.length; SY.arSel.a = Math.max(0, Math.min(SY.arSel.a, n - 1)); SY.arSel.b = Math.max(SY.arSel.a, Math.min(SY.arSel.b, n - 1)); }
+  if (SY.pos >= SY.chain.length) SY.pos = 0;
+  if (snd === "plop") uisPlop(); else if (snd === "no") uisNo(); else uisClick();
+  sySave(); syRenderLoops();
+}
+function syArIndexAt(x, y) {
+  const tr = document.getElementById("ar-track"); if (!tr) return null; const r = tr.parentElement.parentElement.getBoundingClientRect();
+  if (y < r.top - 30 || y > r.bottom + 30 || x < r.left - 20 || x > r.right + 20) return null;
+  const cells = [...tr.children]; for (let k = 0; k < cells.length; k++) { const cr = cells[k].getBoundingClientRect(); if (x < cr.left + cr.width / 2) return k; }
+  return cells.length;
+}
+function syArMark(at) { const tr = document.getElementById("ar-track"); if (!tr) return; [...tr.children].forEach((c, k) => { c.classList.toggle("ins", at === k); c.classList.toggle("ins-end", at === tr.children.length && k === tr.children.length - 1); }); }
+function syArPaint() {
+  const S = SY.arSel; document.querySelectorAll("#ar-track .ar-cell").forEach((c, k) => c.classList.toggle("sel", !!S && k >= S.a && k <= S.b)); syArTools();
+}
+function syArTools() {
+  const box = document.getElementById("ar-tools"); if (!box) return; const S = SY.arSel;
+  if (!S) { box.innerHTML = SY.clip ? `<span class="ar-info">Dans le presse-papier : ${SY.clip.length} mesure${SY.clip.length > 1 ? "s" : ""}</span><button class="w-chip" data-t="pasteEnd">Coller à la fin</button>` : ""; box.hidden = !SY.clip; const pe = box.querySelector('[data-t="pasteEnd"]'); if (pe) pe.onclick = () => syArOp(() => { const at = SY.chain.length; SY.chain.push(...SY.clip.map(x => x.l)); SY.tr.push(...SY.clip.map(x => x.t)); SY.arSel = { a: at, b: at + SY.clip.length - 1 }; }, "plop"); return; }
+  box.hidden = false; const n = S.b - S.a + 1, lastTr = SY.tr[S.b] || 0;
+  box.innerHTML = `<div class="lp-row"><span class="ar-info">Mesure${n > 1 ? `s ${S.a + 1}–${S.b + 1}` : ` ${S.a + 1}`} · ${[...new Set(SY.chain.slice(S.a, S.b + 1))].map(l => SY.loops[l].name).join(" + ")}</span>
+      <button class="w-chip" data-t="dup" title="Recopie la sélection juste après">×2 Doubler</button>
+      <button class="w-chip" data-t="copy">Copier</button>${SY.clip ? `<button class="w-chip" data-t="paste" title="Colle après la sélection">Coller (${SY.clip.length})</button>` : ""}
+      <button class="w-chip" data-t="left" title="Déplacer vers la gauche">◀</button><button class="w-chip" data-t="right" title="Déplacer vers la droite">▶</button>
+      <button class="w-chip" data-t="grow" title="Prendre une mesure de plus">+1</button>${n > 1 ? `<button class="w-chip" data-t="shrink" title="Une mesure de moins">−1</button>` : ""}
+      <button class="w-chip" data-t="del" title="Retirer de l'arrangement">✕ Retirer</button>
+      <button class="w-chip" data-t="play" title="Écouter à partir d'ici">▶ Écouter d'ici</button></div>
+    <div class="lp-row"><span class="w-sec" style="margin:0">Remplacer par</span><span class="ar-rep"></span></div>
+    <div class="lp-row"><span class="w-sec" style="margin:0">Transition</span><span class="ar-trs"></span><span class="ar-info">sur la mesure ${S.b + 1}, avant ce qui suit</span></div>`;
+  const rep = box.querySelector(".ar-rep");
+  SY.loops.forEach((L, i) => { const b = document.createElement("button"); b.className = "lp-chip mini"; b.style.setProperty("--h", SY_LOOP_HUES[i % 8]); b.textContent = L.name; b.onclick = () => syArOp(() => { for (let k = S.a; k <= S.b; k++) SY.chain[k] = i; }); rep.append(b); });
+  const trs = box.querySelector(".ar-trs");
+  [[0, "Aucune"], ...Object.entries(SY_TR).map(([k, v]) => [k, v[0] + " " + v[1].split(" :")[0]])].forEach(([k, lab]) => { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = lab; b.setAttribute("aria-pressed", (lastTr || 0) === k); if (k) b.dataset.learn = "tr:" + k; b.onclick = () => syArOp(() => { SY.tr[S.b] = k; }, k ? "plop" : "no"); trs.append(b); });
+  const act = {
+    dup: () => syArOp(() => { if (SY.chain.length + n > 64) return wToast("64 mesures maximum"); SY.chain.splice(S.b + 1, 0, ...SY.chain.slice(S.a, S.b + 1)); SY.tr.splice(S.b + 1, 0, ...SY.tr.slice(S.a, S.b + 1)); SY.arSel = { a: S.b + 1, b: S.b + n }; }, "plop"),
+    copy: () => { SY.clip = SY.chain.slice(S.a, S.b + 1).map((l, j) => ({ l, t: SY.tr[S.a + j] || 0 })); uisSwitch(true); wToast(`${n} mesure${n > 1 ? "s" : ""} copiée${n > 1 ? "s" : ""}`); syArTools(); },
+    paste: () => syArOp(() => { const c = SY.clip; SY.chain.splice(S.b + 1, 0, ...c.map(x => x.l)); SY.tr.splice(S.b + 1, 0, ...c.map(x => x.t)); SY.arSel = { a: S.b + 1, b: S.b + c.length }; }, "plop"),
+    left: () => { if (S.a === 0) return; syArOp(() => { const [l] = SY.chain.splice(S.a - 1, 1), [t] = SY.tr.splice(S.a - 1, 1); SY.chain.splice(S.b, 0, l); SY.tr.splice(S.b, 0, t); SY.arSel = { a: S.a - 1, b: S.b - 1 }; }); },
+    right: () => { if (S.b >= SY.chain.length - 1) return; syArOp(() => { const [l] = SY.chain.splice(S.b + 1, 1), [t] = SY.tr.splice(S.b + 1, 1); SY.chain.splice(S.a, 0, l); SY.tr.splice(S.a, 0, t); SY.arSel = { a: S.a + 1, b: S.b + 1 }; }); },
+    grow: () => { if (S.b < SY.chain.length - 1) { SY.arSel = { a: S.a, b: S.b + 1 }; uisClick(); syArPaint(); } },
+    shrink: () => { SY.arSel = { a: S.a, b: S.b - 1 }; uisClick(); syArPaint(); },
+    del: () => { if (n >= SY.chain.length) return wToast("Il faut garder au moins une mesure"); syArOp(() => { SY.chain.splice(S.a, n); SY.tr.splice(S.a, n); SY.arSel = null; }, "no"); },
+    play: () => { SY.song = true; if (SY.playing) { SY.pos = S.a - 1; } else { SY.startPos = S.a; syRun(true); const pb = document.getElementById("sy-play"); if (pb) { pb.setAttribute("aria-pressed", true); pb.textContent = "■ Stop"; } } uisSwitch(true); sySave(); syRenderLoops(); },
+  };
+  box.querySelectorAll("[data-t]").forEach(b => b.onclick = act[b.dataset.t]);
+}
+// Ce que jouent les transitions (appelé à chaque pas)
+function syTrState() { if (!SY.song || !SY.chain.length || !SY.tr) return { cur: 0, prev: 0 }; const n = SY.chain.length; return { cur: SY.tr[SY.pos] || 0, prev: SY.tr[(SY.pos - 1 + n) % n] || 0 }; }
+function syTrStep(s, t, sec, TR) {
+  const c = SP.ctx;
+  if (s === 0 && TR.cur === "montee") {                           // souffle qui monte sur toute la mesure
+    const bar = sec * 16, bp = c.createBiquadFilter(), g = c.createGain(); bp.type = "bandpass"; bp.Q.value = 1.6; bp.frequency.setValueAtTime(250, t); bp.frequency.exponentialRampToValueAtTime(9000, t + bar); bp.connect(g); g.connect(SP.master); g.connect(SP.rev);
+    syNoise(t, t + bar + 0.02, bp); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + bar * 0.98); g.gain.linearRampToValueAtTime(0.0001, t + bar + 0.02);
+    const o = c.createOscillator(), og = c.createGain(); o.type = "sawtooth"; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(880, t + bar); const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2500; o.connect(lp); lp.connect(og); og.connect(SP.master); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.05, t + bar * 0.98); og.gain.linearRampToValueAtTime(0.0001, t + bar + 0.01); o.start(t); o.stop(t + bar + 0.05);
+  }
+  if (s === 0 && TR.prev === "montee" && SY.started2) syPlay("subdrop", SP.master, t, 36, 0.9, 0.3, sec);
+  if (s === 0 && TR.cur === "filtre") SY.tracks.forEach((T, i) => { if (T.inst === "kick" || !SY.ch || !SY.ch[i]) return; const f = SY.ch[i].lp.frequency; SY.ch[i].lpF = f.value; f.cancelScheduledValues(t); f.setValueAtTime(f.value, t); f.exponentialRampToValueAtTime(220, t + sec * 15); });
+  if (s === 0 && TR.prev === "filtre") SY.tracks.forEach((T, i) => { if (!SY.ch || !SY.ch[i] || SY.ch[i].lpF == null) return; const f = SY.ch[i].lp.frequency; f.cancelScheduledValues(t); f.setValueAtTime(SY.ch[i].lpF, t); SY.ch[i].lpF = null; });
+  if (TR.cur === "roul" && s >= 8) {                                  // la caisse claire accélère
+    const si = SY.tracks.findIndex(T => (T.inst === "snare" || T.inst === "clap") && !T.mute), out = si >= 0 ? syChain(si).inp : SP.master, reps = s < 12 ? 1 : s < 14 ? 2 : 4, v0 = 0.3 + (s - 8) / 7 * 0.7;
+    for (let r = 0; r < reps; r++) syPlay("snare", out, t + r * sec / reps, 60, v0 * (0.85 + r * 0.05), 0.2, sec);
+  }
+}
+const syTrMutes = (TR, s, T) => (TR.cur === "coupe" && s >= 12 && T.inst !== "riser" && T.inst !== "subdrop") || (TR.cur === "roul" && s >= 8 && (T.inst === "snare" || T.inst === "clap"));
+const AR_CSS = `
+.ar { overflow-x: auto; overflow-y: hidden; padding: 4px 2px 6px; scrollbar-width: thin; touch-action: pan-x; }
+.ar-in { display: inline-flex; flex-direction: column; gap: 3px; min-width: 100%; }
+.ar-ruler, .ar-track { display: flex; gap: 2px; }
+.ar-ruler span { flex: none; width: 38px; font-size: 9px; opacity: .45; font-variant-numeric: tabular-nums; padding-left: 2px; }
+.ar-cell { position: relative; flex: none; width: 38px; height: 46px; border: 0; padding: 0; background: hsla(var(--h), 45%, 55%, .55); color: #fff; font: inherit; cursor: pointer; border-radius: 3px; text-align: left; transition: transform .08s, box-shadow .08s; }
+.ar-cell.first { border-top-left-radius: 11px; border-bottom-left-radius: 11px; background: hsla(var(--h), 45%, 52%, .85); }
+.ar-cell.last { border-top-right-radius: 11px; border-bottom-right-radius: 11px; }
+.ar-cell b { position: absolute; left: 8px; top: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.ar-cell b small { font-weight: 400; opacity: .8; }
+.ar-cell em { position: absolute; right: 3px; bottom: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #1b1d22; font-style: normal; font-size: 11px; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.2); pointer-events: none; }
+.ar-cell.sel { box-shadow: inset 0 0 0 2px #1b1d22; background: hsl(var(--h), 50%, 46%); }
+.ar-cell.play::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 3px; border-radius: 2px; background: #1b1d22; }
+.ar-cell.ins { box-shadow: -4px 0 0 #1b1d22; } .ar-cell.ins-end { box-shadow: 4px 0 0 #1b1d22; }
+.ar-tools { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 16px; background: rgba(27,29,34,.035); }
+.ar-tools[hidden] { display: none; }
+.ar-tools:empty { display: none; }
+.ar-info { font-size: 11px; opacity: .7; margin-right: 4px; }
+.ar-rep, .ar-trs { display: flex; gap: 6px; flex-wrap: wrap; }
+.lp-chip.mini { height: 28px; min-width: 36px; padding: 0 10px; }
+.ar-ghost { position: fixed; left: 0; top: 0; z-index: 80; padding: 10px 14px; border-radius: 12px; background: hsl(var(--h), 45%, 50%); color: #fff; font-size: 12px; pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+.lp-chip { touch-action: none; }
+`;
+
 function syLoopView() {           // suit la tête de lecture dans les boucles et la suite
   const key = (SY.playing ? 1 : 0) + "|" + SY.pl + "|" + SY.pos + "|" + SY.song;
   if (key === SY.lastLoopKey) return; SY.lastLoopKey = key;
   document.querySelectorAll(".lp-chip").forEach(b => b.classList.toggle("play", !!SY.playing && +b.dataset.i === SY.pl));
-  document.querySelectorAll(".lp-cell").forEach((c, k) => c.classList.toggle("play", !!SY.playing && !!SY.song && k === SY.pos));
-  const pc = document.querySelector(".lp-cell.play"); if (pc && pc.scrollIntoView) { const ch = pc.parentElement; ch.scrollLeft = pc.offsetLeft - ch.clientWidth / 2; }
+  document.querySelectorAll("#ar-track .ar-cell").forEach((c, k) => c.classList.toggle("play", !!SY.playing && !!SY.song && k === SY.pos));
+  const pc = document.querySelector("#ar-track .ar-cell.play"), ar = document.getElementById("ar"); if (pc && ar && (pc.offsetLeft < ar.scrollLeft || pc.offsetLeft > ar.scrollLeft + ar.clientWidth - 40)) ar.scrollLeft = pc.offsetLeft - 40;
 }
 const LP_CSS = `
 .sy-loops { flex-direction: column; gap: 10px; }
@@ -5737,7 +5872,7 @@ function syLoadVibe(name, ui = true) {
   if (ui && typeof prRender === "function") prRender();
   sySave(); if (ui) syRender();
 }
-function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { feel: SY.feel || {}, post: SY.post, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null, loops: SY.loops, chain: SY.chain, cur: SY.cur, song: !!SY.song }), 300); }
+function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { feel: SY.feel || {}, post: SY.post, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null, loops: SY.loops, chain: SY.chain, tr: SY.tr, cur: SY.cur, song: !!SY.song }), 300); }
 
 /* Chaîne d'effets par piste : drive → filtre → volume → (sortie + espace) */
 function syChain(i) {
@@ -5841,11 +5976,11 @@ function syNote(T, st, bar) {
 }
 function sySchedule(s, t) {
   const sec = 60 / SY.bpm / 4, bar = SY.bar || 0, tt = t + (s % 2 ? SY.swing * sec * 0.5 : 0);
-  const LS = (SY.loops[SY.pl ?? SY.cur] || SY.loops[SY.cur]).steps;
+  const LS = (SY.loops[SY.pl ?? SY.cur] || SY.loops[SY.cur]).steps, TR = syTrState(); syTrStep(s, tt, sec, TR);
   SY.tracks.forEach((T, i) => {
     const row = LS[i] || T.steps, st = row[s], FX = T.fx || {};
     if (FX.pump && FX.pump.on && s % 4 === 0) { const C = syChain(i); if (C.pump) { const g = C.pump.g.gain, k = FX.pump.k ?? 0.5; g.cancelScheduledValues(t); g.setValueAtTime(1 - 0.92 * k, t); g.linearRampToValueAtTime(1, t + sec * 4 * (0.45 + k * 0.4)); } }
-    if (!st || T.mute) return;
+    if (!st || T.mute || syTrMutes(TR, s, T)) return;
     const ch = syChain(i), I = SY_INST[T.inst], m = I.kind === "drum" ? 60 : syNote(T, st, bar);
     let reps = I.roll ? (st.v || 1) : 1;
     if (FX.stutter && FX.stutter.on && Math.random() < 0.15 + (FX.stutter.k ?? 0.5) * 0.5) reps = Math.max(reps, 2 + Math.floor(Math.random() * 3));
@@ -6090,7 +6225,7 @@ function syRecipe() {
   return { v: 1, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, vibe: SY.vibe,
     tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? Object.assign({ v: s.v, d: s.d || 0 }, s.l > 1 ? { l: s.l } : {}, s.g ? { g: true } : {}) : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3), fx: syClone(T.fx || {}), sd: Object.assign({}, T.sd || {}) })), feel: Object.assign({}, SY.feel || {}),
     post: syClone(SY.post || { preset: "Propre", fx: {}, filter: 0.5 }),
-    loops: (syStore(), SY.loops.map(L => ({ name: L.name, steps: L.steps.map(row => row.map(s => s ? Object.assign({ v: s.v, d: s.d || 0 }, s.l > 1 ? { l: s.l } : {}, s.g ? { g: true } : {}) : 0)) }))), chain: SY.chain.slice(), cur: SY.cur, song: !!SY.song };
+    loops: (syStore(), SY.loops.map(L => ({ name: L.name, steps: L.steps.map(row => row.map(s => s ? Object.assign({ v: s.v, d: s.d || 0 }, s.l > 1 ? { l: s.l } : {}, s.g ? { g: true } : {}) : 0)) }))), chain: SY.chain.slice(), tr: (SY.tr || []).slice(0, SY.chain.length), cur: SY.cur, song: !!SY.song };
 }
 function prFx(fx, allowed) { const o = {}; if (fx && typeof fx === "object") for (const k of Object.keys(allowed)) { const f = fx[k]; if (f && typeof f === "object") o[k] = { on: !!f.on, k: Number.isFinite(+f.k) ? Math.min(1, Math.max(0, +f.k)) : 0.5 }; } return o; }
 function prStep(s) { if (!s) return 0; const n = (x, a, b, d) => Number.isFinite(+x) ? Math.min(b, Math.max(a, +x)) : d; const o = { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 }; const l = n(s.l, 1, 16, 1) | 0; if (l > 1) o.l = l; if (s.g) o.g = true; return o; }
@@ -6111,7 +6246,7 @@ function prValid(r) {
   }
   const post = { preset: String((r.post && r.post.preset) || "").slice(0, 20), fx: prFx(r.post && r.post.fx, SY_POST_FX), filter: n(r.post && r.post.filter, 0, 1, 0.5), space: ["plate", "hall", "spring"].includes(r.post && r.post.space) ? r.post.space : "hall", mix: !(r.post && r.post.mix === false), duck: n(r.post && r.post.duck, 0, 1, 0.35) };
   return { bpm: n(r.bpm, 60, 180, 90) | 0, swing: n(r.swing, 0, 0.6, 0), key: n(r.key, 0, 11, 5) | 0, prog: r.prog, vibe: String(r.vibe || "").slice(0, 30), tracks, post, feel: sdFeelValid(r.feel),
-    loops, chain, cur: loops ? Math.min(loops.length - 1, n(r.cur, 0, 7, 0) | 0) : 0, song: !!(loops && r.song) };
+    loops, chain, tr: chain && Array.isArray(r.tr) ? chain.map((_, k) => SY_TR[r.tr[k]] ? r.tr[k] : 0) : [], cur: loops ? Math.min(loops.length - 1, n(r.cur, 0, 7, 0) | 0) : 0, song: !!(loops && r.song) };
 }
 async function prLoad(force = false) {
   const db = prDb(); if (!db || PR.loading || (!force && Date.now() - PR.t < 20000)) return;
@@ -6238,13 +6373,13 @@ async function syOffline(recipe, bars) {
   for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < ilen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ilen, 2.6); }
   const rev = oc.createConvolver(); rev.buffer = spIR(oc, (r.post && r.post.space) || "hall"); const wet = oc.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
   const nb = oc.createBuffer(1, sr, sr), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-  const KEYS = ["tracks", "loops", "chain", "cur", "song", "bpm", "swing", "key", "prog", "ch", "pl", "pos", "bar", "started", "flash", "duck", "post", "feel"];
+  const KEYS = ["tracks", "loops", "chain", "cur", "song", "bpm", "swing", "key", "prog", "ch", "pl", "pos", "bar", "started", "flash", "duck", "post", "feel", "tr", "startPos", "started2"];
   const saveSY = {}; KEYS.forEach(k => saveSY[k] = SY[k]);
   const saveSP = { ctx: SP.ctx, master: SP.master, rev: SP.rev, noise: SP.noise };
   try {
     Object.assign(SP, { ctx: oc, master, rev, noise: nb }); spPostBuild(oc, postIn, postOut, r.post);
     Object.assign(SY, { tracks: r.tracks, loops: r.loops || [{ name: "A", steps: r.tracks.map(t => t.steps) }], chain: r.chain && r.chain.length ? r.chain : [0], cur: r.cur || 0, song: !!r.song,
-      bpm: r.bpm, swing: r.swing, key: r.key, prog: r.prog, ch: [], pos: 0, pl: 0, bar: 0, started: false, flash: {}, duck: null, post: r.post, feel: r.feel || {} });
+      bpm: r.bpm, swing: r.swing, key: r.key, prog: r.prog, ch: [], pos: 0, pl: 0, bar: 0, started: false, flash: {}, duck: null, post: r.post, feel: r.feel || {}, tr: r.tr || [], startPos: 0 });
     SY.tracks.forEach((T, i) => { T.steps = SY.loops[SY.cur].steps[i]; T.last = null; });
     for (let b = 0; b < bars; b++) { syAdvance(b === 0); SY.bar = b; for (let s = 0; s < 16; s++) sySchedule(s, 0.02 + (b * 16 + s) * sec); }
   } finally { Object.assign(SP, saveSP); Object.assign(SY, saveSY); }
@@ -7662,7 +7797,7 @@ const LEARN = {
   prog: "", // rempli en direct
   muter: "<b>Muter.</b> Comme une mutation génétique sur les formes : chaque bouton bouge un peu, quelques notes changent, des effets s'allument. Écoute ce qui s'améliore, garde, recommence. C'est la méthode de beaucoup de producteurs : accidents heureux.",
   loops: "<b>Les boucles.</b> Un morceau = quelques boucles qui alternent. Le secret : la même base, avec des choses en moins ou en plus. Retirer la batterie 1 mesure avant le refrain crée l'attente ; tout ramener fait le « drop ».",
-  suite: "<b>La structure.</b> Intro (8 mesures, peu d'éléments) → couplet (16, la base) → refrain (8, le plus plein) → pont (4–8, on enlève tout) → refrain. Les mesures vont presque toujours par 4, 8, 16 : l'oreille compte sans le savoir.",
+  suite: "<b>L'arrangement.</b> La frise = le morceau, une case par mesure. Doubler un bloc, copier le refrain plus loin, mettre une coupure avant le drop : c'est là que 4 boucles deviennent un vrai son. <b>La structure.</b> Intro (8 mesures, peu d'éléments) → couplet (16, la base) → refrain (8, le plus plein) → pont (4–8, on enlève tout) → refrain. Les mesures vont presque toujours par 4, 8, 16 : l'oreille compte sans le savoir.",
   morceau: "<b>Faire un morceau.</b> Fabrique l'intro (sans batterie), le couplet (ta boucle), le refrain (charleys plus denses, mélodie variée) et le pont (que l'atmosphère). C'est l'arrangement : l'art d'enlever et de remettre.",
   pompe: "<b>La pompe (sidechain).</b> À chaque coup de kick, le reste baisse une fraction de seconde puis remonte. Ça laisse la place au kick et ça fait « respirer » toute la prod : signature de la French touch (Daft Punk) et de l'électro.",
   mix: "<b>Le mix automatique.</b> Trois réflexes d'ingé son : la pompe sur le kick, couper le grave inutile sur les pistes aiguës (sinon tout devient boueux), et un limiteur à la fin pour que ce soit fort sans saturer.",
@@ -7754,6 +7889,7 @@ function lnFor(el) {
   if (a === "vibe") return LEARN_VIBE[k.slice(5)] ? `<b>${k.slice(5)}</b><br>${LEARN_VIBE[k.slice(5)]}` : "";
   if (a === "sd") { const row = (SY_SD[b] || []).find(x => x[0] === k.split(":")[2]); return row ? `<b>${row[1]}</b>${row[6] ? ` (${row[6]})` : ""} — ${row[7]}<br><span style="opacity:.6">Valeur d'origine : ${sdFmt(row[5], row)} · double-clic sur la valeur pour y revenir.</span>` : ""; }
   if (a === "feel") { const row = SY_FEEL.find(x => x[0] === b); return row ? `<b>${row[1]}</b> — ${row[7]}` : ""; }
+  if (a === "tr") return SY_TR[b] ? `<b>${SY_TR[b][0]} ${SY_TR[b][1]}</b><br>Une transition prévient l'oreille qu'il va se passer quelque chose. Elle se joue sur la dernière mesure d'une section, juste avant la suivante.` : "";
   if (a === "postp") return `<b>Rendu « ${b} »</b> — un mélange d'effets de post-traitement prêt à l'emploi, comme les rendus sur les images.`;
   return LEARN[k] || "";
 }
@@ -7776,7 +7912,7 @@ function syLearnTag() {                          // pose les étiquettes « data
   set("#po-presets .w-chip", e => "postp:" + e.textContent);
   const pk = Object.keys(SY_POST_FX); set("#po-fx .sy-fx", (e, j) => "post:" + pk[j]);
   set("#po-space .w-chip", (e, j) => "space:" + j); set("#po-mix", "mix"); set("#po-duck", "pompe"); set("#po-filter", "filtre");
-  set("#lp-chips", "loops"); set("#lp-chain", "suite"); set("#lp-song", "suite"); set("#lp-auto", "morceau");
+  set("#lp-chips", "loops"); set("#ar", "suite"); set("#lp-song", "suite"); set("#lp-auto", "morceau");
 }
 // La bulle
 function lnTip() { let t = document.getElementById("ln-tip"); if (!t) { t = document.createElement("div"); t.id = "ln-tip"; t.className = "w-glass-ui"; document.body.append(t); } return t; }
@@ -7896,6 +8032,169 @@ const SD_CSS = `
 
 // Le monde ne doit jamais défiler tout seul (un curseur qui prend le focus peut le décaler sur mobile)
 document.addEventListener("scroll", e => { const w = e.target; if (w && w.id === "world" && (w.scrollLeft || w.scrollTop)) { w.scrollLeft = 0; w.scrollTop = 0; } }, true);
+/* ---------- Îlot « Apprendre » : des cartes à retourner et un parcours pour chaque îlot ---------- */
+// Chaque paquet = un îlot (ou un savoir). Carte = [recto, verso]. Révision espacée simple : 5 boîtes (Leitner).
+const LRN_DECKS = [
+  { k: "formes", lab: "Formes & Connexions", isl: "connexions", hue: 262, cards: [
+    ["Que fait un vote « oui » sur une forme ?", "Il apprend tes goûts à l'atelier : les prochaines séries reprennent les critères (déformations, symétrie, épaisseur…) des formes que tu aimes, et évitent ceux que tu refuses."],
+    ["Que veut dire ◐ sur une forme ?", "« Bof » : ni oui ni non. La forme compte un peu, sans tirer l'apprentissage d'un côté."],
+    ["Dans le graphe des connexions, que relie un trait ?", "Deux formes qui partagent les mêmes déformations. Plus elles se ressemblent, plus elles s'attirent. Les grappes = tes familles de goût."],
+    ["Comment générer une nouvelle série ?", "La bulle « Créer » en bas de l'écran : elle ouvre la grille de verre avec la série en cours et le bouton pour en tirer une nouvelle."],
+    ["Pourquoi des étoiles à 6 branches ?", "C'est la forme de départ de la marque : chaque branche se déforme indépendamment, ce qui donne des « bonhommes » tous différents mais de la même famille."],
+    ["Comment voir une forme en grand ?", "Zoome sur le graphe : les points deviennent des vignettes. Touche une forme pour ouvrir sa carte (✓ ✕ ◐)."],
+  ]},
+  { k: "labo", lab: "Labo (effets)", isl: "labo", hue: 160, cards: [
+    ["Différence entre un « rendu » et un « effet » ?", "Le rendu change la matière de toute l'image (encre, néon, papier…). Les effets s'empilent par-dessus (usure, échos, aberration, vignettage…), chacun avec son intensité."],
+    ["Que règle « formes par image » ?", "Le nombre de formes dans chaque cadre (1 à 5). Avec plusieurs formes, elles remplissent le cadre, avec des tailles plus ou moins variées."],
+    ["Qu'est-ce qu'une déformation ?", "Une famille de transformations appliquée aux branches : pincement, coulures, kaléidoscope, festons, glitch… Ce sont les « gènes » que l'atelier apprend de tes votes."],
+    ["Pourquoi un aperçu dans le Labo ?", "Pour juger un réglage sur une vraie forme avant de régénérer une série. On crée vite, puis on peaufine en comparant."],
+  ]},
+  { k: "mockup", lab: "Mockups & production", isl: "production", hue: 18, cards: [
+    ["Que montre le studio en écran scindé ?", "À gauche, le plan à plat (placement, taille, rotation). À droite, le vêtement en 3D qui se met à jour en direct."],
+    ["Sérigraphie : c'est quoi ?", "Une encre poussée à travers un écran tendu, une couleur par écran. Net, couvrant, durable. Idéal pour des aplats et peu de couleurs, rentable en série."],
+    ["Broderie : quand la choisir ?", "Pour un rendu premium et du relief sur les petits motifs (poitrine, bonnet). Les détails trop fins et les dégradés passent mal."],
+    ["Puff : c'est quoi ?", "Une encre qui gonfle à la chaleur : le motif ressort en relief, doux au toucher. Effet streetwear, très visible."],
+    ["Patch cousu : avantage ?", "Le motif est fabriqué à part puis cousu : relief, contour net, et on peut le poser sur n'importe quelle pièce."],
+    ["Pourquoi soigner le placement ?", "Le même motif ne raconte pas la même chose en cœur, en dos, sur la manche ou en bas de pièce. Les grandes maisons jouent sur les placements inattendus."],
+    ["Pourquoi faire varier les itérations ?", "Pour comparer plusieurs versions côte à côte avant de produire : la production coûte cher, l'itération ne coûte rien."],
+  ]},
+  { k: "synthe", lab: "Synthé", isl: "sampler", hue: 290, cards: [
+    ["Combien de pas dans une mesure, et pourquoi ?", "16 : une mesure a 4 temps, chaque temps est coupé en 4 doubles-croches. Les cases plus foncées tombent sur les temps."],
+    ["Comment tenir une note ?", "Glisse la case vers la droite. Une note longue chante, une note courte pique."],
+    ["Comment faire une note fantôme ?", "Appui long sur un pas. Elle est jouée très doucement : c'est ce qui donne le groove."],
+    ["À quoi sert « Muter » ?", "Il bouge un peu tous les boutons et quelques notes, comme une mutation sur les formes. Tu gardes ce qui sonne mieux, tu recommences."],
+    ["Que fait le bouton 🔬 d'une piste ?", "Il ouvre les couches du son (clic, corps, saturation, hauteurs…) avec leurs vraies valeurs. A / B compare avec le son d'origine."],
+    ["Boucle ou arrangement ?", "Une boucle = 1 mesure de toutes les pistes. L'arrangement = la frise des boucles dans l'ordre, avec les transitions. C'est là que ça devient un morceau."],
+    ["Les 4 transitions de l'arrangement ?", "✂ Coupure (silence sur le dernier temps), ⁂ Roulement (la caisse claire accélère), ⟋ Montée (souffle qui grimpe + chute de grave), ≋ Filtre (tout s'étouffe puis s'ouvre)."],
+    ["Comment garder ta prod ?", "« Publier » : elle part en ligne, tout le monde peut l'écouter, l'aimer et la remixer. « Enregistrer 16 mesures » donne un fichier WAV."],
+  ]},
+  { k: "echant", lab: "Échantillons", isl: "sampler", hue: 205, cards: [
+    ["Qu'est-ce qu'un sample ?", "Un morceau d'un son existant (musique, voix, vidéo) qu'on découpe et rejoue comme un instrument. Base du hip-hop depuis les années 80."],
+    ["Découpe « attaques » ?", "L'atelier repère les débuts de sons (coups, syllabes) et pose un pad sur chacun. Idéal pour une batterie ou une voix."],
+    ["Découpe « temps » ?", "Les pads tombent sur chaque temps, d'après le tempo détecté : parfait pour réarranger une boucle musicale en gardant le groove."],
+    ["Pourquoi couper au « passage à zéro » ?", "Couper quand l'onde vaut zéro évite le petit « clic » au début et à la fin de chaque pad."],
+    ["Modes coup / tenir / boucle ?", "Coup : le pad joue en entier. Tenir : il joue tant que la touche est enfoncée. Boucle : il se répète jusqu'au prochain appui."],
+    ["Et la vidéo ?", "Si tu glisses un mp4, l'image suit le sample : chaque pad saute au bon moment de la vidéo."],
+  ]},
+  { k: "images", lab: "Images en musique", isl: "sampler", hue: 330, cards: [
+    ["Comment une image devient-elle un son ?", "Elle est lue en 16 secteurs autour du centre de l'encre : l'encre de chaque secteur déclenche une note, sa position donne la hauteur."],
+    ["Radial ou patch ?", "Radial : on voit la lecture tourner autour de l'image. Patch : on relie les critères de l'image (luminosité, contraste, teinte…) aux couches du son avec des câbles."],
+  ]},
+  { k: "dj", lab: "Platines (DJ)", isl: "dj", hue: 45, cards: [
+    ["À quoi sert SYNC ?", "Il met le tempo d'une platine sur celui de l'autre (en doublant ou divisant si besoin), pour que les deux morceaux tombent ensemble."],
+    ["Pourquoi le départ est « quantifié » ?", "La platine démarre sur la prochaine mesure de l'autre : les temps forts s'alignent tout seuls."],
+    ["Qu'est-ce que l'échange des basses ?", "La transition la plus classique : on coupe les graves du morceau entrant, puis on les échange d'un coup avec ceux du sortant. Deux basses en même temps = de la bouillie."],
+    ["Les EQ : grave, médium, aigu ?", "Trois filtres par platine. Couper (kill) une bande la fait disparaître : utile pour faire entrer un morceau par les charleys seulement."],
+    ["Transition « écho » ?", "On lance un écho sur le morceau sortant et on coupe : il s'éteint en répétitions pendant que le nouveau démarre. Typique du reggae et du rap."],
+    ["Combien de mesures pour une transition ?", "Souvent 8 ou 16, en commençant au début d'une phrase : l'oreille attend les changements toutes les 4, 8 ou 16 mesures."],
+  ]},
+  { k: "theorie", lab: "Théorie musicale", isl: "sampler", hue: 120, cards: [
+    ["Mineur ou majeur ?", "Ça dépend de la tierce, 3 ou 4 demi-tons au-dessus de la note de base. Mineur (3) sonne sombre et mélancolique, majeur (4) lumineux."],
+    ["Que veut dire « i–VI–III–VII » ?", "La place de chaque accord dans la gamme. Minuscule = mineur, majuscule = majeur. C'est l'une des grilles les plus utilisées du rap et de la pop."],
+    ["Qu'apporte une septième ou une neuvième ?", "Des notes en plus dans l'accord : il devient plus riche, plus « adulte ». Couleur soul, jazz, R&B (Sade, Nujabes)."],
+    ["Qu'est-ce que la tonique ?", "La note « maison » du morceau. Revenir dessus = se poser. Une mélodie qui finit ailleurs laisse une question en suspens."],
+    ["Qu'est-ce que le swing ?", "Retarder une double-croche sur deux. Ça « roule » au lieu d'être carré (J Dilla, Nujabes)."],
+    ["Demi-tempo, c'est quoi ?", "Un morceau à 140 bpm où la caisse claire tombe sur le 3e temps : il paraît deux fois plus lent et plus lourd. Toute la trap fonctionne comme ça."],
+    ["Pourquoi les sections font 4, 8 ou 16 mesures ?", "L'oreille compte sans le savoir. Changer au bon moment fait le « drop » ; changer au mauvais moment fait trébucher."],
+    ["Le sidechain (« pompe ») ?", "À chaque kick, le reste baisse un instant puis remonte. Ça laisse la place au kick et fait respirer la prod (Daft Punk, l'électro)."],
+  ]},
+  { k: "diffusion", lab: "Diffusion", isl: "diffusion", hue: 230, cards: [
+    ["Les trois formats clés des réseaux ?", "9:16 (Reel, TikTok, story, plein écran vertical), 4:5 (post Instagram, prend le plus de place dans le fil), 1:1 (carré, carrousels)."],
+    ["Pourquoi un texte alternatif ?", "Il décrit l'image pour les personnes malvoyantes, et aide les plateformes à comprendre le contenu."],
+    ["Pourquoi un lien suivi ?", "Il dit d'où viennent les visites et les ventes (quel post, quel réseau) : on sait ce qui marche vraiment."],
+  ]},
+];
+const LRN_PATHS = [
+  { isl: "connexions", lab: "Formes", steps: ["Ouvre la bulle « Créer » en bas : la grille de la série apparaît.", "Vote ✓ ou ✕ sur chaque forme : l'atelier apprend.", "Ferme la grille et zoome dans le graphe : tes formes s'y regroupent par famille.", "Touche une forme du graphe pour la revoir et changer ton vote."] },
+  { isl: "labo", lab: "Labo", steps: ["Choisis un rendu : il change la matière.", "Empile 1 ou 2 effets, pas plus pour commencer.", "Règle le nombre de formes par image.", "Regarde l'aperçu, puis régénère une série pour voir le résultat partout."] },
+  { isl: "production", lab: "Mockups", steps: ["Choisis une forme (en cours ou favorite).", "Dans le studio, choisis la pièce : longsleeve ou bonnet.", "Pose le motif : placement, taille, rotation, à gauche ; regarde la 3D à droite.", "Essaie 2 techniques (sérigraphie, puff…) et 2 couleurs, compare."] },
+  { isl: "sampler", lab: "Faire une prod", steps: ["Synthé : touche une ambiance qui te parle.", "Appuie sur Jouer, puis Muter jusqu'à ce que ça sonne.", "Allume, tiens, mets des notes fantômes dans les pas.", "Copie la boucle, change-la (refrain), puis arrange : intro, couplet ×2, refrain, transition.", "Enregistre 16 mesures ou publie."] },
+  { isl: "sampler", lab: "Sampler un média", mode: "echant", steps: ["Onglet Échantillons : glisse un mp3 ou un mp4.", "Choisis la découpe : attaques, temps ou égale.", "Joue les pads au clavier ; règle le mode (coup, tenir, boucle).", "Lance la boucle d'enregistrement et joue par-dessus."] },
+  { isl: "dj", lab: "Première transition", steps: ["Charge une prod sur chaque platine.", "Lance la première, puis SYNC sur la seconde.", "Démarre la seconde : elle part sur la prochaine mesure.", "Échange les basses, ou choisis une transition auto (fondu, basses, écho).", "Enregistre ton mix."] },
+];
+const LRN = { deck: store.get("atelier-lrn-deck", "all"), tab: "cartes", card: null, flip: false, box: store.get("atelier-lrn-box", {}) };
+const lrnId = (d, j) => d.k + ":" + j;
+function lrnPool() { const out = []; for (const d of LRN_DECKS) if (LRN.deck === "all" || LRN.deck === d.k) d.cards.forEach((c, j) => out.push({ d, j, c, id: lrnId(d, j) })); return out; }
+function lrnPick() {                                                     // les cartes peu sues reviennent plus souvent
+  const pool = lrnPool(); if (!pool.length) return null;
+  const w = pool.map(x => (x.id === (LRN.card && LRN.card.id) ? 0.05 : 1) * Math.pow(0.35, LRN.box[x.id] || 0)), tot = w.reduce((a, b) => a + b, 0);
+  let r = Math.random() * tot; for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) return pool[i]; } return pool[0];
+}
+function lrnStats(k) { const pool = LRN_DECKS.filter(d => k === "all" || d.k === k).flatMap(d => d.cards.map((_, j) => lrnId(d, j))); return { n: pool.length, ok: pool.filter(id => (LRN.box[id] || 0) >= 3).length }; }
+function wPLearn(p) {
+  if (!document.getElementById("lrn-css")) { const css = document.createElement("style"); css.id = "lrn-css"; css.textContent = LRN_CSS; document.head.append(css); }
+  const st = lrnStats("all");
+  p.innerHTML = wHead("Apprendre · tout l'atelier", `<button class="w-pill w-glass-ui w-live" data-tab="cartes" aria-pressed="${LRN.tab === "cartes"}">Cartes</button><button class="w-pill w-glass-ui w-live" data-tab="parcours" aria-pressed="${LRN.tab === "parcours"}">Parcours</button><span class="w-pill w-glass-ui w-live" style="cursor:default">${st.ok} / ${st.n} sues</span>`)
+    + `<div class="w-scroll w-live"><div class="lrn" id="lrn"></div></div>`;
+  p.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { LRN.tab = b.dataset.tab; uisSwitch(LRN.tab === "cartes"); WORLD.panelKey = null; wPanel("learn"); });
+  if (LRN.tab === "parcours") lrnPaths(p.querySelector("#lrn")); else lrnCards(p.querySelector("#lrn"));
+}
+function lrnCards(host) {
+  host.innerHTML = `<div class="lrn-decks" id="lrn-decks"></div><div class="lrn-stage"><div class="lrn-card" id="lrn-card" tabindex="0"><div class="lrn-face lrn-front"></div><div class="lrn-face lrn-back"></div></div></div>
+    <div class="lrn-btns"><button class="w-pill w-glass-ui" id="lrn-no">↺ À revoir</button><button class="w-pill w-glass-ui" id="lrn-flip">Retourner</button><button class="w-pill dark" id="lrn-yes">✓ Je savais</button></div>
+    <p class="sp-hint" style="text-align:center">Espace : retourner · ← à revoir · → je savais. Les cartes que tu sais reviennent moins souvent.</p>`;
+  const decks = host.querySelector("#lrn-decks");
+  [{ k: "all", lab: "Tout", hue: 230 }, ...LRN_DECKS].forEach(d => { const s = lrnStats(d.k), b = document.createElement("button"); b.className = "lrn-deck"; b.style.setProperty("--h", d.hue); b.setAttribute("aria-pressed", LRN.deck === d.k); b.innerHTML = `<span>${d.lab}</span><i style="--p:${s.n ? s.ok / s.n : 0}"></i><small>${s.ok}/${s.n}</small>`; b.onclick = () => { LRN.deck = d.k; store.set("atelier-lrn-deck", d.k); LRN.card = null; uisClick(); lrnCards(host); }; decks.append(b); });
+  const card = host.querySelector("#lrn-card");
+  const show = () => {
+    if (!LRN.card) LRN.card = lrnPick(); const x = LRN.card; if (!x) return; LRN.flip = false; card.classList.remove("flip"); card.style.setProperty("--h", x.d.hue);
+    const box = LRN.box[x.id] || 0;
+    card.querySelector(".lrn-front").innerHTML = `<small>${x.d.lab}</small><b>${x.c[0]}</b><span class="lrn-dots">${[0, 1, 2, 3, 4].map(i => `<i class="${i < box ? "on" : ""}"></i>`).join("")}</span>`;
+    const I = W_ISLANDS.find(i => i.k === x.d.isl);
+    card.querySelector(".lrn-back").innerHTML = `<small>${x.d.lab}</small><p>${x.c[1]}</p>${I && x.d.isl !== "learn" ? `<button class="w-chip" data-go="${x.d.isl}">Essayer dans ${I.lab} →</button>` : ""}`;
+    const go = card.querySelector("[data-go]"); if (go) go.onclick = e => { e.stopPropagation(); lrnGo(x.d.isl, x.d.k === "echant" ? "echant" : x.d.k === "images" ? "radial" : x.d.k === "synthe" || x.d.k === "theorie" ? "synthe" : null); };
+  };
+  const flip = () => { LRN.flip = !LRN.flip; card.classList.toggle("flip", LRN.flip); uisSwoosh(LRN.flip, 0.3); };
+  const answer = ok => { const x = LRN.card; if (!x) return; LRN.box[x.id] = ok ? Math.min(5, (LRN.box[x.id] || 0) + 1) : 0; store.set("atelier-lrn-box", LRN.box); ok ? uisYes() : uisNo(); LRN.card = lrnPick(); lrnCards(host); };
+  card.onclick = flip; host.querySelector("#lrn-flip").onclick = flip;
+  host.querySelector("#lrn-yes").onclick = () => answer(true); host.querySelector("#lrn-no").onclick = () => answer(false);
+  card.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); } if (e.key === "ArrowRight") answer(true); if (e.key === "ArrowLeft") answer(false); };
+  show(); setTimeout(() => { try { card.focus({ preventScroll: true }); } catch {} }, 50);
+}
+function lrnPaths(host) {
+  host.innerHTML = `<div class="lrn-paths"></div>`;
+  const box = host.querySelector(".lrn-paths"), done = store.get("atelier-lrn-steps", {});
+  LRN_PATHS.forEach((P, pi) => {
+    const I = W_ISLANDS.find(i => i.k === P.isl), el = document.createElement("div"); el.className = "lrn-path w-glass-ui";
+    el.innerHTML = `<div class="lrn-ph"><b>${P.lab}</b><small>${I ? I.lab : ""}</small><button class="w-chip" data-go>Y aller →</button></div><ol>${P.steps.map((s, j) => `<li class="${done[pi + ":" + j] ? "ok" : ""}" data-j="${j}">${s}</li>`).join("")}</ol>`;
+    el.querySelector("[data-go]").onclick = () => lrnGo(P.isl, P.mode || (P.isl === "sampler" ? "synthe" : null));
+    el.querySelectorAll("li").forEach(li => li.onclick = () => { const k = pi + ":" + li.dataset.j; done[k] = !done[k]; if (!done[k]) delete done[k]; store.set("atelier-lrn-steps", done); li.classList.toggle("ok", !!done[k]); uisSwitch(!!done[k]); });
+    box.append(el);
+  });
+  const tip = document.createElement("p"); tip.className = "sp-hint"; tip.style.textAlign = "center"; tip.textContent = "Coche les étapes au fur et à mesure. Dans le Synthé, le bouton ♪ Apprendre ajoute des bulles d'explication sur chaque bouton."; box.append(tip);
+}
+function lrnGo(k, mode) {
+  const I = W_ISLANDS.find(i => i.k === k); if (!I) return;
+  if (mode) store.set("atelier-sampler-mode", mode);
+  if (k === "sampler" && mode === "synthe" && typeof SY !== "undefined" && !SY.learn) { SY.learn = true; store.set("atelier-learn", true); }
+  uisSwoosh(true); wFlyIsland(I);
+}
+const LRN_CSS = `
+.lrn { max-width: 860px; margin: 0 auto; padding: 84px 20px 150px; display: flex; flex-direction: column; gap: 18px; }
+.lrn-decks { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.lrn-deck { display: grid; grid-template-columns: auto auto; gap: 2px 10px; align-items: center; padding: 8px 12px; border-radius: 14px; border: 1px solid hsla(var(--h), 40%, 50%, .25); background: rgba(255,255,255,.7); font: inherit; font-size: 12px; color: inherit; cursor: pointer; }
+.lrn-deck[aria-pressed="true"] { background: hsl(var(--h), 45%, 50%); color: #fff; border-color: transparent; }
+.lrn-deck small { font-size: 10px; opacity: .7; } .lrn-deck i { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: linear-gradient(90deg, currentColor calc(var(--p) * 100%), rgba(127,127,127,.2) 0); opacity: .7; }
+.lrn-stage { perspective: 1200px; display: flex; justify-content: center; padding: 10px 0; }
+.lrn-card { position: relative; width: min(560px, 100%); height: 300px; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.2,.8,.2,1); cursor: pointer; outline: none; }
+.lrn-card.flip { transform: rotateY(180deg); }
+.lrn-face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 28px; padding: 28px 32px; display: flex; flex-direction: column; justify-content: center; gap: 14px; background: linear-gradient(160deg, rgba(255,255,255,.96), hsla(var(--h), 60%, 94%, .96)); box-shadow: 0 24px 60px hsla(var(--h), 40%, 30%, .16), inset 0 0 0 1px hsla(var(--h), 40%, 50%, .15); }
+.lrn-face small { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: hsl(var(--h), 40%, 40%); }
+.lrn-front b { font-family: var(--f-main); font-weight: 400; font-size: clamp(20px, 3.4vw, 28px); line-height: 1.25; }
+.lrn-back { transform: rotateY(180deg); } .lrn-back p { margin: 0; font-size: 15px; line-height: 1.6; } .lrn-back .w-chip { align-self: flex-start; }
+.lrn-dots { display: flex; gap: 5px; } .lrn-dots i { width: 7px; height: 7px; border-radius: 50%; background: hsla(var(--h), 40%, 50%, .2); } .lrn-dots i.on { background: hsl(var(--h), 45%, 50%); }
+.lrn-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.lrn-paths { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.lrn-path { border-radius: 22px; padding: 16px 18px; }
+.lrn-ph { display: flex; align-items: center; gap: 8px; } .lrn-ph b { font-size: 15px; } .lrn-ph small { opacity: .5; font-size: 11px; flex: 1; }
+.lrn-path ol { margin: 12px 0 0; padding-left: 0; list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 8px; }
+.lrn-path li { counter-increment: s; position: relative; padding-left: 30px; font-size: 13px; line-height: 1.45; cursor: pointer; }
+.lrn-path li::before { content: counter(s); position: absolute; left: 0; top: -1px; width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; background: rgba(27,29,34,.06); }
+.lrn-path li.ok { opacity: .55; text-decoration: line-through; } .lrn-path li.ok::before { content: "✓"; background: rgb(124,92,230); color: #fff; }
+.lrn .sp-hint { font-size: 11px; opacity: .6; }
+@media (max-width: 640px) { .lrn { padding: 70px 14px 150px; gap: 12px; } .lrn-decks { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; } .lrn-deck { flex: none; } .lrn-card { height: 300px; } .lrn-face { padding: 22px; } }
+`;
+
 
 </script>
 
