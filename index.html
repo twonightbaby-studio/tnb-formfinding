@@ -5339,14 +5339,16 @@ function spPlay(on) {
 function spRec() {
   if (SP.rec) return spRecStop();
   const synth = store.get("atelier-sampler-mode", "synthe") === "synthe";
+  if (synth && SY.song && SY.playing) syRun(false);          // la suite s'enregistre depuis le début
   if (synth ? !SY.playing : !SP.playing) synth ? syRun(true) : spPlay(true);
   if (!SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
   const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
   const r = new MediaRecorder(SP.dest.stream, type ? { mimeType: type } : undefined), chunks = [];
   r.ondataavailable = e => e.data.size && chunks.push(e.data);
   r.onstop = () => { const blob = new Blob(chunks, { type: r.mimeType || "audio/webm" }); offerBlob(blob, `boucle_tnb_${spBpm()}bpm.${(r.mimeType || "").includes("mp4") ? "m4a" : "webm"}`); uisChime(7, 0.6); };
-  r.start(); SP.rec = { r, bars: 4 };
-  const b = document.getElementById("sp-rec"); if (b) { b.textContent = "● 4 mesures…"; b.setAttribute("aria-pressed", true); }
+  const bars = synth && SY.song ? SY.chain.length : 4;
+  r.start(); SP.rec = { r, bars };
+  const b = document.getElementById("sp-rec"); if (b) { b.textContent = `● ${bars} mesures…`; b.setAttribute("aria-pressed", true); }
 }
 function spRecStop() {
   if (!SP.rec) return; try { SP.rec.r.stop(); } catch {} SP.rec = null;
@@ -5361,7 +5363,7 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 /* Interface */
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
-  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS; document.head.append(css); }
+  if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS; document.head.append(css); }
   if (mode === "synthe") {
     p.innerHTML = wHead("Sampler · fais ta prod", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="true">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="false">Images</button><button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
@@ -5369,7 +5371,7 @@ function wPSampler(p) {
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
     p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
     p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m === "synthe") return; uisSwitch(true); syRun(false); store.set("atelier-sampler-mode", b.dataset.m); WORLD.panelKey = null; wPanel("sampler"); });
-    const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); };
+    const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); syLoopView(); };
     requestAnimationFrame(loop);
     p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", e => e.pointerType === "mouse" && uisPlop()); b.dataset.snd = 1; } });
     p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
@@ -5489,14 +5491,134 @@ const SY_VIBES = {
     syTrack("choir", syS("x..............."), { space: 0.9, move: 0.8 }), syTrack("keys", syS("..x...x...x...x."), { space: 0.6, tone: 0.4 }),
     syTrack("glass", syS(".....x.......x..", [0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 7]), { space: 0.9, vol: 0.5 }) ] },
 };
+/* ---------- Boucles et suite : on boucle, on enchaîne, ça devient un vrai morceau ---------- */
+// Chaque boucle = 1 mesure de pas pour toutes les pistes (les sons et boutons sont communs).
+// La suite = l'ordre des boucles, une case par mesure.
+const SY_LOOP_HUES = [262, 18, 160, 205, 330, 45, 120, 290];
+const syZero = () => new Array(16).fill(0);
+function syEnsureLoops() {
+  if (!Array.isArray(SY.loops) || !SY.loops.length) { SY.loops = [{ name: "A", steps: SY.tracks.map(T => T.steps) }]; SY.cur = 0; SY.chain = [0]; }
+  SY.cur = Math.min(SY.cur || 0, SY.loops.length - 1);
+  SY.chain = (SY.chain || []).filter(i => i < SY.loops.length); if (!SY.chain.length) SY.chain = [SY.cur];
+  for (const L of SY.loops) { while (L.steps.length < SY.tracks.length) L.steps.push(syZero()); L.steps.length = SY.tracks.length; }
+  syBind();
+}
+function syBind() { SY.tracks.forEach((T, i) => { T.steps = SY.loops[SY.cur].steps[i] || (SY.loops[SY.cur].steps[i] = syZero()); }); }
+function syStore() { if (SY.loops && SY.loops[SY.cur]) SY.loops[SY.cur].steps = SY.tracks.map(T => T.steps); }
+const syClone = x => JSON.parse(JSON.stringify(x));
+const syNextName = () => { const used = new Set(SY.loops.map(l => l.name)); for (const c of "ABCDEFGH") if (!used.has(c)) return c; return String(SY.loops.length + 1); };
+function syEditLoop(i) {
+  syStore(); SY.cur = i; syBind(); sySave(); syRender(); syRenderLoops();
+  uisChime(i * 2, 0.5);
+}
+function syNewLoop(copy) {
+  if (SY.loops.length >= 8) { wToast("8 boucles maximum"); return; }
+  syStore();
+  SY.loops.push({ name: syNextName(), steps: copy ? syClone(SY.loops[SY.cur].steps) : SY.tracks.map(syZero) });
+  SY.chain.push(SY.loops.length - 1); syEditLoop(SY.loops.length - 1); uisPlop();
+}
+function syDelLoop(i) {
+  if (SY.loops.length < 2) return;
+  syStore(); SY.loops.splice(i, 1);
+  SY.chain = SY.chain.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+  SY.cur = Math.max(0, Math.min(SY.cur >= i ? SY.cur - 1 : SY.cur, SY.loops.length - 1));
+  if (SY.pl != null && SY.pl >= SY.loops.length) SY.pl = SY.cur;
+  syEnsureLoops(); sySave(); syRender(); syRenderLoops(); uisNo();
+}
+// Construit une structure de morceau à partir de la boucle en cours : intro, couplet, refrain, pont
+function syAutoSong() {
+  syStore();
+  const base = syClone(SY.loops[SY.cur].steps), kinds = SY.tracks.map(T => SY_INST[T.inst]);
+  const isDrum = i => kinds[i].kind === "drum" || SY.tracks[i].inst === "k808";
+  const isBass = i => ["sub", "reese", "k808", "tom"].includes(SY.tracks[i].inst);
+  const intro = base.map((st, i) => isDrum(i) || isBass(i) ? syZero() : st.map(s => s && Math.random() < 0.7 ? s : 0));
+  const refrain = base.map((st, i) => st.map((s, j) => {
+    const T = SY.tracks[i], I = kinds[i];
+    if (I.roll && j % 2 === 1 && !s && Math.random() < 0.5) return { v: Math.random() < 0.3 ? 2 : 1, d: 0 };
+    if (I.roll && s && Math.random() < 0.25) return { v: 2 + (Math.random() < 0.4 ? 1 : 0), d: 0 };
+    if (I.kind === "mel" && !I.chord && !isBass(i) && s && Math.random() < 0.3) return { v: 1, d: s.d + (Math.random() < 0.5 ? 2 : -1) };
+    if (T.inst === "kick" && j === 14 && !s) return { v: 1, d: 0 };
+    return s;
+  }));
+  const pont = base.map((st, i) => isDrum(i) && SY.tracks[i].inst !== "riser" ? syZero() : isBass(i) ? st.map((s, j) => j === 0 ? s || { v: 1, d: 0 } : 0) : st);
+  SY.loops = [{ name: "Intro", steps: intro }, { name: "Couplet", steps: base }, { name: "Refrain", steps: refrain }, { name: "Pont", steps: pont }];
+  SY.chain = [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 2, 2, 2, 2, 0, 0];
+  SY.cur = 1; SY.song = true; syBind(); sySave(); syRender(); syRenderLoops();
+  uisYes(); wToast("Morceau construit : intro, couplet, refrain, pont · 18 mesures");
+}
+// Ce que la tête de lecture doit jouer à chaque début de mesure
+function syAdvance(first) {
+  if (SY.song && SY.chain.length) { SY.pos = first ? 0 : (SY.pos + 1) % SY.chain.length; SY.pl = SY.chain[SY.pos]; }
+  else SY.pl = SY.cur;
+}
+function syRenderLoops() {
+  const box = document.getElementById("sy-loops"); if (!box) return;
+  box.innerHTML = `<div class="lp-row"><span class="w-sec" style="margin:0">Boucles</span><div class="lp-chips" id="lp-chips"></div>
+      <button class="w-chip" id="lp-dup" title="Copie de la boucle en cours, à bidouiller">+ Copie</button><button class="w-chip" id="lp-new">+ Vide</button></div>
+    <div class="lp-row"><span class="w-sec" style="margin:0">Suite</span>
+      <button class="w-sw" id="lp-song" role="switch" aria-checked="${!!SY.song}" title="Jouer la suite au lieu de boucler"></button><span class="lp-mode">${SY.song ? `joue la suite · ${SY.chain.length} mesures` : "boucle la boucle en cours"}</span>
+      <div class="lp-chain" id="lp-chain"></div>
+      <button class="w-chip" id="lp-add" title="Ajouter la boucle en cours à la fin de la suite">+ ${SY.loops[SY.cur].name}</button>
+      <button class="w-chip" id="lp-auto" title="Fabrique intro, couplet, refrain et pont à partir de la boucle en cours">✦ Faire un morceau</button></div>
+    <p class="sp-hint">Touche une boucle pour la modifier (pendant la lecture, elle part à la mesure suivante). Double-touche pour la renommer. Dans la suite, touche une case pour la retirer, glisse-la pour la déplacer.</p>`;
+  const chips = box.querySelector("#lp-chips");
+  SY.loops.forEach((L, i) => {
+    const b = document.createElement("button"); b.className = "lp-chip" + (i === SY.cur ? " cur" : "") + (SY.playing && SY.pl === i ? " play" : ""); b.style.setProperty("--h", SY_LOOP_HUES[i % 8]); b.dataset.i = i;
+    b.innerHTML = `<span></span>${SY.loops.length > 1 && i === SY.cur ? `<i title="Supprimer cette boucle">✕</i>` : ""}`; b.querySelector("span").textContent = L.name;
+    b.onclick = e => { if (e.target.tagName === "I") { syDelLoop(i); return; } if (i !== SY.cur) syEditLoop(i); };
+    b.ondblclick = () => {
+      const inp = document.createElement("input"); inp.className = "w-in"; inp.value = L.name; inp.maxLength = 12; inp.style.width = "90px"; b.replaceWith(inp); inp.focus(); inp.select();
+      const done = () => { L.name = inp.value.trim().slice(0, 12) || L.name; sySave(); syRenderLoops(); };
+      inp.onblur = done; inp.onkeydown = ev => { if (ev.key === "Enter") inp.blur(); };
+    };
+    chips.append(b);
+  });
+  const chain = box.querySelector("#lp-chain"); let dragFrom = null;
+  SY.chain.forEach((li, k) => {
+    const c = document.createElement("button"); c.className = "lp-cell" + (SY.playing && SY.song && SY.pos === k ? " play" : ""); c.style.setProperty("--h", SY_LOOP_HUES[li % 8]); c.textContent = (SY.loops[li].name || "?").slice(0, 2); c.title = SY.loops[li].name; c.draggable = true;
+    c.onclick = () => { if (SY.chain.length < 2) return; SY.chain.splice(k, 1); if (SY.pos >= SY.chain.length) SY.pos = 0; uisSwitch(false); sySave(); syRenderLoops(); };
+    c.ondragstart = () => { dragFrom = k; }; c.ondragover = e => e.preventDefault();
+    c.ondrop = e => { e.preventDefault(); if (dragFrom == null || dragFrom === k) return; const [x] = SY.chain.splice(dragFrom, 1); SY.chain.splice(k, 0, x); dragFrom = null; uisClick(); sySave(); syRenderLoops(); };
+    chain.append(c);
+  });
+  box.querySelector("#lp-dup").onclick = () => syNewLoop(true);
+  box.querySelector("#lp-new").onclick = () => syNewLoop(false);
+  box.querySelector("#lp-add").onclick = () => { if (SY.chain.length >= 64) return; SY.chain.push(SY.cur); uisPlop(); sySave(); syRenderLoops(); };
+  box.querySelector("#lp-auto").onclick = syAutoSong;
+  box.querySelector("#lp-song").onclick = () => { SY.song = !SY.song; uisSwitch(SY.song); sySave(); syRenderLoops(); };
+}
+function syLoopView() {           // suit la tête de lecture dans les boucles et la suite
+  const key = (SY.playing ? 1 : 0) + "|" + SY.pl + "|" + SY.pos + "|" + SY.song;
+  if (key === SY.lastLoopKey) return; SY.lastLoopKey = key;
+  document.querySelectorAll(".lp-chip").forEach(b => b.classList.toggle("play", !!SY.playing && +b.dataset.i === SY.pl));
+  document.querySelectorAll(".lp-cell").forEach((c, k) => c.classList.toggle("play", !!SY.playing && !!SY.song && k === SY.pos));
+  const pc = document.querySelector(".lp-cell.play"); if (pc && pc.scrollIntoView) { const ch = pc.parentElement; ch.scrollLeft = pc.offsetLeft - ch.clientWidth / 2; }
+}
+const LP_CSS = `
+.sy-loops { flex-direction: column; gap: 10px; }
+.lp-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lp-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.lp-chip { position: relative; min-width: 44px; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid hsla(var(--h), 40%, 50%, .35); background: hsla(var(--h), 50%, 60%, .12); cursor: pointer; font: inherit; font-size: 12px; color: inherit; }
+.lp-chip.cur { background: hsl(var(--h), 45%, 50%); color: #fff; border-color: transparent; }
+.lp-chip.play::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: hsl(var(--h), 55%, 50%); animation: lppulse .5s ease-in-out infinite alternate; }
+@keyframes lppulse { to { transform: scale(1.6); opacity: .5; } }
+.lp-chip i { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: #fff; color: #333; font-style: normal; font-size: 9px; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.lp-mode { font-size: 10px; opacity: .6; }
+.lp-chain { display: flex; gap: 3px; flex: 1 1 260px; min-width: 0; overflow-x: auto; padding: 4px 2px; scrollbar-width: none; }
+.lp-cell { flex: none; width: 30px; height: 30px; border-radius: 8px; border: 0; background: hsl(var(--h), 45%, 55%); color: #fff; font: inherit; font-size: 10px; cursor: grab; transition: transform .1s; }
+.lp-cell.play { transform: scale(1.18); box-shadow: 0 0 0 2px rgba(27,29,34,.75); }
+`;
+
 const SY = Object.assign({ bpm: 82, swing: 0.1, key: 5, prog: "i–VI–III–VII", tracks: [], vibe: "Éthéré", sel: 0 }, store.get("atelier-synthe", null) || {});
 if (!SY.tracks.length) syLoadVibe("Éthéré", false);
+syEnsureLoops();
 function syLoadVibe(name, ui = true) {
-  const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0, parent: null, from: null });
+  const v = JSON.parse(JSON.stringify(SY_VIBES[name])); Object.assign(SY, { bpm: v.bpm, swing: v.swing, key: v.key, prog: v.prog, tracks: v.tracks, vibe: name, sel: 0, parent: null, from: null, loops: null, chain: null, cur: 0, song: false });
+  syEnsureLoops();
   if (ui && typeof prRender === "function") prRender();
   sySave(); if (ui) syRender();
 }
-function sySave() { clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null }), 300); }
+function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null, loops: SY.loops, chain: SY.chain, cur: SY.cur, song: !!SY.song }), 300); }
 
 /* Chaîne d'effets par piste : drive → filtre → volume → (sortie + espace) */
 function syChain(i) {
@@ -5567,11 +5689,12 @@ function syNote(T, st, bar) {
 }
 function sySchedule(s, t) {
   const sec = 60 / SY.bpm / 4, bar = SY.bar || 0, tt = t + (s % 2 ? SY.swing * sec * 0.5 : 0);
+  const LS = (SY.loops[SY.pl ?? SY.cur] || SY.loops[SY.cur]).steps;
   SY.tracks.forEach((T, i) => {
-    const st = T.steps[s]; if (!st || T.mute) return;
+    const row = LS[i] || T.steps, st = row[s]; if (!st || T.mute) return;
     const ch = syChain(i), I = SY_INST[T.inst], m = I.kind === "drum" ? 60 : syNote(T, st, bar);
     const reps = I.roll ? (st.v || 1) : 1;
-    for (let r = 0; r < reps; r++) syPlay(T.inst, ch.inp, tt + r * sec / reps, m, r ? 0.6 : 1, T.move, sec, T.inst === "k808" && T.last && T.last !== m && T.steps[(s + 15) % 16] ? T.last : null);
+    for (let r = 0; r < reps; r++) syPlay(T.inst, ch.inp, tt + r * sec / reps, m, r ? 0.6 : 1, T.move, sec, T.inst === "k808" && T.last && T.last !== m && row[(s + 15) % 16] ? T.last : null);
     if (I.kind !== "drum") T.last = Array.isArray(m) ? m[0] : m;
     SY.flash = SY.flash || {}; SY.flash[i] = performance.now() + (tt - SP.ctx.currentTime) * 1000;
   });
@@ -5580,6 +5703,7 @@ function syTick() {
   const c = SP.ctx; if (!c) return;
   const sec = 60 / SY.bpm / 4;
   while (SY.nextT < c.currentTime + 0.12) {
+    if (SY.step === 0) { syAdvance(!SY.started); SY.started = true; }
     sySchedule(SY.step, SY.nextT);
     const s = SY.step, at = SY.nextT; setTimeout(() => { SY.view = s; }, Math.max(0, (at - c.currentTime) * 1000));
     SY.nextT += sec; SY.step = (SY.step + 1) % 16; if (SY.step === 0) { SY.bar = (SY.bar || 0) + 1; if (SP.rec && --SP.rec.bars <= 0) spRecStop(); }
@@ -5591,7 +5715,7 @@ function syRun(on) {
     if (!spAudio()) return; if (SP.playing) spPlay(false);
     if (typeof SON !== "undefined" && SON.on) sonToggle();
     SY.tracks.forEach((_, i) => syChain(i));
-    SY.step = 0; SY.bar = 0; SY.nextT = SP.ctx.currentTime + 0.06; SY.timer = setInterval(syTick, 25); SY.playing = true;
+    SY.step = 0; SY.bar = 0; SY.started = false; SY.pos = 0; SY.nextT = SP.ctx.currentTime + 0.06; SY.timer = setInterval(syTick, 25); SY.playing = true;
   } else { clearInterval(SY.timer); SY.playing = false; SY.view = -1; if (SP.rec) spRecStop(); }
   const b = document.getElementById("sy-play"); if (b) { b.textContent = SY.playing ? "■ Stop" : "▶ Jouer"; b.setAttribute("aria-pressed", SY.playing); }
 }
@@ -5627,6 +5751,7 @@ function wPSynth(host) {
         <button class="w-pill w-glass-ui" id="sy-mut" title="Fait bouger un peu tous les boutons et quelques pas">↻ Muter</button>
       </div>
     </div>
+    <div class="sy-loops sp-card" id="sy-loops"></div>
     <div class="sy-tracks" id="sy-tracks"></div>
     <div class="w-row"><button class="w-pill w-glass-ui" id="sy-add">+ Piste</button><span class="sp-hint">Touche le nom d'une piste pour changer de son. Pas : touche pour allumer · glisse vers le haut / bas pour la note${""} · sur les charleys, re-touche pour des roulements.</span></div>
   </div>`;
@@ -5635,7 +5760,7 @@ function wPSynth(host) {
   const ks = host.querySelector("#sy-key"), ps = host.querySelector("#sy-prog"); ks.value = SY.key; ps.value = SY.prog;
   ks.onchange = () => { SY.key = +ks.value; sySave(); uisClick(); }; ps.onchange = () => { SY.prog = ps.value; sySave(); uisClick(); };
   host.querySelector("#sy-mut").onclick = () => { uisChime(5, 0.5); syMutate(); };
-  host.querySelector("#sy-add").onclick = () => { if (SY.tracks.length >= 10) return; const pool = Object.keys(SY_INST); SY.tracks.push(syTrack(pool[Math.floor(Math.random() * pool.length)], new Array(16).fill(0))); syRoll(SY.tracks[SY.tracks.length - 1]); uisPlop(); sySave(); syRender(); };
+  host.querySelector("#sy-add").onclick = () => { if (SY.tracks.length >= 10) return; const pool = Object.keys(SY_INST); SY.tracks.push(syTrack(pool[Math.floor(Math.random() * pool.length)], new Array(16).fill(0))); syRoll(SY.tracks[SY.tracks.length - 1]); syStore(); syEnsureLoops(); uisPlop(); sySave(); syRender(); };
   const pr = document.createElement("div"); pr.className = "sy-prods sp-card"; pr.id = "sy-prods"; host.querySelector(".sy").append(pr); prRender(); prLoad(true);
   syKnob(host.querySelector('[data-g="bpm"]'), () => (SY.bpm - 60) / 120, v => { SY.bpm = Math.round(60 + v * 120); sySave(); }, () => `${SY.bpm} bpm`);
   syKnob(host.querySelector('[data-g="swing"]'), () => SY.swing / 0.6, v => { SY.swing = +(v * 0.6).toFixed(2); sySave(); }, () => `swing ${Math.round(SY.swing / 0.6 * 100)} %`);
@@ -5656,6 +5781,7 @@ function syKnob(w, get, set, label, def = null) {
 }
 function syRender() {
   const box = document.getElementById("sy-tracks"); if (!box) return;
+  syRenderLoops();
   document.querySelectorAll("#sy-vibes .w-chip").forEach(b => b.setAttribute("aria-pressed", b.textContent === SY.vibe));
   const ks = document.getElementById("sy-key"), ps = document.getElementById("sy-prog"); if (ks) ks.value = SY.key; if (ps) ps.value = SY.prog;
   document.querySelectorAll(".sy-top .sy-knob-w").forEach(w => w.redraw && w.redraw());
@@ -5689,7 +5815,7 @@ function syRender() {
     row.querySelector(".sy-name").onclick = e => syPicker(e.currentTarget, T, i);
     row.querySelector('[data-a="mute"]').onclick = () => { T.mute = !T.mute; uisSwitch(!T.mute); syChainSet(i); sySave(); syRender(); };
     row.querySelector('[data-a="roll"]').onclick = () => { syRoll(T); uisChime(i, 0.5); sySave(); syRender(); };
-    row.querySelector('[data-a="del"]').onclick = () => { SY.tracks.splice(i, 1); if (SY.ch) { SY.ch.forEach(c => c && c.vol.disconnect()); SY.ch = []; if (SY.playing) SY.tracks.forEach((_, j) => syChain(j)); } uisNo(); sySave(); syRender(); };
+    row.querySelector('[data-a="del"]').onclick = () => { syStore(); SY.loops.forEach(L => L.steps.splice(i, 1)); SY.tracks.splice(i, 1); syBind(); if (SY.ch) { SY.ch.forEach(c => c && c.vol.disconnect()); SY.ch = []; if (SY.playing) SY.tracks.forEach((_, j) => syChain(j)); } uisNo(); sySave(); syRender(); };
     return row;
   }));
 }
@@ -5768,7 +5894,8 @@ const prDb = () => (typeof sb !== "undefined" && sb) ? sb : null;
 const prMe = () => (typeof me !== "undefined" ? me : null);
 function syRecipe() {
   return { v: 1, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, vibe: SY.vibe,
-    tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? { v: s.v, d: s.d || 0 } : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3) })) };
+    tracks: SY.tracks.map(T => ({ inst: T.inst, steps: T.steps.map(s => s ? { v: s.v, d: s.d || 0 } : 0), mute: !!T.mute, vol: +T.vol.toFixed(3), tone: +T.tone.toFixed(3), drive: +T.drive.toFixed(3), space: +T.space.toFixed(3), move: +T.move.toFixed(3) })),
+    loops: (syStore(), SY.loops.map(L => ({ name: L.name, steps: L.steps.map(row => row.map(s => s ? { v: s.v, d: s.d || 0 } : 0)) }))), chain: SY.chain.slice(), cur: SY.cur, song: !!SY.song };
 }
 function prValid(r) {
   if (!r || !Array.isArray(r.tracks) || !r.tracks.length || r.tracks.length > 10 || !SY_PROGS[r.prog]) return null;
@@ -5776,7 +5903,17 @@ function prValid(r) {
   const tracks = r.tracks.filter(T => T && SY_INST[T.inst] && Array.isArray(T.steps) && T.steps.length === 16).map(T => ({
     inst: T.inst, mute: !!T.mute, vol: n(T.vol, 0, 1, 0.8), tone: n(T.tone, 0, 1, 0.6), drive: n(T.drive, 0, 1, 0.15), space: n(T.space, 0, 1, 0.3), move: n(T.move, 0, 1, 0.5),
     steps: T.steps.map(s => s ? { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 } : 0) }));
-  return tracks.length ? { bpm: n(r.bpm, 60, 180, 90) | 0, swing: n(r.swing, 0, 0.6, 0), key: n(r.key, 0, 11, 5) | 0, prog: r.prog, vibe: String(r.vibe || "").slice(0, 30), tracks } : null;
+  if (!tracks.length) return null;
+  const st = s => s ? { v: n(s.v, 1, 3, 1) | 0, d: n(s.d, -7, 14, 0) | 0 } : 0;
+  let loops = null, chain = null;
+  if (tracks.length === r.tracks.length && Array.isArray(r.loops) && r.loops.length && r.loops.length <= 8) {
+    loops = r.loops.filter(L => L && Array.isArray(L.steps) && L.steps.length === tracks.length && L.steps.every(row => Array.isArray(row) && row.length === 16))
+      .map((L, i) => ({ name: String(L.name || "ABCDEFGH"[i]).slice(0, 12), steps: L.steps.map(row => row.map(st)) }));
+    if (loops.length !== r.loops.length) loops = null;
+    else chain = (Array.isArray(r.chain) ? r.chain : [0]).map(x => x | 0).filter(x => x >= 0 && x < loops.length).slice(0, 64);
+  }
+  return { bpm: n(r.bpm, 60, 180, 90) | 0, swing: n(r.swing, 0, 0.6, 0), key: n(r.key, 0, 11, 5) | 0, prog: r.prog, vibe: String(r.vibe || "").slice(0, 30), tracks,
+    loops, chain, cur: loops ? Math.min(loops.length - 1, n(r.cur, 0, 7, 0) | 0) : 0, song: !!(loops && r.song) };
 }
 async function prLoad(force = false) {
   const db = prDb(); if (!db || PR.loading || (!force && Date.now() - PR.t < 20000)) return;
@@ -5814,7 +5951,7 @@ function prOpen(p, play) {
   const r = prValid(p.recipe); if (!r) { wToast("Cette prod est illisible"); return; }
   if (!PR.backup) PR.backup = JSON.parse(JSON.stringify(syRecipe()));
   const was = !!SY.playing; if (was) syRun(false);
-  Object.assign(SY, r, { parent: p.id, from: p.title + " · " + p.author, ch: [] }); sySave(); syRender(); syTopSync();
+  Object.assign(SY, r, { parent: p.id, from: p.title + " · " + p.author, ch: [] }); syEnsureLoops(); sySave(); syRender(); syTopSync();
   if (play || was) syRun(true);
   prRender(); uisSwoosh(true, 0.4); wToast(`« ${p.title} » chargée : bidouille-la, puis publie ton remix`);
   const host = document.getElementById("sy-host"); if (host) host.scrollTo({ top: 0, behavior: "smooth" });
@@ -5822,7 +5959,7 @@ function prOpen(p, play) {
 function prRestore() {
   if (!PR.backup) return; const r = prValid(PR.backup); PR.backup = null; if (!r) return;
   const was = !!SY.playing; if (was) syRun(false);
-  Object.assign(SY, r, { parent: null, from: null, ch: [] }); sySave(); syRender(); syTopSync(); prRender(); if (was) syRun(true); uisSwitch(false);
+  Object.assign(SY, r, { parent: null, from: null, ch: [] }); syEnsureLoops(); sySave(); syRender(); syTopSync(); prRender(); if (was) syRun(true); uisSwitch(false);
 }
 function syTopSync() {
   const ks = document.getElementById("sy-key"), ps = document.getElementById("sy-prog"); if (ks) ks.value = SY.key; if (ps) ps.value = SY.prog;
