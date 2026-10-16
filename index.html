@@ -4404,7 +4404,12 @@ function wPlaceIslands() {
   const portrait = WORLD.H > WORLD.W * 1.05, R = Math.max(900, WORLD.graphR + 700);
   for (const i of W_ISLANDS) {
     if (i.k === "connexions") { i.r = Math.max(260, WORLD.graphR * 1.05); continue; }
-    const v = portrait ? i.p : i.a; i.x = v[0] * R; i.y = v[1] * R;
+    const v = portrait ? i.p : i.a, ox = i.x, oy = i.y; i.x = v[0] * R; i.y = v[1] * R;
+    // si on est en train d'aller vers cet îlot (ou dessus), la caméra suit
+    if (ox != null && (ox !== i.x || oy !== i.y)) {
+      if (WORLD.fly && WORLD.flyIsl === i) { WORLD.fly.to.x = i.x; WORLD.fly.to.y = i.y; }
+      else if (WORLD.active === i) { WORLD.cam.x += i.x - ox; WORLD.cam.y += i.y - oy; WORLD.dirty = true; }
+    }
   }
 }
 
@@ -4562,12 +4567,12 @@ function wFitAll(anim = true) {
 }
 function wFly(to, dur = 0.9) {
   if (!dur) { Object.assign(WORLD.cam, to); WORLD.fly = null; WORLD.dirty = true; wCheckActive(); return; }
-  WORLD.fly = { from: { ...WORLD.cam }, to, t0: performance.now(), dur: dur * 1000 };
+  WORLD.fly = { from: { ...WORLD.cam }, to, t0: performance.now(), dur: dur * 1000 }; WORLD.flyIsl = null;
 }
 function wFlyIsland(isl) {
   if (!isl) return;
   uisSwoosh(true, 0.7); wSelect(null);
-  wFly({ x: isl.x, y: isl.y, z: wFit(isl) }, 1.0);
+  wFly({ x: isl.x, y: isl.y, z: wFit(isl) }, 1.0); WORLD.flyIsl = isl;
 }
 function wZoomAt(sx, sy, f) {
   const [wx, wy] = wToWorld(sx, sy), c = WORLD.cam;
@@ -4596,7 +4601,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5061,6 +5066,7 @@ function wHead(title, extra = "") {
 function wPanel(k) {
   const p = document.getElementById("w-panel");
   if (k === WORLD.panelKey && k) return;
+  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") spPlay(false);
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
   const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin }[k];
@@ -5153,41 +5159,410 @@ function wPProduction(p) {
   else { const l = document.createElement("p"); l.textContent = "Tes favorites apparaîtront ici dès que tu auras voté « oui »."; host.append(l); }
 }
 
-// Sampler : deux modes (patch et spectre radial), à construire
+/* ---------- Sampler : les images deviennent de la musique ---------- */
+// Chaque image est lue en 16 colonnes : l'encre de chaque colonne déclenche une note, sa hauteur donne la note.
+// Ses critères (luminosité, contraste, teinte, saturation, contours) pilotent les couches de son, via les câbles du patch.
+const SP_CRIT = [["lum", "Luminosité"], ["con", "Contraste"], ["hue", "Teinte"], ["sat", "Saturation"], ["edge", "Contours"], ["dark", "Ombre"]];
+const SP_VOICE = [["nappe", "Nappe"], ["tint", "Tintements"], ["basse", "Basse"], ["rythme", "Rythme"]];
+const SP_DEFAULT = { mood: { dense: 0.4, tempo: 0.35, sombre: 0.45 }, layers: { nappe: true, tint: true, basse: true, rythme: false },
+  cables: [["hue", "nappe"], ["lum", "tint"], ["edge", "tint"], ["dark", "basse"], ["con", "rythme"], ["edge", "rythme"]] };
+const SP = Object.assign({ pads: [], sel: 0, playing: false, step: 0, ctx: null, nextT: 0, timer: 0, rec: null, pick: null, pulse: {} },
+  JSON.parse(JSON.stringify(SP_DEFAULT)), store.get("atelier-sampler", {}));
+const spSave = () => store.set("atelier-sampler", { mood: SP.mood, layers: SP.layers, cables: SP.cables });
+const SP_SCALE = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24];       // fa mineur pentatonique sur 2 octaves
+const SP_CHORDS = [[0, 3, 7, 10], [-4, 0, 3, 8], [3, 7, 10, 15], [-2, 2, 5, 10]];   // Fm7, Db, Ab, Eb
+
+// Lecture d'une image : critères + séquence de 16 pas
+function spAnalyse(cv) {
+  const N = 32, c = document.createElement("canvas"); c.width = c.height = N;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, N, N); x.drawImage(cv, 0, 0, N, N);
+  const d = x.getImageData(0, 0, N, N).data, L = new Float32Array(N * N);
+  let sl = 0, ss = 0, hx = 0, hy = 0, sat = 0;
+  for (let i = 0; i < N * N; i++) {
+    const r = d[i * 4] / 255, g = d[i * 4 + 1] / 255, b = d[i * 4 + 2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const l = 0.299 * r + 0.587 * g + 0.114 * b; L[i] = l; sl += l; ss += l * l;
+    const s = mx ? (mx - mn) / mx : 0; sat += s;
+    if (mx - mn > 0.04) { let h = mx === r ? (g - b) / (mx - mn) : mx === g ? 2 + (b - r) / (mx - mn) : 4 + (r - g) / (mx - mn); h = (h * 60 + 360) % 360 * Math.PI / 180; hx += Math.cos(h) * s; hy += Math.sin(h) * s; }
+  }
+  const n = N * N, lum = sl / n, con = Math.min(1, Math.sqrt(Math.max(0, ss / n - lum * lum)) * 2.2);
+  let edge = 0; for (let y = 0; y < N - 1; y++) for (let k = 0; k < N - 1; k++) { const i = y * N + k; edge += Math.abs(L[i] - L[i + 1]) + Math.abs(L[i] - L[i + N]); }
+  edge = Math.min(1, edge / n * 3);
+  const hue = hx || hy ? ((Math.atan2(hy, hx) / (2 * Math.PI)) + 1) % 1 : 0.72;
+  // lecture circulaire (les formes sont des étoiles) : 16 secteurs autour du centre de l'encre, comme une aiguille qui tourne.
+  // l'encre d'un secteur déclenche la note, sa distance au centre donne la hauteur (bout de branche = aigu)
+  let mx = 0, my = 0, mt = 0;
+  for (let y = 0; y < N; y++) for (let k = 0; k < N; k++) { const v = 1 - L[y * N + k]; if (v > 0.15) { mx += k * v; my += y * v; mt += v; } }
+  mx = mt ? mx / mt : N / 2; my = mt ? my / mt : N / 2;
+  const ink = new Array(16).fill(0), rad = new Array(16).fill(0), cnt = new Array(16).fill(0);
+  for (let y = 0; y < N; y++) for (let k = 0; k < N; k++) {
+    const dx = k + 0.5 - mx, dy = y + 0.5 - my, s = Math.floor(((Math.atan2(dx, -dy) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 16) % 16, v = 1 - L[y * N + k];
+    cnt[s]++; if (v > 0.15) { ink[s] += v; rad[s] += v * Math.hypot(dx, dy); }
+  }
+  const maxR = N * 0.6, pitch = rad.map((r, s) => ink[s] ? Math.min(1, r / ink[s] / maxR * 1.5) : 0.5);
+  for (let s = 0; s < 16; s++) ink[s] = cnt[s] ? ink[s] / cnt[s] : 0;
+  const sorted = [...ink].sort((p, q) => p - q), thr = Math.max(0.01, sorted[Math.floor(sorted.length * 0.5)] * 0.98), top = sorted[15] || 1;
+  const seq = ink.map((v, s) => v > thr && v > 0.015 ? { on: true, deg: Math.round(pitch[s] * 9), vel: Math.min(1, 0.35 + 0.65 * v / top) } : { on: false, deg: 0, vel: 0 });
+  return { crit: { lum, con, hue, sat: Math.min(1, sat / n * 1.6), edge, dark: 1 - lum }, seq, ink };
+}
+async function spPadFromScene(sc) {
+  const cv = await wRender(sc, 128), a = spAnalyse(cv);
+  return { kind: "forme", scene: sc, img: cv, on: false, ...a };
+}
+function spPadFromImage(img) {
+  const c = document.createElement("canvas"), T = 128, r = Math.min(img.width, img.height);
+  c.width = c.height = T; c.getContext("2d").drawImage(img, (img.width - r) / 2, (img.height - r) / 2, r, r, 0, 0, T, T);
+  return { kind: "image", img: c, on: false, ...spAnalyse(c) };
+}
+async function spInitPads() {
+  if (SP.pads.length) return;
+  const pool = [...wMyFavs(4), ...current.slice(0, 8)].slice(0, 8);
+  SP.pads = new Array(8).fill(null);
+  for (let i = 0; i < pool.length; i++) SP.pads[i] = await spPadFromScene(pool[i]);
+  if (SP.pads[0]) SP.pads[0].on = true; if (SP.pads[1]) SP.pads[1].on = true;
+}
+const spActive = () => SP.pads.filter(p => p && p.on);
+function spCritAvg() {
+  const A = spActive(), o = {}; for (const [k] of SP_CRIT) o[k] = A.length ? A.reduce((s, p) => s + p.crit[k], 0) / A.length : 0;
+  return o;
+}
+function spVoiceLevel(v) {
+  if (!SP.layers[v]) return 0;
+  const C = spCritAvg(), ins = SP.cables.filter(c => c[1] === v); if (!ins.length) return 0;
+  return Math.min(1, 0.3 + ins.reduce((s, c) => s + C[c[0]], 0) * 0.7 / ins.length * 1.4);
+}
+
+/* Moteur */
+function spAudio() {
+  if (SP.ctx) { if (SP.ctx.state === "suspended") SP.ctx.resume(); return SP.ctx; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+  const c = SP.ctx = new AC();
+  const comp = c.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.3;
+  const master = c.createGain(); master.gain.value = 0.8;
+  const tone = c.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 9000;
+  master.connect(tone); tone.connect(comp);
+  const an = c.createAnalyser(); an.fftSize = 512; an.smoothingTimeConstant = 0.82; comp.connect(an); an.connect(c.destination);
+  const dest = c.createMediaStreamDestination ? c.createMediaStreamDestination() : null; if (dest) comp.connect(dest);
+  const len = (c.sampleRate * 3.4) | 0, ir = c.createBuffer(2, len, c.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const rev = c.createConvolver(); rev.buffer = ir; const wet = c.createGain(); wet.gain.value = 0.5; rev.connect(wet); wet.connect(master);
+  const nb = c.createBuffer(1, c.sampleRate, c.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  Object.assign(SP, { master, tone, an, dest, rev, wet, noise: nb, fbins: new Uint8Array(an.frequencyBinCount) });
+  spApplyMood(); return c;
+}
+function spApplyMood() {
+  if (!SP.ctx) return;
+  const t = SP.ctx.currentTime, m = SP.mood;
+  SP.tone.frequency.setTargetAtTime(1400 + (1 - m.sombre) * 9000, t, 0.2);
+  SP.wet.gain.setTargetAtTime(0.75 - m.dense * 0.45, t, 0.2);
+}
+const spBpm = () => Math.round(68 + SP.mood.tempo * 60);
+const spHz = m => 440 * Math.pow(2, (m - 69) / 12);
+function spOut(dry, wet) { const c = SP.ctx, g = c.createGain(), d = c.createGain(), w = c.createGain(); d.gain.value = dry; w.gain.value = wet; g.connect(d); d.connect(SP.master); g.connect(w); w.connect(SP.rev); return g; }
+function spBell(t, midi, vel) {
+  const c = SP.ctx, f = spHz(midi), out = spOut(0.5, 0.9 - SP.mood.dense * 0.3);
+  [[1, 1, 1.8], [2, 0.32, 0.9], [3.01, 0.16, 0.5], [5.4, 0.08, 0.25]].forEach(([r, a, dur]) => {
+    const o = c.createOscillator(), g = c.createGain(); o.frequency.value = f * r * (1 + (Math.random() - 0.5) * 0.003);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a * vel * 0.16, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur * (1.2 - SP.mood.dense * 0.5));
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + dur * 1.3 + 0.05);
+  });
+}
+function spPad(t, notes, dur, lvl) {
+  const c = SP.ctx, out = spOut(0.35, 1), lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 600 + (1 - SP.mood.sombre) * 2200; lp.Q.value = 0.6; lp.connect(out);
+  for (const m of notes) for (const det of [-7, 6]) {
+    const o = c.createOscillator(), g = c.createGain(); o.type = "sawtooth"; o.frequency.value = spHz(m); o.detune.value = det;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.022 * lvl, t + dur * 0.35); g.gain.setValueAtTime(0.022 * lvl, t + dur * 0.75); g.gain.linearRampToValueAtTime(0, t + dur * 1.15);
+    o.connect(g); g.connect(lp); o.start(t); o.stop(t + dur * 1.2);
+  }
+}
+function spBass(t, midi, dur, lvl) {
+  const c = SP.ctx, o = c.createOscillator(), g = c.createGain(), out = spOut(0.9, 0.08);
+  o.type = "sine"; o.frequency.setValueAtTime(spHz(midi) * 1.5, t); o.frequency.exponentialRampToValueAtTime(spHz(midi), t + 0.06);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.42 * lvl, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+}
+function spKick(t, lvl) {
+  const c = SP.ctx, o = c.createOscillator(), g = c.createGain(), out = spOut(0.9, 0.05);
+  o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+  g.gain.setValueAtTime(0.5 * lvl, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.35);
+}
+function spHat(t, lvl, open = false) {
+  const c = SP.ctx, s = c.createBufferSource(), hp = c.createBiquadFilter(), g = c.createGain(), out = spOut(0.6, 0.35);
+  s.buffer = SP.noise; hp.type = "highpass"; hp.frequency.value = 7000;
+  g.gain.setValueAtTime(0.09 * lvl, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (open ? 0.22 : 0.05));
+  s.connect(hp); hp.connect(g); g.connect(out); s.start(t, Math.random() * 0.5); s.stop(t + 0.3);
+}
+function spSchedule(s, t) {
+  const A = spActive(), sec = 60 / spBpm() / 4, root = 53;   // fa3
+  const bar = Math.floor(SP.bar || 0), C = spCritAvg();
+  const chord = SP_CHORDS[(Math.floor(C.hue * 4) + bar) % 4];
+  const lt = spVoiceLevel("tint"), ln = spVoiceLevel("nappe"), lb = spVoiceLevel("basse"), lr = spVoiceLevel("rythme");
+  const oct = SP.mood.sombre > 0.66 ? -12 : SP.mood.sombre < 0.25 ? 12 : 0;
+  if (s === 0 && ln > 0) { spPad(t, chord.map(v => root + 12 + v), sec * 16, ln); SP.pulse.nappe = performance.now(); }
+  if (lt > 0) A.forEach((p, i) => {
+    const st = p.seq[s]; if (!st.on) return;
+    if (SP.mood.dense < 0.3 && i > 0 && s % 2) return;               // éthéré : moins de notes
+    const deg = SP_SCALE[Math.min(SP_SCALE.length - 1, st.deg + Math.round(p.crit.lum * 2))];
+    spBell(t + (i ? sec * 0.02 * i : 0), root + 24 + oct + deg + (i % 2 ? 12 : 0), st.vel * lt * (i ? 0.7 : 1));
+    SP.pulse.tint = performance.now(); SP.pulse["pad" + SP.pads.indexOf(p)] = performance.now();
+  });
+  if (lb > 0 && A.length) {
+    const p = A.reduce((a, b) => (b.crit.dark > a.crit.dark ? b : a));
+    if (s === 0 || (s === 10 && p.seq[10].on) || (s === 6 && SP.mood.dense > 0.6 && p.seq[6].on)) { spBass(t, root - 12 + chord[0], sec * (s === 0 ? 6 : 3), lb); SP.pulse.basse = performance.now(); }
+  }
+  if (lr > 0 && A.length) {
+    if (s % 8 === 0 || (s === 11 && SP.mood.dense > 0.5)) { spKick(t, lr); SP.pulse.rythme = performance.now(); }
+    const hd = 0.2 + C.edge * 0.6 + SP.mood.dense * 0.3;
+    if (s % 2 === 1 && (A[0].seq[s].on || hash01(s * 13 + bar) < hd)) spHat(t, lr * (0.5 + C.con * 0.5), s === 14);
+  }
+}
+function spTick() {
+  const c = SP.ctx; if (!c) return;
+  const sec = 60 / spBpm() / 4;
+  while (SP.nextT < c.currentTime + 0.12) {
+    spSchedule(SP.step, SP.nextT);
+    const s = SP.step, at = SP.nextT;
+    setTimeout(() => { SP.viewStep = s; }, Math.max(0, (at - c.currentTime) * 1000));
+    SP.nextT += sec; SP.step = (SP.step + 1) % 16; if (SP.step === 0) SP.bar = (SP.bar || 0) + 1;
+    if (SP.rec && SP.step === 0 && --SP.rec.bars <= 0) spRecStop();
+  }
+}
+function spPlay(on) {
+  if (on === SP.playing) return;
+  if (on) {
+    if (!spAudio()) return;
+    if (typeof SON !== "undefined" && SON.on) sonToggle();
+    SP.step = 0; SP.bar = 0; SP.nextT = SP.ctx.currentTime + 0.06; SP.timer = setInterval(spTick, 25); SP.playing = true;
+  } else { clearInterval(SP.timer); SP.playing = false; SP.viewStep = -1; if (SP.rec) spRecStop(); }
+  const b = document.getElementById("sp-play"); if (b) { b.textContent = SP.playing ? "■ Stop" : "▶ Jouer"; b.setAttribute("aria-pressed", SP.playing); }
+}
+function spRec() {
+  if (SP.rec) return spRecStop();
+  if (!SP.playing) spPlay(true);
+  if (!SP.dest || typeof MediaRecorder === "undefined") { wToast("L'enregistrement n'est pas possible dans ce navigateur"); return; }
+  const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(SP.dest.stream, type ? { mimeType: type } : undefined), chunks = [];
+  r.ondataavailable = e => e.data.size && chunks.push(e.data);
+  r.onstop = () => { const blob = new Blob(chunks, { type: r.mimeType || "audio/webm" }); offerBlob(blob, `boucle_tnb_${spBpm()}bpm.${(r.mimeType || "").includes("mp4") ? "m4a" : "webm"}`); uisChime(7, 0.6); };
+  r.start(); SP.rec = { r, bars: 4 };
+  const b = document.getElementById("sp-rec"); if (b) { b.textContent = "● 4 mesures…"; b.setAttribute("aria-pressed", true); }
+}
+function spRecStop() {
+  if (!SP.rec) return; try { SP.rec.r.stop(); } catch {} SP.rec = null;
+  const b = document.getElementById("sp-rec"); if (b) { b.textContent = "● Enregistrer"; b.setAttribute("aria-pressed", false); }
+}
+function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite, une fois
+  if (!spAudio() || !p) return;
+  const t0 = SP.ctx.currentTime + 0.03;
+  p.seq.forEach((st, i) => { if (st.on) spBell(t0 + i * 0.07, 77 + SP_SCALE[Math.min(10, st.deg)], st.vel * 0.7); });
+}
+
+/* Interface */
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "radial");
-  p.innerHTML = wHead("Sampler · musique procédurale", `<button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button>`)
-    + `<div class="w-center"><div class="w-box w-glass-ui w-live" style="text-align:center">
-  <div class="w-ring"><canvas id="w-ring" width="680" height="680"></canvas></div>
-  <h3>${mode === "radial" ? "Spectre radial" : "Patch de nœuds"}</h3>
-  <p>${mode === "radial" ? "Des pads d'images autour d'un spectre qui respire : humeur, couches, séquence." : "Image → critères → boucles, reliés comme des câbles."}</p>
-  <p><span class="w-soon">en construction</span> &nbsp; Pour l'instant : écoute la musique de la forme en cours, générée depuis son contour.</p>
-  <div class="w-row" style="justify-content:center"><button class="w-pill dark" id="w-s-play">${SON.on ? "Couper la musique" : "Écouter la forme"}</button></div></div></div>`;
-  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); WORLD.panelKey = null; wPanel("sampler"); });
-  p.querySelector("#w-s-play").onclick = e => { uisSwitch(!SON.on); sonToggle(); if (SON.on && current[0]) sonScene(current[0]); e.target.textContent = SON.on ? "Couper la musique" : "Écouter la forme"; };
-  const cv = p.querySelector("#w-ring"), x = cv.getContext("2d");
-  const draw = now => {
-    if (WORLD.panelKey !== "sampler" || !cv.isConnected) return; requestAnimationFrame(draw);
-    const t = now / 1000, c = 340; x.clearRect(0, 0, 680, 680); x.lineCap = "round";
-    if (mode === "radial") {
-      for (let i = 0; i < 96; i++) {
-        const a = i / 96 * Math.PI * 2, h = 30 + 70 * (0.5 + 0.5 * Math.sin(i * 0.9 + t * (SON.on ? 4 : 1.4))) * (0.5 + 0.5 * Math.sin(i * 0.23 - t * 0.8));
-        x.strokeStyle = `hsla(${250 + 60 * Math.sin(a + t * 0.3)}, 50%, 45%, .55)`; x.lineWidth = 5;
-        x.beginPath(); x.moveTo(c + Math.cos(a) * 170, c + Math.sin(a) * 170); x.lineTo(c + Math.cos(a) * (170 + h), c + Math.sin(a) * (170 + h)); x.stroke();
-      }
-      x.strokeStyle = "rgba(27,29,34,.25)"; x.lineWidth = 2; x.beginPath(); x.arc(c, c, 150, 0, Math.PI * 2); x.stroke();
-    } else {
-      const P = [[160, 200], [340, 140], [520, 230], [250, 430], [470, 470], [340, 330]];
-      x.strokeStyle = "rgba(27,29,34,.35)"; x.lineWidth = 3;
-      [[0, 5], [1, 5], [5, 2], [5, 3], [5, 4], [3, 4]].forEach(([a, b], k) => {
-        const [x1, y1] = P[a], [x2, y2] = P[b]; x.beginPath(); x.moveTo(x1, y1); x.bezierCurveTo(x1 + 80, y1, x2 - 80, y2, x2, y2); x.stroke();
-        const u = (t * 0.4 + k * 0.17) % 1, bx = (1 - u) ** 3 * x1 + 3 * (1 - u) ** 2 * u * (x1 + 80) + 3 * (1 - u) * u * u * (x2 - 80) + u ** 3 * x2, by = (1 - u) ** 3 * y1 + 3 * (1 - u) ** 2 * u * y1 + 3 * (1 - u) * u * u * y2 + u ** 3 * y2;
-        x.fillStyle = "rgba(120,90,220,.7)"; x.beginPath(); x.arc(bx, by, 6, 0, Math.PI * 2); x.fill();
-      });
-      P.forEach(([px, py], i) => { x.fillStyle = "rgba(255,255,255,.9)"; x.strokeStyle = "rgba(27,29,34,.4)"; x.beginPath(); x.arc(px, py, i === 5 ? 34 : 24, 0, Math.PI * 2); x.fill(); x.stroke(); });
+  p.innerHTML = wHead("Sampler · musique procédurale", `<button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+    + `<div class="w-scroll w-live"><div class="sp">
+      <section class="sp-pads sp-card"><div class="w-sec">Pads <span>touche : dans la boucle</span></div><div class="sp-grid" id="sp-grid"></div>
+        <div class="w-row"><label class="w-pill w-glass-ui" style="cursor:pointer">Importer une image<input type="file" accept="image/*" id="sp-file" hidden></label><button class="w-pill w-glass-ui" id="sp-series">Formes de la série</button></div>
+        <p class="sp-hint">Glisse une image sur un pad pour la remplacer. ⇄ change la forme d'un pad.</p></section>
+      <section class="sp-center"><canvas id="sp-cv" width="1040" height="1040"></canvas><div class="sp-bpm" id="sp-bpm"></div></section>
+      <section class="sp-side sp-card">
+        <div class="w-sec">Humeur</div>
+        ${[["dense", "Éthéré", "Dense"], ["tempo", "Lent", "Rapide"], ["sombre", "Clair", "Sombre"]].map(([k, a, b]) => `<div class="sp-mood"><span>${a}</span><input class="w-range" type="range" min="0" max="1" step="0.01" value="${SP.mood[k]}" data-mood="${k}"><span>${b}</span></div>`).join("")}
+        <div class="w-sec">Couches</div>
+        ${SP_VOICE.map(([k, l]) => `<div class="w-line"><span>${l}</span><button class="w-sw" role="switch" data-layer="${k}" aria-checked="${SP.layers[k]}"></button></div>`).join("")}
+        <button class="w-pill w-glass-ui" id="sp-reset" style="margin-top:8px">Câbles par défaut</button>
+      </section>
+      <section class="sp-seq sp-card"><div class="w-sec">Séquence <span>lue dans les images · touche une case pour la changer</span></div><div id="sp-steps"></div></section>
+    </div></div>`;
+  if (!document.getElementById("sp-css")) {
+    const css = document.createElement("style"); css.id = "sp-css"; css.textContent = `
+.sp { display: grid; grid-template-columns: 270px minmax(0, 1fr) 250px; grid-template-areas: "pads center side" "seq seq seq"; gap: 20px; max-width: 1240px; margin: 0 auto; padding: 80px 24px 150px; align-items: start; font-size: 12px; }
+.sp-card { border-radius: 26px; padding: 16px; background: rgba(250,250,253,.86); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); display: flex; flex-direction: column; gap: 10px; }
+.sp-pads { grid-area: pads; } .sp-side { grid-area: side; } .sp-seq { grid-area: seq; } .sp-center { grid-area: center; position: relative; }
+.w-head { overflow-x: auto; scrollbar-width: none; } .w-head::-webkit-scrollbar { display: none; }
+.sp-center canvas { width: 100%; max-width: 560px; aspect-ratio: 1; display: block; margin: 0 auto; touch-action: none; }
+.sp-bpm { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; opacity: .55; }
+.sp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.sp-pad { aspect-ratio: 1; border-radius: 14px; border: 1px solid rgba(27,29,34,.1); background: rgba(255,255,255,.7); position: relative; cursor: pointer; padding: 0; overflow: hidden; transition: transform .15s, box-shadow .2s; }
+.sp-pad canvas { position: absolute; inset: 10%; width: 80%; height: 80%; }
+.sp-pad.on { box-shadow: 0 0 0 1.5px rgba(27,29,34,.85), 0 6px 18px rgba(124,92,230,.18); }
+.sp-pad.hit { transform: scale(.93); }
+.sp-pad.drop { box-shadow: 0 0 0 2px rgba(124,92,230,.8); }
+.sp-pad.empty { border-style: dashed; display: grid; place-items: center; font-size: 16px; opacity: .5; }
+.sp-pad .sw { position: absolute; right: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; border: 0; background: rgba(255,255,255,.85); font-size: 10px; padding: 0; cursor: pointer; opacity: 0; transition: opacity .2s; }
+.sp-pad:hover .sw, .sp-pad:focus-within .sw { opacity: 1; }
+.sp-hint { margin: 0; opacity: .55; font-size: 10px; line-height: 1.5; }
+.sp-mood { display: grid; grid-template-columns: 52px 1fr 52px; gap: 6px; align-items: center; font-size: 10px; } .sp-mood span:last-child { text-align: right; }
+#sp-steps { display: flex; flex-direction: column; gap: 6px; }
+.sp-row { display: grid; grid-template-columns: 34px repeat(16, minmax(0, 1fr)); gap: 4px; align-items: center; }
+.sp-row canvas { width: 30px; height: 30px; }
+.sp-cell { height: 26px; border-radius: 7px; border: 0; padding: 0; cursor: pointer; background: rgba(27,29,34,.07); transition: background .1s, transform .1s; }
+.sp-cell.on { background: rgba(27,29,34,.78); }
+.sp-cell:nth-child(4n+2) { margin-left: 0; }
+.sp-cell.now { transform: scaleY(1.25); box-shadow: 0 0 0 1.5px rgba(124,92,230,.8); }
+@media (max-width: 900px) {
+  .sp { grid-template-columns: 1fr; grid-template-areas: "center" "pads" "side" "seq"; padding: 72px 14px 150px; }
+  .sp-center canvas { max-width: min(92vw, 52vh); }
+  .sp-cell { height: 22px; border-radius: 5px; } .sp-row { gap: 3px; grid-template-columns: 26px repeat(16, minmax(0, 1fr)); } .sp-row canvas { width: 24px; height: 24px; }
+}`;
+    document.head.append(css);
+  }
+  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  p.querySelector("#sp-play").onclick = () => { uisClick(); spPlay(!SP.playing); };
+  p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
+  p.querySelectorAll("[data-mood]").forEach(r => r.oninput = () => { SP.mood[r.dataset.mood] = +r.value; spApplyMood(); spSave(); spBpmLabel(); });
+  p.querySelectorAll("[data-layer]").forEach(b => b.onclick = () => { const k = b.dataset.layer; SP.layers[k] = !SP.layers[k]; b.setAttribute("aria-checked", SP.layers[k]); uisSwitch(SP.layers[k]); spSave(); });
+  p.querySelector("#sp-reset").onclick = () => { uisClick(); SP.cables = JSON.parse(JSON.stringify(SP_DEFAULT.cables)); spSave(); };
+  p.querySelector("#sp-file").onchange = e => { const f = e.target.files[0]; if (f) spImport(f, SP.pads.findIndex(x => !x) >= 0 ? SP.pads.findIndex(x => !x) : SP.sel); e.target.value = ""; };
+  p.querySelector("#sp-series").onclick = async () => { uisClick(); for (let i = 0; i < 8; i++) if (current[i]) { const on = SP.pads[i] && SP.pads[i].on; SP.pads[i] = await spPadFromScene(current[i]); SP.pads[i].on = !!on; } spRenderPads(); };
+  spBpmLabel();
+  spInitPads().then(() => { spRenderPads(); });
+  const cv = p.querySelector("#sp-cv"); spCanvasEvents(cv);
+  const loop = () => { if (WORLD.panelKey !== "sampler" || !cv.isConnected) return; requestAnimationFrame(loop); spDraw(cv, store.get("atelier-sampler-mode", "radial")); spStepView(); };
+  requestAnimationFrame(loop);
+}
+const spBpmLabel = () => { const e = document.getElementById("sp-bpm"); if (e) e.textContent = `${spBpm()} bpm · fa mineur`; };
+function spImport(file, i) {
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => { const on = SP.pads[i] && SP.pads[i].on; SP.pads[i] = spPadFromImage(img); SP.pads[i].on = on || spActive().length < 2; URL.revokeObjectURL(url); uisChime(4, 0.6); spRenderPads(); spPreview(SP.pads[i]); };
+  img.src = url;
+}
+function spRenderPads() {
+  const g = document.getElementById("sp-grid"); if (!g) return;
+  g.replaceChildren(...SP.pads.map((p, i) => {
+    const b = document.createElement("div"); b.className = "sp-pad" + (p ? (p.on ? " on" : "") : " empty"); b.tabIndex = 0; b.dataset.i = i;
+    if (p) { const c = document.createElement("canvas"); c.width = c.height = 128; c.getContext("2d").drawImage(p.img, 0, 0); b.append(c); const sw = document.createElement("button"); sw.className = "sw"; sw.textContent = "⇄"; sw.title = "Changer de forme"; b.append(sw);
+      sw.onclick = async e => { e.stopPropagation(); uisClick(); const pool = [...current, ...wMyFavs(40)]; const sc = pool[Math.floor(Math.random() * pool.length)]; if (!sc) return; const on = p.on; SP.pads[i] = await spPadFromScene(sc); SP.pads[i].on = on; spRenderPads(); spPreview(SP.pads[i]); }; }
+    else b.textContent = "+";
+    b.onclick = () => {
+      if (!p) { document.getElementById("sp-file").click(); SP.sel = i; return; }
+      p.on = !p.on; SP.sel = i; b.classList.toggle("on", p.on); b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 120);
+      uisSwitch(p.on); if (p.on && !SP.playing) spPreview(p); spRenderSteps();
+    };
+    b.ondragover = e => { e.preventDefault(); b.classList.add("drop"); }; b.ondragleave = () => b.classList.remove("drop");
+    b.ondrop = e => { e.preventDefault(); b.classList.remove("drop"); const f = [...(e.dataTransfer.files || [])].find(f => f.type.startsWith("image/")); if (f) spImport(f, i); };
+    return b;
+  }));
+  spRenderSteps();
+}
+function spRenderSteps() {
+  const box = document.getElementById("sp-steps"); if (!box) return;
+  const A = spActive();
+  box.replaceChildren(...(A.length ? A : [null]).map(p => {
+    const row = document.createElement("div"); row.className = "sp-row";
+    if (!p) { row.innerHTML = `<span></span><span style="grid-column:2/-1;opacity:.55">Allume un pad pour l'entendre dans la boucle.</span>`; return row; }
+    const c = document.createElement("canvas"); c.width = c.height = 60; c.getContext("2d").drawImage(p.img, 0, 0, 60, 60); row.append(c);
+    p.seq.forEach((st, s) => {
+      const b = document.createElement("button"); b.className = "sp-cell" + (st.on ? " on" : ""); b.dataset.s = s; b.title = `pas ${s + 1}`;
+      b.onclick = () => { st.on = !st.on; if (st.on && !st.vel) { st.vel = 0.7; st.deg = Math.round(p.ink[s] * 9) || 4; } b.classList.toggle("on", st.on); uisSwitch(st.on); if (st.on && spAudio()) spBell(SP.ctx.currentTime + 0.01, 77 + SP_SCALE[Math.min(10, st.deg)], 0.5); };
+      row.append(b);
+    });
+    return row;
+  }));
+}
+function spStepView() {
+  const s = SP.playing ? SP.viewStep : -1; if (s === SP.lastView) return; SP.lastView = s;
+  document.querySelectorAll("#sp-steps .sp-cell").forEach(c => c.classList.toggle("now", +c.dataset.s === s));
+  SP.pads.forEach((p, i) => { if (p && SP.pulse["pad" + i] && performance.now() - SP.pulse["pad" + i] < 140) { const e = document.querySelector(`.sp-pad[data-i="${i}"]`); if (e) { e.classList.add("hit"); setTimeout(() => e.classList.remove("hit"), 110); } } });
+}
+/* Dessin : spectre radial ou patch de câbles */
+function spLayout(W) {
+  const A = spActive().slice(0, 4), col = (f, n, i) => [W * f, W * (0.18 + (n === 1 ? 0.32 : 0.64 * i / Math.max(1, n - 1)))];
+  const nodes = [];
+  A.forEach((p, i) => nodes.push({ k: "img" + i, t: "img", p, at: col(0.1, A.length, i) }));
+  SP_CRIT.forEach(([k, l], i) => nodes.push({ k, t: "crit", lab: l, at: col(0.4, SP_CRIT.length, i) }));
+  SP_VOICE.forEach(([k, l], i) => nodes.push({ k, t: "voice", lab: l, at: col(0.7, SP_VOICE.length, i) }));
+  nodes.push({ k: "out", t: "out", lab: "Sortie", at: [W * 0.92, W * 0.5] });
+  return nodes;
+}
+function spCanvasEvents(cv) {
+  cv.addEventListener("pointerdown", e => {
+    if (store.get("atelier-sampler-mode", "radial") !== "patch") { if (!SP.playing) { uisClick(); spPlay(true); } return; }
+    const r = cv.getBoundingClientRect(), k = cv.width / r.width, x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+    const nodes = spLayout(cv.width), hit = nodes.find(n => Math.hypot(n.at[0] - x, n.at[1] - y) < cv.width * 0.05);
+    if (hit && hit.t === "crit") { SP.pick = hit.k; uisPlop(); return; }
+    if (hit && hit.t === "voice" && SP.pick) {
+      const i = SP.cables.findIndex(c => c[0] === SP.pick && c[1] === hit.k);
+      if (i >= 0) SP.cables.splice(i, 1); else SP.cables.push([SP.pick, hit.k]);
+      uisSwitch(i < 0); uisChime(SP_VOICE.findIndex(v => v[0] === hit.k) * 2 + 2, 0.5); SP.pick = null; spSave(); return;
+    }
+    // toucher un câble le débranche
+    for (let i = 0; i < SP.cables.length; i++) {
+      const [a, b] = SP.cables[i], A = nodes.find(n => n.k === a), B = nodes.find(n => n.k === b); if (!A || !B) continue;
+      const mx = (A.at[0] + B.at[0]) / 2, my = (A.at[1] + B.at[1]) / 2;
+      if (Math.hypot(mx - x, my - y) < cv.width * 0.03) { SP.cables.splice(i, 1); uisSwitch(false); spSave(); return; }
+    }
+    SP.pick = null;
+  });
+}
+function spDraw(cv, mode) {
+  const x = cv.getContext("2d"), W = cv.width, t = performance.now() / 1000, A = spActive(), font = WORLD.font || "monospace";
+  x.clearRect(0, 0, W, W);
+  if (SP.an && SP.playing) SP.an.getByteFrequencyData(SP.fbins);
+  const C = spCritAvg(), hue = C.hue * 360;
+  if (mode === "radial") {
+    const c = W / 2, R0 = W * 0.27, bins = SP.fbins;
+    // halo
+    const g = x.createRadialGradient(c, c, R0 * 0.2, c, c, W * 0.5); g.addColorStop(0, "rgba(255,255,255,.9)"); g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g; x.fillRect(0, 0, W, W);
+    // spectre
+    x.lineCap = "round"; x.lineWidth = W * 0.007;
+    const n = 120;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 - Math.PI / 2, mirror = i < n / 2 ? i : n - i, v = bins ? bins[Math.min(bins.length - 1, 2 + mirror * 2)] / 255 : 0;
+      const idle = 0.05 + 0.04 * Math.sin(i * 0.5 + t * 1.4);
+      const h = W * (0.02 + (SP.playing ? v * 0.17 : idle * 0.5));
+      x.strokeStyle = `hsla(${(hue + 200 + 90 * Math.sin(a + t * 0.2)) % 360}, 55%, ${48 + v * 10}%, ${0.35 + v * 0.6})`;
+      x.beginPath(); x.moveTo(c + Math.cos(a) * (R0 + W * 0.03), c + Math.sin(a) * (R0 + W * 0.03)); x.lineTo(c + Math.cos(a) * (R0 + W * 0.03 + h), c + Math.sin(a) * (R0 + W * 0.03 + h)); x.stroke();
+    }
+    // 16 pas autour
+    for (let s = 0; s < 16; s++) {
+      const a = s / 16 * Math.PI * 2 - Math.PI / 2, on = A.some(p => p.seq[s].on), now = SP.playing && SP.viewStep === s;
+      x.fillStyle = now ? "rgb(124,92,230)" : on ? "rgba(27,29,34,.7)" : "rgba(27,29,34,.15)";
+      x.beginPath(); x.arc(c + Math.cos(a) * (R0 - W * 0.025), c + Math.sin(a) * (R0 - W * 0.025), W * (now ? 0.011 : 0.007), 0, 6.283); x.fill();
+    }
+    // image(s) au centre, qui respirent avec la basse
+    const lo = bins && SP.playing ? (bins[1] + bins[2] + bins[3]) / 765 : 0, Rr = R0 * (0.78 + lo * 0.08);
+    x.save(); x.beginPath(); x.arc(c, c, R0 * 0.9, 0, 6.283); x.fillStyle = "rgba(255,255,255,.85)"; x.fill(); x.clip();
+    A.slice(0, 4).forEach((p, i) => { x.globalAlpha = i ? 0.35 : 1; const r = Rr * (i ? 0.7 : 1), ang = t * 0.15 + i * 1.6; x.save(); x.translate(c, c); x.rotate(i ? ang : 0); x.drawImage(p.img, -r, -r, 2 * r, 2 * r); x.restore(); });
+    x.restore(); x.globalAlpha = 1;
+    if (!A.length) { x.fillStyle = "rgba(27,29,34,.5)"; x.font = `${W * 0.022}px ${font}`; x.textAlign = "center"; x.fillText("allume un pad", c, c); }
+    else if (!SP.playing) { x.fillStyle = "rgba(27,29,34,.55)"; x.font = `${W * 0.02}px ${font}`; x.textAlign = "center"; x.fillText("▶ touche pour jouer", c, c + R0 + W * 0.13); }
+    return;
+  }
+  // patch
+  const nodes = spLayout(W), get = k => nodes.find(n => n.k === k), now = performance.now();
+  x.lineCap = "round";
+  const cable = (A, B, col, w, pulse) => {
+    const [x1, y1] = A.at, [x2, y2] = B.at, dx = (x2 - x1) * 0.5;
+    x.strokeStyle = col; x.lineWidth = w; x.beginPath(); x.moveTo(x1, y1); x.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2, y2); x.stroke();
+    if (pulse != null) {
+      const u = pulse, bx = (1 - u) ** 3 * x1 + 3 * (1 - u) ** 2 * u * (x1 + dx) + 3 * (1 - u) * u * u * (x2 - dx) + u ** 3 * x2, by = (1 - u) ** 3 * y1 + 3 * (1 - u) ** 2 * u * y1 + 3 * (1 - u) * u * u * y2 + u ** 3 * y2;
+      x.fillStyle = "rgba(124,92,230,.85)"; x.beginPath(); x.arc(bx, by, W * 0.008, 0, 6.283); x.fill();
     }
   };
-  requestAnimationFrame(draw);
+  nodes.filter(n => n.t === "img").forEach(n => SP_CRIT.forEach(([k]) => cable(n, get(k), "rgba(27,29,34,.07)", W * 0.0025)));
+  for (const [a, b] of SP.cables) {
+    const A_ = get(a), B_ = get(b); if (!A_ || !B_) continue;
+    const pt = SP.pulse[b], u = pt && now - pt < 450 ? (now - pt) / 450 : null;
+    cable(A_, B_, SP.layers[b] ? "rgba(124,92,230,.55)" : "rgba(27,29,34,.18)", W * 0.004, u);
+  }
+  SP_VOICE.forEach(([k]) => cable(get(k), get("out"), SP.layers[k] && spVoiceLevel(k) > 0 ? "rgba(27,29,34,.35)" : "rgba(27,29,34,.08)", W * 0.004));
+  x.textAlign = "center"; x.textBaseline = "middle";
+  for (const n of nodes) {
+    const [cx, cy] = n.at, r = W * (n.t === "img" ? 0.055 : n.t === "out" ? 0.045 : 0.04), pulse = SP.pulse[n.k] && now - SP.pulse[n.k] < 200;
+    x.fillStyle = n.t === "out" ? "rgba(27,29,34,.88)" : "rgba(255,255,255,.95)"; x.strokeStyle = SP.pick === n.k ? "rgb(124,92,230)" : "rgba(27,29,34,.18)"; x.lineWidth = SP.pick === n.k ? W * 0.005 : W * 0.002;
+    x.beginPath(); x.arc(cx, cy, r * (pulse ? 1.12 : 1), 0, 6.283); x.fill(); x.stroke();
+    if (n.t === "img") { x.drawImage(n.p.img, cx - r * 0.8, cy - r * 0.8, r * 1.6, r * 1.6); continue; }
+    if (n.t === "crit") { const v = C[n.k] || 0; x.strokeStyle = `hsl(${hue},45%,45%)`; x.lineWidth = W * 0.005; x.beginPath(); x.arc(cx, cy, r * 0.78, -Math.PI / 2, -Math.PI / 2 + v * 6.283); x.stroke(); }
+    if (n.t === "voice") { const v = spVoiceLevel(n.k); x.fillStyle = `rgba(124,92,230,${0.15 + v * 0.6})`; x.beginPath(); x.arc(cx, cy, r * 0.45 * (0.4 + v), 0, 6.283); x.fill(); }
+    x.fillStyle = n.t === "out" ? "#fff" : "rgba(27,29,34,.75)"; x.font = `${W * 0.019}px ${font}`;
+    if (n.t === "out") x.fillText("♪", cx, cy);
+    x.fillStyle = "rgba(27,29,34,.7)"; x.fillText(n.lab, cx, cy + r + W * 0.022);
+  }
+  x.fillStyle = "rgba(27,29,34,.45)"; x.font = `${W * 0.017}px ${font}`;
+  x.fillText(SP.pick ? "touche une couche pour brancher / débrancher" : "touche un critère, puis une couche · touche un câble pour le retirer", W / 2, W * 0.95);
 }
 
 function wPLabo(p) {
