@@ -4596,7 +4596,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest("button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4640,7 +4640,7 @@ function worldEvents() {
   el.addEventListener("wheel", e => {
     const sc = e.target.closest(".w-scroll");
     if (sc && !e.ctrlKey && sc.scrollHeight > sc.clientHeight + 2) return;
-    if (e.target.closest(".w-sheet, .w-fx-side")) return;
+    if (e.target.closest(".w-sheet, .w-fx-side, .o-side, .w-obs")) return;
     e.preventDefault(); WORLD.touched = true;
     const lineMode = e.deltaMode !== 0, mouseWheel = lineMode || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
     if (e.ctrlKey || mouseWheel) {
@@ -5202,53 +5202,349 @@ function wPDiffusion(p) {
     <div class="w-glass-ui" style="width:72px;height:128px;border-radius:14px"></div><div class="w-glass-ui" style="width:86px;height:108px;border-radius:14px"></div><div class="w-glass-ui" style="width:96px;height:96px;border-radius:14px"></div></div></div></div>`;
 }
 
-// Observatoire (admin) : goûts de tout le monde
-function wPAdmin(p) {
-  const people = new Map(), byScene = new Map();
+// Observatoire (admin) : les goûts de tout le monde, en graphe et en classements
+const OBS = { period: 0, crit: "gout", fam: -1, person: null, sel: null, hover: null, cam: { x: 0, y: 0, z: 0.8 }, alpha: 0, nodes: [], links: [], byId: new Map(), dirty: true };
+const OBS_PHUES = [262, 18, 160, 205, 330, 45, 120, 290];
+const wWho = w => { try { const l = (typeof logs !== "undefined" && Array.isArray(logs)) ? logs.find(l => l.id === w) : null; return l && l.email ? l.email : null; } catch { return null; } };
+const wWhoName = w => { const m = wWho(w); if (m) return m.split("@")[0]; if (w === "cet appareil" || w === "anonyme") return w; return (w || "?").slice(0, 6) + "…"; };
+function obsData() {
+  const since = OBS.period ? Date.now() - OBS.period * 864e5 : 0, shapes = new Map(), people = new Map();
   for (const [key, vt] of Object.entries(votes)) {
-    if (!vt || !Array.isArray(vt.stars)) continue;
+    if (!vt || !Array.isArray(vt.stars) || !vt.stars.length || (vt.t || 0) < since) continue;
     const who = vt.by || (vt.local ? "cet appareil" : "anonyme"), id = key.split("|")[0];
-    const pr = people.get(who) || { y: 0, n: 0, t: 0, vec: new Array(W_FAMS.length).fill(0) }; people.set(who, pr);
-    const sc = scenesFromEntries([[key, vt]])[0]; if (!sc) continue;
-    const vec = (WORLD.byId.get(id) || wVec(sc)).raw;
-    if (vt.v > 0) { pr.y++; vec.forEach((v, f) => pr.vec[f] += v); } else pr.n++;
-    pr.t = Math.max(pr.t, vt.t || 0);
-    const s = byScene.get(id) || { id, key, vt, y: 0, n: 0, vec }; byScene.set(id, s); if (vt.v > 0) s.y++; else s.n++;
+    let s = shapes.get(id); if (!s) { s = { id, key, vt, y: 0, n: 0, yes: new Set(), no: new Set(), t: 0 }; shapes.set(id, s); }
+    if (vt.v > 0) { s.y++; s.yes.add(who); } else { s.n++; s.no.add(who); }
+    s.t = Math.max(s.t, vt.t || 0);
+    let p = people.get(who); if (!p) { p = { who, y: 0, n: 0, t: 0 }; people.set(who, p); }
+    if (vt.v > 0) p.y++; else p.n++; p.t = Math.max(p.t, vt.t || 0);
   }
-  const fams = W_FAMS.map((f, i) => {
-    let ay = 0, ny = 0, an = 0, nn = 0;
-    for (const s of byScene.values()) { if (s.y) { ay += s.vec[i] * s.y; ny += s.y; } if (s.n) { an += s.vec[i] * s.n; nn += s.n; } }
-    return { f, y: ny ? ay / ny : 0, n: nn ? an / nn : 0 };
-  });
-  const mx = Math.max(1e-6, ...fams.map(f => Math.max(f.y, f.n)));
-  const mail = w => { try { const l = (typeof logs !== "undefined" && Array.isArray(logs)) ? logs.find(l => l.id === w) : null; return l && l.email ? l.email : null; } catch { return null; } };
-  const nameOf = w => { const m = mail(w); if (m) return m.split("@")[0]; return (w || "").length > 22 ? w.slice(0, 8) + "…" : w; };
-  p.innerHTML = wHead("Observatoire · goûts de l'équipe", `<button class="w-pill w-glass-ui w-live" id="w-a-csv">Export CSV</button>`)
-    + `<div class="w-scroll w-live"><div style="max-width:1100px;margin:0 auto;padding:80px 24px 150px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;align-items:start">
-    <div class="w-box w-glass-ui"><h3>${people.size} personne${people.size > 1 ? "s" : ""}</h3><p>${[...byScene.values()].length} formes votées</p>
-      <div class="w-bars">${[...people.entries()].sort((a, b) => b[1].y - a[1].y).map(([w, pr]) => `<span title="${mail(w) || w}" style="overflow:hidden;text-overflow:ellipsis">${nameOf(w)}</span><span class="w-bar"><i style="width:${Math.min(100, pr.y * 4)}%"></i></span><span>${pr.y}✓ ${pr.n}✕</span>`).join("")}</div></div>
-    <div class="w-box w-glass-ui"><h3>Ce qui plaît</h3><p>Intensité moyenne de chaque famille de déformation : noir = formes aimées, gris = formes refusées.</p>
-      <div class="w-bars">${fams.map(f => `<span>${wFamLab(f.f)}</span><span class="w-bar"><b style="width:${(f.n / mx * 100).toFixed(0)}%"></b><i style="width:${(f.y / mx * 100).toFixed(0)}%;height:4px;top:2px"></i></span><span>${f.y > f.n ? "▲" : "▽"}</span>`).join("")}</div></div>
-    <div class="w-box w-glass-ui" style="grid-column:1/-1"><h3>Consensus</h3><p>Les formes aimées par le plus de monde.</p><div id="w-a-top"></div></div>
-    <div class="w-box w-glass-ui" style="grid-column:1/-1"><h3>Elles divisent</h3><p>Autant de oui que de non.</p><div id="w-a-div"></div></div>
-  </div></div>`;
-  const all = [...byScene.values()];
-  const top = all.filter(s => s.y).sort((a, b) => b.y - a.y || a.n - b.n).slice(0, 12);
-  const div = all.filter(s => s.y && s.n).sort((a, b) => Math.min(b.y, b.n) - Math.min(a.y, a.n)).slice(0, 12);
-  const toScenes = l => scenesFromEntries(l.map(s => [s.key, s.vt]));
-  wThumbs(p.querySelector("#w-a-top"), toScenes(top), sc => openMockup(sc), 140);
-  if (div.length) wThumbs(p.querySelector("#w-a-div"), toScenes(div), sc => openMockup(sc), 140); else p.querySelector("#w-a-div").textContent = "Aucune pour l'instant.";
-  p.querySelector("#w-a-csv").onclick = () => {
-    uisClick();
-    const rows = [["forme", "personne", "vote", "date", "nb_etoiles", ...W_FAMS]];
-    for (const [key, vt] of Object.entries(votes)) {
-      if (!vt || !Array.isArray(vt.stars)) continue; const id = key.split("|")[0], s = byScene.get(id);
-      rows.push([id, mail(vt.by) || vt.by || "", vt.v > 0 ? "oui" : "non", vt.t ? new Date(vt.t).toISOString() : "", vt.stars.length, ...(s ? s.vec.map(v => v.toFixed(3)) : [])]);
-    }
-    offerBlob(new Blob([rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n")], { type: "text/csv" }), "observatoire_votes.csv");
-  };
+  for (const s of shapes.values()) {
+    const wn = WORLD.byId.get(s.id);
+    s.scene = wn ? wn.scene : scenesFromEntries([[s.key, s.vt]])[0];
+    s.raw = wn ? wn.raw : wVec(s.scene).raw;
+  }
+  return { shapes, people };
 }
-
+// Chaque personne voit des formes différentes : ce qui est commun, ce sont les critères (familles de déformation).
+// lift = intensité moyenne dans les « oui » − dans les « non », rapportée à l'intensité moyenne.
+function obsStats(D) {
+  const F = W_FAMS.length, acc = () => ({ ys: new Array(F).fill(0), yn: 0, ns: new Array(F).fill(0), nn: 0 }), per = new Map(), G = acc();
+  for (const s of D.shapes.values()) {
+    for (const [set, side] of [[s.yes, "y"], [s.no, "n"]]) for (const w of set) {
+      for (const A of [G, per.get(w) || (per.set(w, acc()), per.get(w))]) {
+        if (side === "y") { s.raw.forEach((v, f) => A.ys[f] += v); A.yn++; } else { s.raw.forEach((v, f) => A.ns[f] += v); A.nn++; }
+      }
+    }
+  }
+  const lift = A => A.ys.map((v, f) => { const my = A.yn ? v / A.yn : 0, mn = A.nn ? A.ns[f] / A.nn : my, base = (my + mn) / 2 || 1e-6; return A.yn && A.nn ? (my - mn) / base : 0; });
+  const gl = lift(G), pl = new Map([...per].map(([w, A]) => [w, lift(A)]));
+  const fams = W_FAMS.map((f, i) => {
+    const vals = [...pl.values()].filter((_, j) => true).map(l => l[i]);
+    const m = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const sd = vals.length ? Math.sqrt(vals.reduce((a, b) => a + (b - m) ** 2, 0) / vals.length) : 0;
+    return { i, f, g: gl[i], agree: vals.filter(v => v > 0.02).length, against: vals.filter(v => v < -0.02).length, sd, per: [...pl].map(([w, l]) => ({ w, v: l[i] })) };
+  });
+  return { gl, pl, fams };
+}
+function obsRank(D) {
+  const all = [...D.shapes.values()], c = OBS.crit, st = OBS.st;
+  if (c === "gout") return all.filter(s => s.y).map(s => ({ s, v: s.raw.reduce((a, v, f) => a + v * st.gl[f], 0) + s.y * 0.05 })).sort((a, b) => b.v - a.v).map(o => o.s);
+  if ((c === "criteres" || c === "divisent") && OBS.fam >= 0) { const f = OBS.fam; return all.filter(s => s.y).sort((a, b) => b.raw[f] - a.raw[f]); }
+  if (c === "criteres" || c === "divisent") return [];
+  if (c === "recent") return all.filter(s => s.y).sort((a, b) => b.t - a.t);
+  if (c === "personne" && OBS.person) { const l = st.pl.get(OBS.person) || st.gl; return all.filter(s => s.yes.has(OBS.person)).map(s => ({ s, v: s.raw.reduce((a, v, f) => a + v * l[f], 0) })).sort((a, b) => b.v - a.v).map(o => o.s); }
+  return all;
+}
+function obsBuild(D) {
+  const old = OBS.byId, nodes = [], byId = new Map(), links = [];
+  const list = [...D.shapes.values()].sort((a, b) => (b.y + b.n) - (a.y + a.n)).slice(0, 500);
+  const pp = [...D.people.values()].sort((a, b) => b.y - a.y);
+  pp.forEach((p, i) => {
+    const ang = i / Math.max(1, pp.length) * Math.PI * 2, o = old.get("p:" + p.who);
+    const n = o || { id: "p:" + p.who, person: true, x: Math.cos(ang) * 260, y: Math.sin(ang) * 260, vx: 0, vy: 0 };
+    Object.assign(n, { who: p.who, cy: p.y, cn: p.n, hue: OBS_PHUES[i % OBS_PHUES.length], nb: [] });
+    nodes.push(n); byId.set(n.id, n);
+  });
+  for (const s of list) {
+    const o = old.get(s.id), h = hash01([...s.id].reduce((q, c) => (q * 31 + c.charCodeAt(0)) | 0, 7));
+    const n = o || { id: s.id, x: Math.cos(h * 6.283) * (60 + 300 * hash01((h * 1e9) | 0)), y: Math.sin(h * 6.283) * (60 + 300 * hash01((h * 1e9) | 0)), vx: 0, vy: 0, img: null };
+    Object.assign(n, { s, scene: s.scene, cy: s.y, cn: s.n, nb: [] });
+    nodes.push(n); byId.set(n.id, n);
+    for (const w of s.yes) { const pn = byId.get("p:" + w); if (pn) links.push({ a: pn, b: n, kind: "p" }); }
+  }
+  // voisines par profil de déformation (centré)
+  const sh = nodes.filter(n => !n.person), F = W_FAMS.length, mean = new Array(F).fill(0);
+  for (const n of sh) n.s.raw.forEach((v, f) => mean[f] += v / sh.length);
+  OBS.mean = mean;
+  for (const n of sh) { const c = n.s.raw.map((v, f) => v - mean[f]), m = Math.hypot(...c) || 1; n.u = c.map(v => v / m); let fi = 0; for (let f = 1; f < F; f++) if (c[f] > c[fi]) fi = f; n.fam = fi; }
+  for (const a of sh) {
+    let best = null, bs = -9;
+    for (const b of sh) { if (a === b) continue; let s = 0; for (let f = 0; f < F; f++) s += a.u[f] * b.u[f]; if (s > bs) { bs = s; best = b; } }
+    if (best && bs > 0.3) links.push({ a, b: best, kind: "s", s: bs });
+  }
+  for (const l of links) { l.a.nb.push(l.b); l.b.nb.push(l.a); }
+  Object.assign(OBS, { nodes, links, byId, D });
+  OBS.alpha = old.size ? 0.4 : 1;
+  if (!old.size) for (let i = 0; i < 180; i++) obsTick();
+  OBS.dirty = true;
+}
+const obsR = n => n.person ? 14 + Math.min(10, Math.sqrt(n.cy) * 0.5) : 4 + Math.sqrt(n.cy) * 2.4;
+function obsTick() {
+  const N = OBS.nodes, a = OBS.alpha, cell = 220, grid = new Map(), key = (x, y) => x * 73856093 ^ y * 19349663;
+  for (const n of N) { const k = key(Math.floor(n.x / cell), Math.floor(n.y / cell)); let b = grid.get(k); if (!b) grid.set(k, b = []); b.push(n); }
+  for (const n of N) {
+    const gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell), q = n.person ? 4 : 1;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const b = grid.get(key(gx + i, gy + j)); if (!b) continue;
+      for (const m of b) {
+        if (m === n) continue;
+        let dx = n.x - m.x, dy = n.y - m.y, d2 = dx * dx + dy * dy;
+        if (d2 > cell * cell) continue; if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+        const f = 130 * q * (m.person ? 3 : 1) * a / Math.max(d2, 36); n.vx += dx * f; n.vy += dy * f;
+        const min = (obsR(n) + obsR(m)) * 1.5; if (d2 < min * min) { const d = Math.sqrt(d2), p = (min - d) / d * 0.25; n.vx += dx * p; n.vy += dy * p; }
+      }
+    }
+  }
+  for (const l of OBS.links) {
+    const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.hypot(dx, dy) || 1, rest = l.kind === "p" ? 110 : 40, k = l.kind === "p" ? 0.08 : 0.25;
+    const f = (d - rest) / d * a * k; if (!l.a.fixed) { l.a.vx += dx * f; l.a.vy += dy * f; } if (!l.b.fixed) { l.b.vx -= dx * f; l.b.vy -= dy * f; }
+  }
+  for (const n of N) {
+    if (n.fixed) { n.vx = n.vy = 0; continue; }
+    n.vx -= n.x * 0.01 * a; n.vy -= n.y * 0.01 * a; n.vx *= 0.6; n.vy *= 0.6;
+    n.x += Math.max(-40, Math.min(40, n.vx)); n.y += Math.max(-40, Math.min(40, n.vy));
+  }
+  OBS.alpha *= 0.985; if (OBS.alpha < 0.004) OBS.alpha = 0;
+}
+function obsHighlight() {
+  // ce qui est mis en avant : la personne choisie, ou le haut du classement
+  if (OBS.crit === "personne" && OBS.person) { const p = OBS.byId.get("p:" + OBS.person); return new Set([p, ...(p ? p.nb : [])]); }
+  if (!OBS.rank || !OBS.rank.length) return null;
+  return new Set(OBS.rank.slice(0, 12).map(s => OBS.byId.get(s.id)).filter(Boolean));
+}
+function wPAdmin(p) {
+  p.innerHTML = wHead("Observatoire · tout le monde", `<span class="w-live" id="o-per" style="display:flex;gap:4px"></span><button class="w-pill w-glass-ui w-live" id="w-a-csv">CSV</button>`)
+    + `<div class="w-obs w-live"><canvas id="o-cv"></canvas><div class="o-tip w-glass-ui" id="o-tip"></div></div>
+    <aside class="o-side w-live"><div class="o-sum" id="o-sum"></div><div class="o-tabs" id="o-crit"></div><div class="o-people" id="o-people"></div><div class="o-scroll"><div class="o-fams" id="o-fams"></div><ol class="o-list" id="o-list"></ol></div></aside>`;
+  if (!document.getElementById("o-css")) {
+    const css = document.createElement("style"); css.id = "o-css"; css.textContent = `
+.w-obs { position: absolute; inset: 0; background: rgba(238,240,245,.94); }
+#o-cv { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.o-side { position: absolute; left: 16px; top: 72px; bottom: 96px; width: min(360px, calc(100vw - 32px)); border-radius: 26px; background: rgba(250,250,253,.93); border: 1px solid rgba(255,255,255,.9); box-shadow: 0 16px 50px rgba(40,40,90,.12); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; font-size: 11px; overflow: hidden; z-index: 3; }
+.o-sum { display: flex; gap: 14px; } .o-sum b { display: block; font-family: var(--f-main); font-weight: 400; font-size: 24px; line-height: 1; } .o-sum span { opacity: .55; font-size: 10px; }
+.o-tabs, .o-people { display: flex; flex-wrap: wrap; gap: 5px; }
+.o-fams { display: flex; flex-direction: column; gap: 2px; }
+.o-fam { display: grid; grid-template-columns: 96px 1fr 44px; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 10px; cursor: pointer; border: 0; background: none; font: inherit; font-size: 11px; color: inherit; text-align: left; }
+.o-fam:hover, .o-fam[aria-pressed="true"] { background: rgba(27,29,34,.07); }
+.o-div { position: relative; height: 8px; } .o-div::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(27,29,34,.2); }
+.o-div i { position: absolute; top: 1px; height: 6px; border-radius: 3px; } .o-div em { position: absolute; top: 0; width: 6px; height: 8px; margin-left: -3px; border-radius: 3px; opacity: .9; }
+.o-h { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .55; margin: 6px 0 2px; }
+.o-scroll { overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: none; display: flex; flex-direction: column; gap: 6px; }
+.o-fams:empty, .o-people:empty { display: none; }
+.o-people .w-chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.o-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; scrollbar-width: none; }
+.o-list li { display: grid; grid-template-columns: 22px 44px 1fr auto; gap: 8px; align-items: center; padding: 5px 8px 5px 4px; border-radius: 14px; cursor: pointer; transition: background .15s; }
+.o-list li:hover, .o-list li.on { background: rgba(27,29,34,.06); }
+.o-list .rk { text-align: right; opacity: .5; } .o-list canvas { width: 44px; height: 44px; }
+.o-list .bar { height: 5px; border-radius: 3px; background: rgba(27,29,34,.08); position: relative; overflow: hidden; margin-top: 4px; } .o-list .bar i { position: absolute; inset: 0 auto 0 0; background: rgba(27,29,34,.8); border-radius: 3px; }
+.o-list .who { opacity: .55; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.o-tip { position: absolute; left: 0; top: 0; z-index: 4; border-radius: 20px; padding: 10px; width: 190px; font-size: 11px; display: none; flex-direction: column; gap: 6px; pointer-events: auto; background: rgba(250,250,253,.95) !important; }
+.o-tip.open { display: flex; } .o-tip canvas { width: 100%; aspect-ratio: 1; }
+@media (max-width: 760px) { .o-side { left: 10px; right: 10px; width: auto; top: auto; height: 44vh; bottom: 92px; } }`;
+    document.head.append(css);
+  }
+  const per = p.querySelector("#o-per");
+  [[7, "7 j"], [30, "30 j"], [0, "Tout"]].forEach(([d, l]) => {
+    const b = document.createElement("button"); b.className = "w-pill w-glass-ui"; b.textContent = l; b.setAttribute("aria-pressed", OBS.period === d);
+    b.onclick = () => { OBS.period = d; per.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); uisSwitch(true); obsRefresh(true); };
+    per.append(b);
+  });
+  const crit = p.querySelector("#o-crit");
+  [["gout", "Goût commun"], ["criteres", "Critères"], ["divisent", "Divisent"], ["personne", "Par personne"], ["recent", "Récentes"]].forEach(([k, l]) => {
+    const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.dataset.k = k; b.setAttribute("aria-pressed", OBS.crit === k);
+    b.onclick = () => { OBS.crit = k; crit.querySelectorAll(".w-chip").forEach(x => x.setAttribute("aria-pressed", x === b)); uisClick(); obsRefresh(false); };
+    crit.append(b);
+  });
+  p.querySelector("#w-a-csv").onclick = obsCsv;
+  obsEvents(p.querySelector("#o-cv"));
+  obsRefresh(true);
+  const loop = () => {
+    if (WORLD.panelKey !== "admin" || !p.isConnected) return;
+    requestAnimationFrame(loop);
+    if (OBS.alpha > 0) { obsTick(); OBS.dirty = true; }
+    if (OBS.dirty) { OBS.dirty = false; obsDraw(); }
+  };
+  requestAnimationFrame(loop);
+}
+function obsRefresh(rebuild) {
+  const D = rebuild || !OBS.D ? obsData() : OBS.D;
+  if (rebuild) obsBuild(D);
+  if (OBS.crit === "personne" && !OBS.person) { const p0 = [...D.people.values()].sort((a, b) => b.y - a.y)[0]; if (p0) OBS.person = p0.who; }
+  OBS.st = obsStats(D); OBS.rank = obsRank(D);
+  const sum = document.getElementById("o-sum"); if (!sum) return;
+  const ny = [...D.shapes.values()].reduce((a, s) => a + s.y, 0), nn = [...D.shapes.values()].reduce((a, s) => a + s.n, 0);
+  sum.innerHTML = `<div><b>${D.people.size}</b><span>personnes</span></div><div><b>${D.shapes.size}</b><span>formes votées</span></div><div><b>${ny}</b><span>oui</span></div><div><b>${nn}</b><span>non</span></div>`;
+  const fams = document.getElementById("o-fams"); fams.replaceChildren();
+  if (OBS.crit === "criteres" || OBS.crit === "divisent" || OBS.crit === "personne") {
+    const P = OBS.crit === "personne" && OBS.person ? OBS.st.pl.get(OBS.person) : null;
+    const rows = OBS.st.fams.map(o => ({ ...o, val: P ? P[o.i] : o.g }));
+    rows.sort(OBS.crit === "divisent" ? (a, b) => b.sd - a.sd : (a, b) => b.val - a.val);
+    const mx = Math.max(0.05, ...rows.map(o => Math.abs(o.val)), ...(OBS.crit === "divisent" ? rows.flatMap(o => o.per.map(p => Math.abs(p.v))) : []));
+    const h = document.createElement("div"); h.className = "o-h";
+    h.textContent = OBS.crit === "divisent" ? "Critères qui divisent (chaque point = une personne)" : P ? `Ce que ${wWhoName(OBS.person)} aime / évite` : "Critères aimés (→) ou évités (←) par tout le monde";
+    fams.append(h);
+    for (const o of rows) {
+      const b = document.createElement("button"); b.className = "o-fam"; b.setAttribute("aria-pressed", OBS.fam === o.i);
+      const w = Math.abs(o.val) / mx * 50, pos = o.val >= 0;
+      let bar = OBS.crit === "divisent"
+        ? o.per.map((p, j) => `<em style="left:${50 + p.v / mx * 50}%;background:hsl(${OBS_PHUES[j % OBS_PHUES.length]},45%,50%)" title="${wWhoName(p.w)}"></em>`).join("")
+        : `<i style="${pos ? "left:50%" : `left:${50 - w}%`};width:${w}%;background:${pos ? "rgba(27,29,34,.85)" : "rgba(27,29,34,.3)"}"></i>`;
+      const right = OBS.crit === "divisent" ? `σ ${o.sd.toFixed(2)}` : P ? (o.val > 0 ? "aime" : o.val < 0 ? "évite" : "") : `${o.agree}/${OBS.st.pl.size}`;
+      b.innerHTML = `<span>${wFamLab(o.f)}</span><span class="o-div">${bar}</span><span style="opacity:.6;text-align:right">${right}</span>`;
+      b.title = P ? "" : `${o.agree} personne(s) l'aiment, ${o.against} l'évitent`;
+      b.onclick = () => { OBS.fam = OBS.fam === o.i ? -1 : o.i; uisChime(o.i, 0.4); if (OBS.crit === "personne") OBS.crit = "criteres", document.querySelectorAll("#o-crit .w-chip").forEach(x => x.setAttribute("aria-pressed", x.dataset.k === "criteres")); obsRefresh(false); };
+      fams.append(b);
+    }
+  }
+  const ppl = document.getElementById("o-people"); ppl.replaceChildren();
+  if (OBS.crit === "personne") {
+    const pp = OBS.nodes.filter(n => n.person);
+    if (!OBS.person && pp[0]) OBS.person = pp[0].who;
+    for (const n of pp) {
+      const b = document.createElement("button"); b.className = "w-chip"; b.innerHTML = `<i style="background:hsl(${n.hue},45%,50%)"></i>${wWhoName(n.who)} · ${n.cy}✓`; b.title = wWho(n.who) || n.who;
+      b.setAttribute("aria-pressed", OBS.person === n.who);
+      b.onclick = () => { OBS.person = n.who; uisClick(); obsRefresh(false); }; ppl.append(b);
+    }
+    OBS.rank = obsRank(D);
+  }
+  const list = document.getElementById("o-list");
+  const lh = OBS.crit === "gout" ? "Formes les plus proches du goût commun" : OBS.crit === "recent" ? "Derniers « oui »" : OBS.crit === "personne" ? "Ses formes, de la plus typique à la moins" : OBS.fam >= 0 ? `Formes aimées les plus marquées en ${wFamLab(W_FAMS[OBS.fam])}` : "";
+  list.replaceChildren(...OBS.rank.slice(0, 40).map((s, i) => {
+    const li = document.createElement("li"); li.dataset.id = s.id;
+    const who = [...s.yes].map(wWhoName).join(", ");
+    const nd = OBS.byId.get(s.id), fi = nd && nd.fam != null ? nd.fam : s.raw.reduce((b, v, f, r) => (v - (OBS.mean ? OBS.mean[f] : 0)) > (r[b] - (OBS.mean ? OBS.mean[b] : 0)) ? f : b, 0), fam = wFamLab(W_FAMS[fi]);
+    li.innerHTML = `<span class="rk">${i + 1}</span><canvas width="88" height="88"></canvas><div><div>${fam}${s.y > 1 ? ` · ${s.y} ✓` : ""}${s.n ? ` · ${s.n} ✕` : ""}</div><div class="who">♥ ${who || "—"}</div></div><span></span>`;
+    wPaintInto(li.querySelector("canvas"), s.scene, 88);
+    li.onmouseenter = () => { OBS.hover = OBS.byId.get(s.id) || null; OBS.dirty = true; };
+    li.onmouseleave = () => { OBS.hover = null; OBS.dirty = true; };
+    li.onclick = () => { const n = OBS.byId.get(s.id); uisClick(); if (n) { OBS.cam.x = n.x; OBS.cam.y = n.y; OBS.cam.z = Math.max(OBS.cam.z, 1.8); obsSelect(n); } };
+    return li;
+  }));
+  if (lh && OBS.rank.length) { const h = document.createElement("li"); h.className = "o-h"; h.style.display = "block"; h.textContent = lh; list.prepend(h); }
+  if (!OBS.rank.length && OBS.crit !== "criteres" && OBS.crit !== "divisent") list.innerHTML = `<li style="display:block;opacity:.6">Rien pour ce critère sur cette période.</li>`;
+  OBS.dirty = true;
+}
+function obsEvents(cv) {
+  const S2 = () => { const r = cv.getBoundingClientRect(); return { W: r.width, H: r.height, L: r.left, T: r.top }; };
+  const toW = (sx, sy) => { const s = S2(); return [(sx - s.L - s.W / 2) / OBS.cam.z + OBS.cam.x, (sy - s.T - s.H / 2) / OBS.cam.z + OBS.cam.y]; };
+  const at = (sx, sy) => { const [wx, wy] = toW(sx, sy), k = Math.min(1, Math.max(0, OBS.cam.z - 1)); let b = null, bd = 1e9; for (const n of OBS.nodes) { const r = Math.max(obsR(n) * (n.person ? 1 : 1 + 1.6 * k), 10 / OBS.cam.z), d = Math.hypot(wx - n.x, wy - n.y); if (d < r && d < bd) { bd = d; b = n; } } return b; };
+  let drag = null; const ptrs = new Map(); let pinch = null;
+  cv.addEventListener("pointerdown", e => {
+    e.stopPropagation(); ptrs.set(e.pointerId, [e.clientX, e.clientY]); try { cv.setPointerCapture(e.pointerId); } catch {}
+    if (ptrs.size === 1) drag = { x: e.clientX, y: e.clientY, cx: OBS.cam.x, cy: OBS.cam.y, moved: 0, node: at(e.clientX, e.clientY) };
+    else { drag = null; const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!ptrs.has(e.pointerId)) { const n = at(e.clientX, e.clientY); if (n !== OBS.hover) { OBS.hover = n; OBS.dirty = true; if (n && !n.person) uisChime(wDegOf(n.scene), 0.4); } cv.style.cursor = n ? "pointer" : "grab"; return; }
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptrs.size >= 2 && pinch) { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); OBS.cam.z = Math.max(0.15, Math.min(6, OBS.cam.z * d / pinch)); pinch = d; OBS.dirty = true; return; }
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.moved = Math.max(drag.moved, Math.hypot(dx, dy)); if (drag.moved < 4) return;
+    if (drag.node) { const [wx, wy] = toW(e.clientX, e.clientY); Object.assign(drag.node, { x: wx, y: wy, fixed: true }); OBS.alpha = Math.max(OBS.alpha, 0.25); }
+    else { OBS.cam.x = drag.cx - dx / OBS.cam.z; OBS.cam.y = drag.cy - dy / OBS.cam.z; }
+    OBS.dirty = true;
+  });
+  const up = e => {
+    if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
+    const d = drag; drag = null; if (d && d.node) d.node.fixed = false;
+    if (d && d.moved < 4 && e.type === "pointerup") {
+      const n = d.node;
+      if (n && n.person) { OBS.crit = "personne"; OBS.person = n.who; document.querySelectorAll("#o-crit .w-chip").forEach(x => x.setAttribute("aria-pressed", x.dataset.k === "personne")); uisClick(); obsRefresh(false); }
+      else obsSelect(n || null);
+    }
+  };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+  cv.addEventListener("wheel", e => {
+    e.preventDefault(); e.stopPropagation();
+    const s = S2(), [wx, wy] = toW(e.clientX, e.clientY), f = Math.exp(-(e.deltaMode ? e.deltaY * 33 : e.deltaY) * (e.ctrlKey ? 0.012 : 0.0016));
+    if (!e.ctrlKey && e.deltaX !== 0) { OBS.cam.x += e.deltaX / OBS.cam.z; OBS.cam.y += e.deltaY / OBS.cam.z; OBS.dirty = true; return; }
+    OBS.cam.z = Math.max(0.15, Math.min(6, OBS.cam.z * f));
+    OBS.cam.x = wx - (e.clientX - s.L - s.W / 2) / OBS.cam.z; OBS.cam.y = wy - (e.clientY - s.T - s.H / 2) / OBS.cam.z; OBS.dirty = true;
+  }, { passive: false });
+  OBS.cv = cv; OBS.cam = { x: 0, y: 0, z: Math.min(innerWidth, innerHeight) / 900 };
+  if (innerWidth > 760) OBS.cam.x = -160 / OBS.cam.z; else OBS.cam.y = 180 / OBS.cam.z;
+}
+function obsSelect(n) {
+  OBS.sel = n; OBS.dirty = true;
+  const tip = document.getElementById("o-tip"); if (!tip) return;
+  tip.classList.toggle("open", !!n);
+  document.querySelectorAll("#o-list li").forEach(li => li.classList.toggle("on", !!n && li.dataset.id === n.id));
+  if (!n) return;
+  const s = n.s;
+  tip.innerHTML = `<canvas width="200" height="200"></canvas><div>${s.y} ✓ · ${s.n} ✕ · ${wFamLab(W_FAMS[n.fam])}</div><div style="opacity:.6">${[...s.yes].map(wWhoName).join(", ") || "personne n'a dit oui"}</div><button class="w-pill dark">Voir sur un vêtement</button>`;
+  wPaintInto(tip.querySelector("canvas"), n.scene, 200);
+  tip.querySelector("button").onclick = () => { uisClick(); openMockup(n.scene); };
+}
+function obsDraw() {
+  const cv = OBS.cv; if (!cv || !cv.isConnected) return;
+  const r = cv.getBoundingClientRect(), dpr = Math.min(1.5, devicePixelRatio || 1), W = r.width, H = r.height;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const x = cv.getContext("2d"), z = OBS.cam.z, font = WORLD.font || "monospace";
+  x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+  const S_ = (wx, wy) => [(wx - OBS.cam.x) * z + W / 2, (wy - OBS.cam.y) * z + H / 2];
+  for (const n of OBS.nodes) { const s = S_(n.x, n.y); n.sx = s[0]; n.sy = s[1]; }
+  const hi = obsHighlight(), foc = OBS.hover || OBS.sel, near = foc ? new Set([foc, ...foc.nb]) : null;
+  const lit = n => near ? near.has(n) : hi ? hi.has(n) : true;
+  const k = Math.min(1, Math.max(0, z - 1));
+  // liens
+  x.lineWidth = Math.max(0.4, Math.min(1.3, 0.8 * z));
+  for (const l of OBS.links) {
+    const on = lit(l.a) && lit(l.b);
+    if (l.kind === "p") { const h = l.a.person ? l.a.hue : l.b.hue; x.strokeStyle = `hsla(${h},50%,50%,${on ? 0.5 : 0.06})`; }
+    else x.strokeStyle = `rgba(27,29,34,${on ? 0.35 : 0.08})`;
+    x.beginPath(); x.moveTo(l.a.sx, l.a.sy); x.lineTo(l.b.sx, l.b.sy); x.stroke();
+  }
+  // formes
+  for (const n of OBS.nodes) {
+    if (n.person || n.sx < -50 || n.sx > W + 50 || n.sy < -50 || n.sy > H + 50) continue;
+    const rr = obsR(n) * z, a = lit(n) ? 1 : 0.2;
+    if (k < 0.98) { x.globalAlpha = a * (1 - k); x.fillStyle = n.cy ? `hsl(${W_HUES[n.fam % W_HUES.length]},32%,38%)` : "rgba(27,29,34,.3)"; x.beginPath(); x.arc(n.sx, n.sy, Math.max(1.4, rr), 0, 6.283); x.fill(); }
+    if (k > 0.02) { if (!n.img && !n.q) { n.q = true; wRender(n.scene, 128).then(c => { n.img = c; OBS.dirty = true; }).catch(() => {}); } if (n.img) { const R = rr * 2.6; x.globalAlpha = a * k; x.drawImage(n.img, n.sx - R, n.sy - R, 2 * R, 2 * R); } }
+  }
+  x.globalAlpha = 1;
+  // rangs du classement
+  x.font = `10px ${font}`; x.textAlign = "center"; x.textBaseline = "middle";
+  if (!near && hi) OBS.rank.slice(0, 12).forEach((s, i) => {
+    const n = OBS.byId.get(s.id); if (!n) return; const rr = obsR(n) * z * (1 + 1.6 * k) + 9;
+    x.fillStyle = "rgba(27,29,34,.85)"; x.beginPath(); x.arc(n.sx + rr * 0.7, n.sy - rr * 0.7, 8, 0, 6.283); x.fill();
+    x.fillStyle = "#fff"; x.fillText(i + 1, n.sx + rr * 0.7, n.sy - rr * 0.7 + 0.5);
+  });
+  // personnes
+  for (const n of OBS.nodes) {
+    if (!n.person) continue;
+    const rr = obsR(n) * Math.max(0.6, Math.min(1.4, z)), a = !near || near.has(n) ? 1 : 0.3;
+    x.globalAlpha = a; x.fillStyle = `hsl(${n.hue},45%,52%)`; x.beginPath(); x.arc(n.sx, n.sy, rr, 0, 6.283); x.fill();
+    x.fillStyle = "#fff"; x.font = `11px ${font}`; x.fillText(wWhoName(n.who).slice(0, 1).toUpperCase(), n.sx, n.sy + 0.5);
+    x.fillStyle = "rgba(27,29,34,.75)"; x.font = `11px ${font}`; x.fillText(wWhoName(n.who), n.sx, n.sy + rr + 11);
+    if (OBS.crit === "personne" && OBS.person === n.who) { x.strokeStyle = `hsl(${n.hue},45%,45%)`; x.lineWidth = 1.5; x.beginPath(); x.arc(n.sx, n.sy, rr + 5, 0, 6.283); x.stroke(); }
+  }
+  x.globalAlpha = 1;
+  if (OBS.sel) {
+    const n = OBS.sel, rr = obsR(n) * z * (1 + 1.6 * k) + 6;
+    x.strokeStyle = "rgba(124,92,230,.85)"; x.setLineDash([3, 4]); x.lineWidth = 1.2; x.beginPath(); x.arc(n.sx, n.sy, rr, 0, 6.283); x.stroke(); x.setLineDash([]);
+    const tip = document.getElementById("o-tip");
+    if (tip) { const tx = Math.min(W - 200, Math.max(10, n.sx + rr + 10)), ty = Math.min(H - 300, Math.max(70, n.sy - 100)); tip.style.transform = `translate(${tx}px, ${ty}px)`; }
+  }
+}
+function obsCsv() {
+  uisClick();
+  const rows = [["forme", "personne", "vote", "date", "nb_etoiles", ...W_FAMS]];
+  for (const [key, vt] of Object.entries(votes)) {
+    if (!vt || !Array.isArray(vt.stars)) continue; const id = key.split("|")[0], s = OBS.D && OBS.D.shapes.get(id);
+    rows.push([id, wWho(vt.by) || vt.by || "", vt.v > 0 ? "oui" : "non", vt.t ? new Date(vt.t).toISOString() : "", vt.stars.length, ...(s ? s.raw.map(v => v.toFixed(3)) : [])]);
+  }
+  offerBlob(new Blob([rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n")], { type: "text/csv" }), "observatoire_votes.csv");
+}
 
 /* ---------- Effets : rendu, effets, déformations (labo + tiroir de la grille) ---------- */
 const WFX = { scene: null, prevT: 0, thumbsT: 0 };
