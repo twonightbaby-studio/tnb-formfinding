@@ -5080,6 +5080,7 @@ function wPanel(k) {
   if (k === WORLD.panelKey && k) return;
   if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); smLoopStop(); if (SM.rec) smRecToggle(); }
   if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
+  if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
   const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn }[k];
@@ -5399,19 +5400,18 @@ function wPSampler(p) {
   const tabs = cur => [["synthe", "Synthé"], ["echant", "Échantillons"], ["radial", "Images"]].map(([m, l]) => `<button class="w-pill w-glass-ui w-live" data-m="${m}" aria-pressed="${cur === m || (m === "radial" && (cur === "radial" || cur === "patch"))}">${l}</button>`).join("");
   const go = m => { uisSwitch(true); syRun(false); spPlay(false); smLoopStop(); store.set("atelier-sampler-mode", m); WORLD.panelKey = null; wPanel("sampler"); };
   if (mode === "echant") {
-    p.innerHTML = wHead("Sampler · échantillons", tabs("echant") + `<button class="w-pill w-glass-ui w-live" id="sm-recb" aria-pressed="${!!SM.rec}">${SM.rec ? "■ Arrêter et garder" : "● Enregistrer"}</button>`) + `<div class="w-scroll w-live" id="sm-host"></div>`;
+    p.innerHTML = wHead("Sampler · échantillons", tabs("echant") + lnTogBtn() + `<button class="w-pill w-glass-ui w-live" id="sm-recb" aria-pressed="${!!SM.rec}">${SM.rec ? "■ Arrêter et garder" : "● Enregistrer"}</button>`) + `<div class="w-scroll w-live" id="sm-host"></div>`;
     wPSmp(p.querySelector("#sm-host"));
     p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "echant") go(b.dataset.m); });
     p.querySelector("#sm-recb").onclick = () => { uisClick(); smRecToggle(); };
     return;
   }
   if (mode === "synthe") {
-    p.innerHTML = wHead("Sampler · fais ta prod", tabs("synthe") + `<button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button><button class="w-pill w-glass-ui w-live" id="ln-tog" aria-pressed="${!!SY.learn}" title="Bulles de théorie musicale au survol">♪ Apprendre</button>`)
+    p.innerHTML = wHead("Sampler · fais ta prod", tabs("synthe") + `<button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button>` + lnTogBtn())
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
     wPSynth(p.querySelector("#sy-host"));
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
     p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
-    p.querySelector("#ln-tog").onclick = e => { SY.learn = !SY.learn; store.set("atelier-learn", SY.learn); e.currentTarget.setAttribute("aria-pressed", SY.learn); uisSwitch(SY.learn); const sy = document.querySelector(".sy"); if (sy) sy.classList.toggle("learn", SY.learn); if (!SY.learn) lnHide(); lnLive(); };
     p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "synthe") go(b.dataset.m); });
     const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); syLoopView(); lnLive(); };
     requestAnimationFrame(loop);
@@ -5872,7 +5872,7 @@ function syLoadVibe(name, ui = true) {
   if (ui && typeof prRender === "function") prRender();
   sySave(); if (ui) syRender();
 }
-function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() => store.set("atelier-synthe", { feel: SY.feel || {}, post: SY.post, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null, loops: SY.loops, chain: SY.chain, tr: SY.tr, cur: SY.cur, song: !!SY.song }), 300); }
+function sySave() { syStore(); clearTimeout(sySave.t); sySave.t = setTimeout(() => (syUndoTrack(), store).set("atelier-synthe", { feel: SY.feel || {}, post: SY.post, bpm: SY.bpm, swing: SY.swing, key: SY.key, prog: SY.prog, tracks: SY.tracks, vibe: SY.vibe, parent: SY.parent || null, from: SY.from || null, loops: SY.loops, chain: SY.chain, tr: SY.tr, cur: SY.cur, song: !!SY.song }), 300); }
 
 /* Chaîne d'effets par piste : drive → filtre → volume → (sortie + espace) */
 function syChain(i) {
@@ -6057,6 +6057,7 @@ function wPSynth(host) {
         <label class="sy-sel">Tonalité<select id="sy-key">${SY_KEYS.map((k, i) => `<option value="${i}">${k} mineur</option>`).join("")}</select></label>
         <label class="sy-sel">Accords<select id="sy-prog">${Object.keys(SY_PROGS).map(k => `<option>${k}</option>`).join("")}</select></label>
         <button class="w-pill w-glass-ui" id="sy-mut" title="Fait bouger un peu tous les boutons et quelques pas">↻ Muter</button>
+        <button class="w-chip" id="sy-undo" title="Annuler (Ctrl+Z)" disabled>↶</button><button class="w-chip" id="sy-redo" title="Rétablir (Ctrl+Maj+Z)" disabled>↷</button>
       </div>
     </div>
     <div class="sy-loops sp-card" id="sy-loops"></div>
@@ -6069,6 +6070,7 @@ function wPSynth(host) {
   const ks = host.querySelector("#sy-key"), ps = host.querySelector("#sy-prog"); ks.value = SY.key; ps.value = SY.prog;
   ks.onchange = () => { SY.key = +ks.value; sySave(); uisClick(); }; ps.onchange = () => { SY.prog = ps.value; sySave(); uisClick(); };
   host.querySelector("#sy-mut").onclick = () => { uisChime(5, 0.5); syMutate(); };
+  host.querySelector("#sy-undo").onclick = () => syUndo(false); host.querySelector("#sy-redo").onclick = () => syUndo(true); setTimeout(syUndoUI, 0);
   host.querySelector("#sy-add").onclick = () => { if (SY.tracks.length >= 10) return; const pool = Object.keys(SY_INST); SY.tracks.push(syTrack(pool[Math.floor(Math.random() * pool.length)], new Array(16).fill(0))); syRoll(SY.tracks[SY.tracks.length - 1]); syStore(); syEnsureLoops(); uisPlop(); sySave(); syRender(); };
   const pr = document.createElement("div"); pr.className = "sy-prods sp-card"; pr.id = "sy-prods"; host.querySelector(".sy").append(pr); prRender(); prLoad(true);
   syKnob(host.querySelector('[data-g="bpm"]'), () => (SY.bpm - 60) / 120, v => { SY.bpm = Math.round(60 + v * 120); sySave(); }, () => `${SY.bpm} bpm`);
@@ -6536,7 +6538,7 @@ function djRec() {
 /* Interface des platines */
 function wPDJ(p) {
   if (!document.getElementById("dj-css")) { const css = document.createElement("style"); css.id = "dj-css"; css.textContent = DJ_CSS + (typeof SY_CSS !== "undefined" ? SY_CSS : ""); document.head.append(css); }
-  p.innerHTML = wHead("Platines · mixe les prods", `<button class="w-pill w-glass-ui w-live" id="dj-rec" aria-pressed="${!!DJ.rec}">${DJ.rec ? "■ Arrêter et garder" : "● Enregistrer le mix"}</button>`)
+  p.innerHTML = wHead("Platines · mixe les prods", lnTogBtn() + `<button class="w-pill w-glass-ui w-live" id="dj-rec" aria-pressed="${!!DJ.rec}">${DJ.rec ? "■ Arrêter et garder" : "● Enregistrer le mix"}</button>`)
     + `<div class="w-scroll w-live"><div class="dj">
       <section class="dj-deck sp-card" data-d="0"></section>
       <section class="dj-mix sp-card" id="dj-mix"></section>
@@ -6826,13 +6828,16 @@ async function smLoad(file) {
   smMsg("Lecture du fichier…");
   try {
     const ab = await file.arrayBuffer(), buf = await SP.ctx.decodeAudioData(ab.slice(0));
-    const rev = SP.ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
-    for (let c = 0; c < buf.numberOfChannels; c++) { const s = buf.getChannelData(c), d = rev.getChannelData(c); for (let i = 0, n = s.length; i < n; i++) d[i] = s[n - 1 - i]; }
-    if (SM.url) URL.revokeObjectURL(SM.url);
     const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(file.name);
-    Object.assign(SM, { buf, rev, name: file.name, isVideo, url: isVideo ? URL.createObjectURL(file) : null, peaks: smPeaks(buf) });
-    SM.bpm = smBpm(buf); smChop("attaques"); uisYes(); smRender();
+    smUseBuffer(buf, file.name, isVideo, file, false); uisYes();
   } catch (e) { const t = "Ce fichier n'a pas pu être lu par ce navigateur (essaie mp3, wav ou mp4)."; smMsg(t); wToast(t); uisNo(); }
+}
+function smUseBuffer(buf, name, isVideo, file, voice) {
+  const rev = SP.ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+  for (let c = 0; c < buf.numberOfChannels; c++) { const s = buf.getChannelData(c), d = rev.getChannelData(c); for (let i = 0, n = s.length; i < n; i++) d[i] = s[n - 1 - i]; }
+  if (SM.url) URL.revokeObjectURL(SM.url);
+  Object.assign(SM, { buf, rev, name, isVideo, voice: !!voice, url: isVideo && file ? URL.createObjectURL(file) : null, peaks: smPeaks(buf) });
+  SM.bpm = smBpm(buf); smChop("attaques"); smRender();
 }
 function smMono(buf, hop = 512) {               // énergie par tranche de 512 échantillons
   const d0 = buf.getChannelData(0), d1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : d0, n = Math.floor(d0.length / hop), e = new Float32Array(n);
@@ -6960,7 +6965,8 @@ function smRender() {
   const root = document.getElementById("sm-root"); if (!root) return;
   if (!SM.buf) {
     root.innerHTML = `<label class="sm-drop sp-card"><input type="file" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.mov" hidden id="sm-file">
-      <b>Glisse un mp3 ou un mp4 ici</b><span>ou touche pour choisir un fichier · il est découpé automatiquement en 16 pads</span><span id="sm-msg"></span></label>`;
+      <b>Glisse un mp3 ou un mp4 ici</b><span>ou touche pour choisir un fichier · il est découpé automatiquement en 16 pads</span><span id="sm-msg"></span></label>
+      <div class="w-row" style="justify-content:center;margin-top:14px"><button class="w-pill dark vx-mic" aria-pressed="${!!VX.rec}">🎙 Micro</button><span class="sp-hint">ou enregistre ta voix, puis passe-la au vocodeur, au robot, au téléphone…</span></div>`;
     root.querySelector("#sm-file").onchange = e => smLoad(e.target.files[0]); return;
   }
   const P = SM.pads[SM.sel];
@@ -6970,7 +6976,8 @@ function smRender() {
       <div class="sm-info"><b class="sm-name"></b><span>${SM.buf.duration.toFixed(1)} s · ${SM.bpm ? SM.bpm + " bpm détectés" : "tempo non détecté"}${SM.midi ? " · MIDI branché" : ""}</span>
         <div class="w-sec">Découpe automatique</div>
         <div class="dj-btns"><button class="w-chip" data-chop="attaques">Aux attaques</button><button class="w-chip" data-chop="temps" ${SM.bpm ? "" : "disabled"}>Sur les temps</button><button class="w-chip" data-chop="egal">16 parts égales</button>
-        <label class="w-chip" style="cursor:pointer">Autre fichier<input type="file" accept="audio/*,video/*" hidden id="sm-file"></label></div>
+        <label class="w-chip" style="cursor:pointer">Autre fichier<input type="file" accept="audio/*,video/*" hidden id="sm-file"></label><button class="w-chip vx-mic" aria-pressed="${!!VX.rec}">🎙 Micro</button></div>
+        ${vxPanel()}
         <div class="w-sec">Boucler mon jeu</div>
         <div class="dj-btns">${SM.loop ? `<span class="sm-rec">${SM.loop.rec ? "● joue, ça enregistre…" : SM.loop.play ? "↻ ta boucle tourne" : "décompte…"}</span><button class="w-chip" id="sm-lstop">Arrêter la boucle</button>` : [1, 2, 4].map(n => `<button class="w-chip" data-loop="${n}">${n} mesure${n > 1 ? "s" : ""}</button>`).join("")}</div>
         <span class="sp-hint">Un décompte de 4 temps, puis tout ce que tu joues est calé sur la grille (${SM.bpm || SY.bpm} bpm) et rejoué en boucle.</span>
@@ -6981,7 +6988,7 @@ function smRender() {
       <div class="sm-grid sp-card" id="sm-grid"></div>
       <div class="sm-edit sp-card" id="sm-edit"></div>
     </div>`;
-  root.querySelector(".sm-name").textContent = SM.name;
+  root.querySelector(".sm-name").textContent = SM.name; vxBind(root);
   SM.video = root.querySelector("#sm-video");
   root.querySelectorAll("[data-chop]").forEach(b => b.onclick = () => { uisClick(); smChop(b.dataset.chop); });
   root.querySelector("#sm-file").onchange = e => smLoad(e.target.files[0]);
@@ -7620,6 +7627,7 @@ function wFx(host, preview) {
       <div data-c="sv" style="display:${S.nStars > 1 ? "block" : "none"}"><small style="opacity:.55;font-size:10px">Écart de taille entre les formes</small><input class="w-range" style="display:block" type="range" min="0" max="1" step="0.05" value="${S.sizeVar}" aria-label="Écart de taille"></div>
       <b style="margin-top:6px">Images par série</b><div class="w-fx-fams" data-c="count"></div></div>
     <div class="w-sec">Rendu</div><div class="w-fx-presets"></div>
+    <div class="w-sec">Trame <span>motifs perso</span></div><div class="w-fx-trame"></div>
     <div class="w-sec">Effets <span>cumulables</span></div><div class="w-fx-styles" style="display:flex;flex-direction:column;gap:6px"></div>
     <div class="w-sec">Déformations <span>relance une série</span></div><div class="w-fx-fams"></div>
     <div class="w-row"><button class="w-pill w-glass-ui" data-fx="clear">Enlever tous les effets</button>${preview ? `<button class="w-pill w-glass-ui" data-fx="classic">Plus de réglages (atelier classique)</button>` : ""}</div>
@@ -7642,7 +7650,7 @@ function wFx(host, preview) {
     const b = document.createElement("button"); b.className = "w-fx-p"; b.dataset.k = k; b.title = p.desc; b.setAttribute("aria-pressed", S.preset === k);
     const cv = document.createElement("canvas"); cv.width = cv.height = 72; const t = document.createElement("span"); t.textContent = p.lab;
     b.append(cv, t); pres.append(b);
-    b.onclick = () => { uisClick(); uisChime(Object.keys(PRESETS).indexOf(k), 0.4); S.preset = k; pres.querySelectorAll(".w-fx-p").forEach(x => x.setAttribute("aria-pressed", x === b)); wFxApply(); };
+    b.onclick = () => { uisClick(); uisChime(Object.keys(PRESETS).indexOf(k), 0.4); S.preset = k; pres.querySelectorAll(".w-fx-p").forEach(x => x.setAttribute("aria-pressed", x === b)); wFxApply(); wFxTrame(host.querySelector(".w-fx-trame")); };
   }
   for (const [k, [lab, desc]] of Object.entries(STYLES)) {
     const row = document.createElement("div"); row.className = "w-fx-st" + (S.styles[k].on ? " on" : "");
@@ -7671,7 +7679,40 @@ function wFx(host, preview) {
     if (a === "classic") setWorld(false);
     if (a === "clear") { for (const k of Object.keys(STYLES)) S.styles[k].on = false; host.querySelectorAll(".w-fx-styles .w-fx-st").forEach(r => { r.classList.remove("on"); r.querySelector(".w-sw").setAttribute("aria-checked", false); }); uisSwitch(false); wFxApply(); }
   });
+  wFxTrame(host.querySelector(".w-fx-trame"));
   WFX.host = host; wFxThumbs(); if (preview) wFxPreview();
+}
+// Réglages de la trame (dithering) : motif, motif importé, disposition, éclat, grille, couleurs
+function wFxTrame(box) {
+  if (!box) return; const T = S.trame, on = S.preset === "trame";
+  const redo = (d = 160) => { saveS(); try { stampCache.clear(); flowCache.key = ""; libreCache.key = ""; } catch {} if (S.preset === "trame") wFxApply(d); };
+  const chips = (opts, key, after) => { const w = document.createElement("div"); w.className = "w-fx-fams"; for (const [v, lab, tip] of opts) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = lab; if (tip) b.title = tip; b.setAttribute("aria-pressed", T[key] === v); b.onclick = () => { T[key] = v; w.querySelectorAll(".w-chip").forEach(x => x.setAttribute("aria-pressed", x === b)); uisClick(); redo(60); after && after(); }; w.append(b); } return w; };
+  const range = (key, lab, mn, mx, st, fmt) => { const w = document.createElement("label"); w.className = "w-fx-tr"; w.innerHTML = `<small>${lab}</small><output></output><input class="w-range" type="range" min="${mn}" max="${mx}" step="${st}">`; const r = w.querySelector("input"), o = w.querySelector("output"); r.value = T[key]; o.textContent = fmt(T[key]); r.oninput = () => { T[key] = +r.value; o.textContent = fmt(T[key]); redo(); }; return w; };
+  const pct = v => Math.round(v * 100) + " %";
+  box.innerHTML = `<div class="w-fx-tbox${on ? " on" : ""}"><div class="w-row" style="justify-content:space-between;align-items:center"><b>Trame</b><button class="w-pill ${on ? "w-glass-ui" : "dark"}" data-tr="use">${on ? "✓ Rendu actif" : "Utiliser la trame"}</button></div><small style="opacity:.6">Une grille de motifs dont la taille suit l'intensité de la forme.</small></div>`;
+  const st = box.firstElementChild;
+  const add = (lab, el) => { const b = document.createElement("b"); b.textContent = lab; b.style.marginTop = "6px"; st.append(b, el); };
+  // Motif
+  const mo = chips([["carre", "▪", "Carré arrondi"], ["rond", "●", "Rond"], ["losange", "◆", "Losange"], ["croix", "✚", "Croix"], ["etoile", "✱", "Étoile (logo)"], ...(T.custom ? [["custom", "Importé", "Ton motif"]] : [])], "motif");
+  const imp = document.createElement("label"); imp.className = "w-chip"; imp.style.cursor = "pointer"; imp.textContent = "＋ Importer SVG / PNG"; const fi = document.createElement("input"); fi.type = "file"; fi.accept = "image/svg+xml,image/png,image/webp,image/jpeg"; fi.hidden = true; imp.append(fi); mo.append(imp);
+  fi.onchange = async () => { const f = fi.files[0]; if (!f) return; const url = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(f); }); T.custom = url; T.motif = "custom"; try { stampImgs.custom = await loadImg(url); } catch {} uisYes(); if (S.preset !== "trame") S.preset = "trame"; redo(60); wFxTrame(box); host2Sync(); };
+  add("Motif", mo);
+  // Disposition
+  const libre = document.createElement("div"); libre.className = "w-fx-trg";
+  libre.append(range("ecart", "Écart de tailles", 0, 1, 0.05, pct), range("rot", "Rotation au hasard", 0, 180, 5, v => "± " + Math.round(v) + "°"));
+  const sh = document.createElement("button"); sh.className = "w-chip"; sh.textContent = "↻ Rebattre"; sh.onclick = () => { T.graine = (T.graine || 1) + 1; uisChime(3, 0.4); redo(30); }; libre.append(sh);
+  const showL = () => libre.hidden = T.dispo !== "libre";
+  add("Disposition", chips([["grille", "Grille régulière"], ["libre", "Libre"]], "dispo", showL)); st.append(libre); showL();
+  // Éclat
+  const ecl = document.createElement("div"); ecl.className = "w-fx-trg"; const sc = range("scint", "Part qui scintille", 0.02, 0.5, 0.02, pct), ha = range("halo", "Halo", 0, 1, 0.05, pct); ecl.append(sc, ha);
+  const showE = () => { sc.hidden = T.eclat !== "scintille"; ha.hidden = T.eclat === "uniforme"; ecl.hidden = T.eclat === "uniforme"; };
+  add("Éclat des motifs", chips([["uniforme", "Uniforme"], ["aleatoire", "Aléatoire"], ["scintille", "Quelques-uns scintillent"]], "eclat", showE)); st.append(ecl); showE();
+  // Grille, douceur, voile, couleurs
+  const g = document.createElement("div"); g.className = "w-fx-trg"; g.append(range("cell", "Taille de la grille", 5, 30, 1, v => Math.round(v) + " px"), range("douceur", "Douceur", 0, 1, 0.05, pct), range("voile", "Voile lumineux", 0, 1, 0.05, pct)); st.append(g);
+  const col = document.createElement("div"); col.className = "w-row"; col.style.gap = "14px"; col.innerHTML = `<label class="w-fx-col"><input type="color" data-k="fg"><small>Couleur</small></label><label class="w-fx-col"><input type="color" data-k="bg"><small>Fond</small></label>`;
+  col.querySelectorAll("input").forEach(i => { i.value = T[i.dataset.k]; i.oninput = () => { T[i.dataset.k] = i.value; redo(200); }; }); st.append(col);
+  const host2Sync = () => { const pres = WFX.host && WFX.host.querySelector(".w-fx-presets"); if (pres) pres.querySelectorAll(".w-fx-p").forEach(x => x.setAttribute("aria-pressed", x.dataset.k === S.preset)); };
+  box.querySelector('[data-tr="use"]').onclick = () => { if (S.preset === "trame") return; S.preset = "trame"; uisYes(); wFxApply(); wFxTrame(box); host2Sync(); };
 }
 // Applique un changement de rendu ou d'effet partout : grille, graphe, aperçu
 function wFxApply(delay = 60) {
@@ -7879,7 +7920,7 @@ function lnProgText() {
   return `<b>La grille d'accords : ${SY.prog}</b><br>En ${SY_KEYS[SY.key]} mineur ça donne : <b>${names.map(n => n.sym).join(" → ")}</b>.<br>Les chiffres romains disent la place de l'accord dans la gamme (i = tonique). Minuscule = mineur, majuscule = majeur. Les accords ici ont des septièmes et neuvièmes : des notes en plus qui donnent la couleur « adulte » (soul, jazz, R&B).`;
 }
 function lnFor(el) {
-  const k = el.dataset.learn || ""; const [a, b] = k.split(":");
+  const k = el.dataset.learn || ""; const [a, b] = k.split(":"); if (LEARN_MORE[k]) return LEARN_MORE[k];
   if (a === "prog") return lnProgText();
   if (a === "knob") return LEARN_KNOB[b];
   if (a === "inst") { const I = SY_INST[b]; return I ? `<b>${I.lab}</b> — ${LEARN_INST[b] || ""}` : ""; }
@@ -7925,8 +7966,8 @@ function lnShow(el) {
   t.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
 }
 function lnHide() { const t = document.getElementById("ln-tip"); if (t) t.classList.remove("open"); }
-const lnOn = () => !!SY.learn && WORLD.panelKey === "sampler" && !!document.getElementById("sy-host");
-document.addEventListener("mouseover", e => { if (!lnOn()) return; if (!(lnOn.t > performance.now() - 600)) { lnOn.t = performance.now(); syLearnTag(); } const el = e.target.closest && e.target.closest("[data-learn]"); if (el) lnShow(el); else lnHide(); });
+const lnOn = () => !!SY.learn && (WORLD.panelKey === "sampler" || WORLD.panelKey === "dj");
+document.addEventListener("mouseover", e => { if (!lnOn()) return; if (!(lnOn.t > performance.now() - 600)) { lnOn.t = performance.now(); syLearnTag(); lnTagMore(); } const el = e.target.closest && e.target.closest("[data-learn]"); if (el) lnShow(el); else lnHide(); });
 document.addEventListener("pointerdown", e => { if (!lnOn() || e.pointerType === "mouse") return; const el = e.target.closest && e.target.closest("[data-learn]"); if (el) { lnShow(el); clearTimeout(lnHide.t); lnHide.t = setTimeout(lnHide, 5000); } }, true);
 // Théorie en direct : l'accord qui sonne, son rôle
 function lnLive() {
@@ -8195,6 +8236,187 @@ const LRN_CSS = `
 @media (max-width: 640px) { .lrn { padding: 70px 14px 150px; gap: 12px; } .lrn-decks { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; margin: 0 -14px; padding-left: 14px; } .lrn-deck { flex: none; } .lrn-card { height: 300px; } .lrn-face { padding: 22px; } }
 `;
 
+
+const TRAME_CSS = `.w-fx-tbox { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(27,29,34,.06); } .w-fx-tbox > b { font-size: 12px; }
+.w-fx-trg { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 14px; align-items: end; } .w-fx-trg[hidden], .w-fx-tr[hidden] { display: none; }
+.w-fx-tr { display: grid; grid-template-columns: 1fr auto; font-size: 11px; } .w-fx-tr small { opacity: .65; } .w-fx-tr output { font-size: 10px; opacity: .7; font-variant-numeric: tabular-nums; } .w-fx-tr input { grid-column: 1 / -1; display: block; width: 100%; }
+.w-fx-col { display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; } .w-fx-col input { width: 30px; height: 30px; border: 0; border-radius: 50%; padding: 0; background: none; cursor: pointer; } .w-fx-col input::-webkit-color-swatch-wrapper { padding: 0; } .w-fx-col input::-webkit-color-swatch { border-radius: 50%; border: 1px solid rgba(27,29,34,.15); }`;
+(() => { const c = document.createElement("style"); c.textContent = TRAME_CSS; document.head.append(c); })();
+/* ---------- Annuler / Rétablir dans le Synthé (tout : pas, boutons, boucles, arrangement, post) ---------- */
+const UNDO = { stack: [], redo: [], last: null, mute: false };
+function syUndoTrack() {
+  let snap; try { snap = JSON.stringify(Object.assign(syRecipe(), { vibe: SY.vibe })); } catch { return; }
+  if (UNDO.mute) { UNDO.mute = false; UNDO.last = snap; syUndoUI(); return; }
+  if (UNDO.last && snap !== UNDO.last) { UNDO.stack.push(UNDO.last); if (UNDO.stack.length > 80) UNDO.stack.shift(); UNDO.redo = []; }
+  UNDO.last = snap; syUndoUI();
+}
+function syUndoApply(snap) {
+  const r = prValid(JSON.parse(snap)); if (!r) return;
+  const was = !!SY.playing; if (was) syRun(false);
+  if (SY.ch) SY.ch.forEach(c => { try { c && c.vol.disconnect(); } catch {} });
+  const keep = SY.tracks.map(T => ({ showFx: T.showFx, showSd: T.showSd }));
+  Object.assign(SY, r, { ch: [], arSel: null }); SY.tracks.forEach((T, i) => Object.assign(T, keep[i] || {}));
+  syEnsureLoops(); if (SP.ctx) spPostApply(); UNDO.mute = true; sySave(); syRender(); syTopSync(); if (was) syRun(true);
+}
+function syUndo(redo = false) {
+  const from = redo ? UNDO.redo : UNDO.stack, to = redo ? UNDO.stack : UNDO.redo; if (!from.length) { uisNo(); return; }
+  clearTimeout(sySave.t); syUndoTrack();                    // fige d'abord le dernier geste en cours
+  const snap = from.pop(); to.push(UNDO.last); UNDO.last = snap; syUndoApply(snap); uisSwoosh(!redo, 0.3);
+  wToast(redo ? "Rétabli" : "Annulé");
+}
+function syUndoUI() { const u = document.getElementById("sy-undo"), r = document.getElementById("sy-redo"); if (u) u.disabled = !UNDO.stack.length; if (r) r.disabled = !UNDO.redo.length; }
+document.addEventListener("keydown", e => {
+  if (WORLD.panelKey !== "sampler" || !document.getElementById("sy-host")) return;
+  if (e.target.closest && e.target.closest("input, textarea, select, [contenteditable]")) return;
+  const k = e.key.toLowerCase(); if (!(e.ctrlKey || e.metaKey)) return;
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); syUndo(false); } else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); syUndo(true); }
+});
+
+/* ---------- Bulles « Apprendre » pour les Platines et les Échantillons ---------- */
+const LEARN_MORE = {
+  "dj:load": "<b>Charger un son.</b> N'importe quelle prod publiée (ou la tienne). Elle est rendue en entier, avec son tempo exact, pour que la platine sache où tombent les mesures.",
+  "dj:wave": "<b>La forme d'onde.</b> Les pics = les coups (kick, caisse claire). Les traits verticaux = les mesures. On démarre une transition au début d'une phrase de 4, 8 ou 16 mesures.",
+  "dj:plat": "<b>La platine.</b> Elle tourne à la vitesse du morceau. Sur un vrai vinyle, on la retient ou la pousse du doigt pour caler les temps à l'oreille.",
+  "dj:bpm": "<b>Le tempo réel.</b> Celui du morceau multiplié par le réglage de vitesse. Deux platines au même bpm = les temps restent alignés.",
+  "dj:tempo": "<b>Le pitch (vitesse).</b> ±12 % comme sur une Technics : plus vite = plus aigu. Pour caler deux morceaux à la main, on l'ajuste jusqu'à ce que les kicks ne « galopent » plus.",
+  "dj:play": "<b>Lecture quantifiée.</b> Si l'autre platine joue, celle-ci attend la prochaine mesure pour démarrer : les temps forts tombent ensemble tout seuls.",
+  "dj:cue": "<b>CUE.</b> Revient au point de départ. Les DJ préparent le point exact (souvent le premier kick) avant de lancer.",
+  "dj:sync": "<b>SYNC.</b> Aligne le tempo sur l'autre platine, en doublant ou divisant si besoin (un 70 bpm se cale sur un 140). Les puristes calent à l'oreille ; SYNC libère les mains pour les effets.",
+  "dj:loop": "<b>Boucle.</b> Répète 1, 2 ou 4 mesures. Utile pour allonger une intro le temps de préparer la transition.",
+  "dj:echo": "<b>Écho.</b> Les sons reviennent en rythme. Lancé juste avant de couper un morceau, il laisse une traîne propre.",
+  "dj:eqhi": "<b>EQ aigu.</b> Charleys, cymbales, souffle. Le couper rend un morceau lointain, comme dans une autre pièce.",
+  "dj:eqmid": "<b>EQ médium.</b> Voix, mélodies, caisse claire. Le creuser sur un morceau laisse la place à la voix de l'autre.",
+  "dj:eqlo": "<b>EQ grave.</b> Kick et basse. La règle d'or : jamais deux basses en même temps. On coupe les graves du morceau entrant, puis on les échange.",
+  "dj:filtre": "<b>Filtre.</b> À gauche il étouffe (passe-bas), à droite il amincit (passe-haut). Un balayage lent sur 8 mesures fait une transition douce.",
+  "dj:vol": "<b>Volume de voie.</b> On monte le morceau entrant progressivement, sur 4 à 16 mesures.",
+  "dj:xf": "<b>Crossfader.</b> Passe d'une platine à l'autre. Au milieu, les deux jouent ensemble. Les DJ hip-hop le claquent pour des coupures nettes (cuts).",
+  "dj:fondu": "<b>Fondu.</b> Le classique house : sur 8 mesures, l'un monte pendant que l'autre descend.",
+  "dj:basses": "<b>Échange des basses.</b> Le nouveau morceau entre sans graves, puis sur un début de mesure on échange : ses graves arrivent, ceux de l'ancien disparaissent.",
+  "dj:echo2": "<b>Sortie en écho.</b> On lance l'écho sur le morceau sortant et on le coupe : il s'éteint en répétitions pendant que le nouveau démarre. Typique du reggae et du rap.",
+  "dj:rec": "<b>Enregistrer le mix.</b> Tout ce qui sort des platines est gardé dans un fichier à télécharger.",
+  "sm:drop": "<b>Sampler.</b> Prendre un bout de son existant et le rejouer comme un instrument. C'est l'ADN du hip-hop (Kanye, J Dilla, Nujabes, Daft Punk).",
+  "sm:attaques": "<b>Découpe aux attaques.</b> L'atelier détecte chaque début de son (coup, syllabe) et pose un pad dessus. Idéal pour une batterie ou une voix.",
+  "sm:temps": "<b>Découpe sur les temps.</b> Un pad par temps, d'après le tempo détecté. Remonte les pads dans un autre ordre et le groove reste là.",
+  "sm:egal": "<b>16 parts égales.</b> La découpe la plus simple, façon MPC : rien n'est deviné, tout est coupé régulièrement.",
+  "sm:loop": "<b>Boucler mon jeu.</b> Décompte de 4 temps, puis tout ce que tu joues est calé sur la grille (quantifié) et rejoué en boucle : tu peux jouer par-dessus.",
+  "sm:wave": "<b>La forme d'onde.</b> Chaque couleur = un pad. Glisse un repère pour ajuster le début : il se colle tout seul sur un passage à zéro pour éviter les clics.",
+  "sm:pad": "<b>Les pads.</b> 16 morceaux du son, jouables à la souris, au clavier ou au MIDI. Les beatmakers « re-jouent » un sample avec les doigts : c'est là que naît le groove.",
+  "sm:pitch": "<b>Hauteur (demi-tons).</b> 12 demi-tons = une octave. Monter une voix de quelques demi-tons donne le son « chipmunk » de la soul samplée (Kanye, Just Blaze).",
+  "sm:len": "<b>Longueur.</b> Raccourcir un pad le rend percussif ; le laisser long garde la phrase.",
+  "sm:coup": "<b>Un coup.</b> Le pad joue en entier, comme un one-shot.",
+  "sm:tenir": "<b>Tant qu'on tient.</b> Le pad joue tant que la touche est enfoncée : on peut couper une phrase au milieu.",
+  "sm:boucle": "<b>En boucle.</b> Le pad se répète jusqu'au prochain appui. Parfait pour une nappe ou une boucle de batterie.",
+  "sm:rev": "<b>À l'envers.</b> Le son est lu de la fin au début : une montée étrange, très utilisée avant un drop.",
+  "sm:bind": "<b>Changer la touche.</b> Choisis la touche du clavier qui joue ce pad.",
+  "sm:rec": "<b>Enregistrer.</b> Tout ce que tu joues (et la boucle) est gardé dans un fichier.",
+  "sm:mic": "<b>Micro.</b> Enregistre ta voix (ou n'importe quel son autour de toi), puis transforme-la : vocodeur, robot, téléphone, écho… Elle devient un sample comme un autre, découpée en pads.",
+  "vx:vocoder": "<b>Vocodeur.</b> Ta voix « sculpte » un accord de synthé : on entend les mots, mais avec les notes de l'accord. Daft Punk, Kanye (« Lost in the World »), Bon Iver. L'accord vient du Synthé (même tonalité).",
+  "vx:robot": "<b>Robot.</b> Ta voix est multipliée par une onde : elle devient métallique, sans hauteur naturelle. Les Daleks, la vieille science-fiction.",
+  "vx:grave": "<b>Grave.</b> Ralentit la voix : plus basse et plus lente. Le son « chopped & screwed » de Houston, la voix de monstre.",
+  "vx:aigu": "<b>Aigu.</b> Accélère la voix : plus haute et plus rapide. La voix soul samplée façon Kanye ou Just Blaze, ou les voix pitchées de l'hyperpop.",
+  "vx:tel": "<b>Téléphone.</b> On ne garde que le médium (environ 400 à 3 000 Hz) : la voix sort d'un vieux combiné. Parfait pour une intro ou un pont.",
+  "vx:sat": "<b>Saturation.</b> La voix est poussée dans le rouge : elle gagne du grain, de l'agressivité. Rage, punk, Travis Scott.",
+  "vx:double": "<b>Doublage.</b> Deux copies légèrement décalées et écartées gauche / droite : la voix paraît plus large, comme si elle était chantée deux fois.",
+  "vx:echo": "<b>Écho.</b> Les mots reviennent en rythme, calés sur le tempo du Synthé.",
+  "vx:reverb": "<b>Réverbération.</b> La voix part dans une grande salle : lointaine, éthérée (PNL, Yung Lean).",
+};
+function lnTagMore() {
+  const T = (sel, k) => document.querySelectorAll(sel).forEach(e => e.dataset.learn = k);
+  if (WORLD.panelKey === "dj") {
+    T(".dj-load", "dj:load"); T(".dj-wave", "dj:wave"); T(".dj-plat", "dj:plat"); T(".dj-bpm", "dj:bpm"); T(".dj-tempo", "dj:tempo"); T(".dj-play", "dj:play"); T(".dj-cue", "dj:cue"); T(".dj-sync", "dj:sync"); T(".dj-loop", "dj:loop"); T(".dj-echo", "dj:echo");
+    T('[data-eq="hi"]', "dj:eqhi"); T('[data-eq="mid"]', "dj:eqmid"); T('[data-eq="lo"]', "dj:eqlo"); T('#dj-mix [data-f="1"]', "dj:filtre"); T(".dj-volw", "dj:vol"); T(".dj-xf", "dj:xf");
+    T('#dj-mix [data-t="fondu"]', "dj:fondu"); T('#dj-mix [data-t="basses"]', "dj:basses"); T('#dj-mix [data-t="echo"]', "dj:echo2"); T("#dj-rec", "dj:rec");
+  } else if (document.getElementById("sm-host")) {
+    T(".sm-drop", "sm:drop"); T('[data-chop="attaques"]', "sm:attaques"); T('[data-chop="temps"]', "sm:temps"); T('[data-chop="egal"]', "sm:egal"); T("[data-loop]", "sm:loop"); T("#sm-wave", "sm:wave"); T(".sm-pad", "sm:pad");
+    T('#sm-edit [data-k="pitch"]', "sm:pitch"); T('#sm-edit [data-k="len"]', "sm:len"); T('[data-m2="coup"]', "sm:coup"); T('[data-m2="tenir"]', "sm:tenir"); T('[data-m2="boucle"]', "sm:boucle"); T("#sm-rev", "sm:rev"); T("#sm-bind", "sm:bind"); T("#sm-recb", "sm:rec"); T(".vx-mic", "sm:mic");
+    document.querySelectorAll(".vx-fx [data-vx]").forEach(e => e.dataset.learn = "vx:" + e.dataset.vx);
+  }
+}
+function lnToggle(btn) {
+  SY.learn = !SY.learn; store.set("atelier-learn", SY.learn); document.querySelectorAll(".ln-tog").forEach(b => b.setAttribute("aria-pressed", SY.learn));
+  document.body.classList.toggle("ln-on", SY.learn); uisSwitch(SY.learn); if (!SY.learn) lnHide(); lnLive(); lnTagMore();
+}
+const lnTogBtn = () => `<button class="w-pill w-glass-ui w-live ln-tog" aria-pressed="${!!SY.learn}" title="Bulles d'explication au survol">♪ Apprendre</button>`;
+
+/* ---------- Micro : enregistrer sa voix, la transformer (vocodeur, robot…) et la sampler ---------- */
+const VX_FX = { vocoder: "Vocodeur", robot: "Robot", grave: "Grave", aigu: "Aigu", tel: "Téléphone", sat: "Saturation", double: "Doublage", echo: "Écho", reverb: "Réverb" };
+const VX = { raw: null, rec: null, fx: store.get("atelier-vx-fx", {}), t: 0 };
+async function vxToggle() {
+  if (VX.rec) { VX.rec.stop(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") { wToast("Le micro n'est pas disponible dans ce navigateur"); return; }
+  if (!smBus()) return;
+  let stream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) { wToast("Accès au micro refusé (autorise-le dans le navigateur)"); uisNo(); return; }
+  const mr = new MediaRecorder(stream), chunks = []; VX.rec = mr; VX.t = performance.now();
+  mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+  mr.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop()); clearInterval(VX.tick); VX.rec = null; vxBtn();
+    try { const ab = await new Blob(chunks, { type: mr.mimeType }).arrayBuffer(); VX.raw = await SP.ctx.decodeAudioData(ab); uisYes(); await vxApply(); }
+    catch { wToast("L'enregistrement n'a pas pu être lu"); uisNo(); }
+  };
+  mr.start(); uisSwitch(true); vxBtn(); VX.tick = setInterval(() => { vxBtn(); if (performance.now() - VX.t > 60000) mr.stop(); }, 250);
+}
+function vxBtn() { document.querySelectorAll(".vx-mic").forEach(b => { const s = Math.floor((performance.now() - VX.t) / 1000); b.setAttribute("aria-pressed", !!VX.rec); b.textContent = VX.rec ? `■ Arrêter · 0:${String(s).padStart(2, "0")}` : "🎙 Micro"; }); }
+// Rend la voix avec ses effets, hors temps réel, puis la donne au sampler
+async function vxApply() {
+  if (!VX.raw) return; const src0 = VX.raw, F = VX.fx, on = k => F[k] && F[k].on, kk = k => F[k] ? (F[k].k ?? 0.5) : 0.5;
+  const rate = on("grave") ? Math.pow(2, -(2 + kk("grave") * 10) / 12) : on("aigu") ? Math.pow(2, (2 + kk("aigu") * 10) / 12) : 1;
+  const sr = src0.sampleRate, tail = on("reverb") || on("echo") ? 2.5 : 0.1, len = Math.ceil((src0.duration / rate + tail) * sr);
+  const c = new OfflineAudioContext(2, len, sr), src = c.createBufferSource(); src.buffer = src0; src.playbackRate.value = rate;
+  let node = src;
+  const bus = (n) => { node.connect(n); node = n; return n; };
+  if (on("vocoder")) {                                      // 18 bandes : l'enveloppe de la voix ouvre les mêmes bandes d'un accord de synthé
+    const k = kk("vocoder"), out = c.createGain(), dry = c.createGain(); dry.gain.value = 0.25 * (1 - k); node.connect(dry); dry.connect(out);
+    const ch = (SY_PROGS[SY.prog] || [[0, 3, 7, 10]])[0], base = 36 + SY.key, notes = [base, ...ch.map(x => base + 12 + x), ...ch.slice(0, 3).map(x => base + 24 + x)];
+    const car = c.createGain(); car.gain.value = 1;
+    for (const n of notes) for (const d of [-7, 7]) { const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = 440 * Math.pow(2, (n - 69) / 12); o.detune.value = d; const g = c.createGain(); g.gain.value = 0.18; o.connect(g); g.connect(car); o.start(0); o.stop(len / sr); }
+    const nb = c.createBuffer(1, sr, sr), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const ns = c.createBufferSource(); ns.buffer = nb; ns.loop = true; const nhp = c.createBiquadFilter(); nhp.type = "highpass"; nhp.frequency.value = 5000; const ng = c.createGain(); ng.gain.value = 0.35; ns.connect(nhp); nhp.connect(ng); ng.connect(car); ns.start(0);
+    const abs = c.createWaveShaper(), cu = new Float32Array(1025); for (let i = 0; i < 1025; i++) cu[i] = Math.abs(i / 512 - 1); abs.curve = cu;
+    const N = 18; for (let b = 0; b < N; b++) {
+      const f = 110 * Math.pow(9000 / 110, b / (N - 1)), Q = 7;
+      const mb = c.createBiquadFilter(); mb.type = "bandpass"; mb.frequency.value = f; mb.Q.value = Q; node.connect(mb);
+      const ab = c.createWaveShaper(); ab.curve = cu; const env = c.createBiquadFilter(); env.type = "lowpass"; env.frequency.value = 35; const amp = c.createGain(); amp.gain.value = 14 + b * 0.8; mb.connect(ab); ab.connect(env); env.connect(amp);
+      const cb = c.createBiquadFilter(); cb.type = "bandpass"; cb.frequency.value = f; cb.Q.value = Q; const vca = c.createGain(); vca.gain.value = 0; car.connect(cb); cb.connect(vca); amp.connect(vca.gain); const wg = c.createGain(); wg.gain.value = k * 1.6; vca.connect(wg); wg.connect(out);
+    }
+    node = out;
+  }
+  if (on("robot")) { const k = kk("robot"), out = c.createGain(), dry = c.createGain(), rm = c.createGain(), o = c.createOscillator(); dry.gain.value = 1 - k; o.frequency.value = 40 + k * 110; rm.gain.value = 0; o.connect(rm.gain); o.start(0); node.connect(dry); node.connect(rm); dry.connect(out); rm.connect(out); node = out; }
+  if (on("tel")) { const k = kk("tel"), hp = c.createBiquadFilter(), lp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 250 + k * 400; lp.type = "lowpass"; lp.frequency.value = 4200 - k * 1600; bus(hp); bus(lp); const sh = syTanh(c, 1.5 + k * 2); bus(sh); }
+  if (on("sat")) { const k = kk("sat"); bus(syTanh(c, 1.5 + k * 7)); }
+  if (on("double")) { const k = kk("double"), out = c.createGain(), mg = c.createChannelMerger(2); node.connect(out); [[0.013, 0], [0.021, 1]].forEach(([dt, side]) => { const d = c.createDelay(0.1); d.delayTime.value = dt; const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 0.4 + side * 0.3; lg.gain.value = 0.002 + k * 0.004; l.connect(lg); lg.connect(d.delayTime); l.start(0); const g = c.createGain(); g.gain.value = 0.5 + k * 0.4; node.connect(d); d.connect(g); g.connect(mg, 0, side); }); mg.connect(out); node = out; }
+  const out = c.createGain(); node.connect(out);
+  if (on("echo")) { const k = kk("echo"), d = c.createDelay(2), fb = c.createGain(), w = c.createGain(); d.delayTime.value = 60 / SY.bpm * 0.75; fb.gain.value = 0.2 + k * 0.45; w.gain.value = 0.35 + k * 0.3; node.connect(d); d.connect(fb); fb.connect(d); d.connect(w); w.connect(out); }
+  if (on("reverb")) { const k = kk("reverb"), cv = c.createConvolver(), w = c.createGain(); cv.buffer = spIR(c, "hall"); w.gain.value = 0.25 + k * 0.7; node.connect(cv); cv.connect(w); w.connect(out); }
+  out.connect(c.destination); src.start(0);
+  smMsg && smMsg("Transformation de la voix…");
+  const buf = await c.startRendering();
+  let pk = 0; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); }
+  if (pk > 0) { const g = 0.9 / pk; for (let ch = 0; ch < buf.numberOfChannels; ch++) { const d = buf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] *= g; } }
+  const names = Object.keys(VX_FX).filter(on).map(k => VX_FX[k].toLowerCase());
+  smUseBuffer(buf, "Ma voix" + (names.length ? " · " + names.join(", ") : ""), false, null, true);
+}
+function vxPanel() {                                         // les effets de la voix (seulement si le son vient du micro)
+  if (!SM.voice || !VX.raw) return "";
+  return `<div class="w-sec">Effets de voix <span>se cumulent</span></div><div class="vx-fx po-fx"></div>`;
+}
+function vxBind(root) {
+  const box = root.querySelector(".vx-fx"); if (!box) return;
+  for (const [k, lab] of Object.entries(VX_FX)) {
+    const f = VX.fx[k] || { on: false, k: 0.5 }, w = document.createElement("div"); w.className = "sy-fx" + (f.on ? " on" : ""); w.dataset.vx = k;
+    w.innerHTML = `<button class="w-chip" aria-pressed="${!!f.on}">${lab}</button><div class="sy-knob-w"><div class="sy-knob" tabindex="0" aria-label="Intensité ${lab}"></div></div>`;
+    const redo = () => { store.set("atelier-vx-fx", VX.fx); clearTimeout(vxBind.t); vxBind.t = setTimeout(vxApply, 350); };
+    w.querySelector("button").onclick = () => { const cur = VX.fx[k] || { on: false, k: 0.5 }; cur.on = !cur.on; VX.fx[k] = cur; if (cur.on && k === "grave" && VX.fx.aigu) VX.fx.aigu.on = false; if (cur.on && k === "aigu" && VX.fx.grave) VX.fx.grave.on = false; uisSwitch(cur.on); redo(); };
+    syKnob(w.querySelector(".sy-knob-w"), () => (VX.fx[k] || { k: 0.5 }).k ?? 0.5, v => { VX.fx[k] = Object.assign(VX.fx[k] || { on: true }, { k: v }); }, () => "", 0.5);
+    w.querySelector(".sy-knob").addEventListener("pointerup", redo); w.querySelector(".sy-knob").addEventListener("wheel", redo);
+    box.append(w);
+  }
+}
+const VX_CSS = `.vx-mic[aria-pressed="true"] { background: #e5484d !important; color: #fff !important; animation: vxpulse 1s ease-in-out infinite alternate; } @keyframes vxpulse { to { box-shadow: 0 0 0 6px rgba(229,72,77,.18); } }
+body.ln-on [data-learn] { outline: 1px dashed rgba(124,92,230,.35); outline-offset: 3px; }`;
+(() => { const c = document.createElement("style"); c.textContent = VX_CSS; document.head.append(c); if (SY.learn) document.body.classList.add("ln-on"); })();
+
+document.addEventListener("click", e => { const t = e.target.closest && e.target.closest(".ln-tog, .vx-mic"); if (!t) return; e.preventDefault(); e.stopPropagation(); if (t.classList.contains("ln-tog")) lnToggle(t); else vxToggle(); }, true);
 
 </script>
 
