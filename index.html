@@ -5280,6 +5280,7 @@ function wFxCss() {
 .w-chip[aria-pressed="true"] { background: rgba(27,29,34,.86); color: #fff; border-color: transparent; }
 .w-fx-side { position: absolute; right: 16px; top: 72px; bottom: 100px; width: min(380px, calc(100vw - 32px)); border-radius: 26px; padding: 4px 16px 16px; box-sizing: border-box; z-index: 4; overflow-y: auto; overscroll-behavior: contain; transform: translateX(calc(100% + 30px)); transition: transform .4s cubic-bezier(.2,.9,.25,1.1); scrollbar-width: none; }
 .w-fx-side.open { transform: none; }
+#world.focus .w-fx-side { background: #f6f6f9; }
 #world.focus .w-pill.dark, #world.focus .w-pill[aria-pressed="true"] { background: rgba(27,29,34,.88); color: #fff; }
 .w-head .w-pill { white-space: nowrap; }
 @media (max-width: 440px) { #w-cnt { display: none; } .w-head { gap: 6px; } }
@@ -5300,12 +5301,29 @@ function wFx(host, preview) {
   host.innerHTML = `${preview ? `<div class="w-fx-prev"><div class="w-fx-stage"><canvas></canvas></div>
     <div class="w-row" style="justify-content:center"><button class="w-pill w-glass-ui" data-fx="other">Autre forme</button><button class="w-pill w-glass-ui" data-fx="studio">Voir sur un vêtement</button></div></div>` : ""}
   <div class="w-fx-ctl">
+    <div class="w-sec">Composition <span>relance une série</span></div>
+    <div class="w-fx-st on" style="grid-template-columns:1fr"><b>Formes par image</b><div class="w-fx-fams" data-c="n"></div>
+      <div data-c="sv" style="display:${S.nStars > 1 ? "block" : "none"}"><small style="opacity:.55;font-size:10px">Écart de taille entre les formes</small><input class="w-range" style="display:block" type="range" min="0" max="1" step="0.05" value="${S.sizeVar}" aria-label="Écart de taille"></div>
+      <b style="margin-top:6px">Images par série</b><div class="w-fx-fams" data-c="count"></div></div>
     <div class="w-sec">Rendu</div><div class="w-fx-presets"></div>
     <div class="w-sec">Effets <span>cumulables</span></div><div class="w-fx-styles" style="display:flex;flex-direction:column;gap:6px"></div>
     <div class="w-sec">Déformations <span>relance une série</span></div><div class="w-fx-fams"></div>
     <div class="w-row"><button class="w-pill w-glass-ui" data-fx="clear">Enlever tous les effets</button>${preview ? `<button class="w-pill w-glass-ui" data-fx="classic">Plus de réglages (atelier classique)</button>` : ""}</div>
   </div>`;
-  const pres = host.querySelector(".w-fx-presets"), sty = host.querySelector(".w-fx-styles"), fams = host.querySelector(".w-fx-fams");
+  const pres = host.querySelector(".w-fx-presets"), sty = host.querySelector(".w-fx-styles"), fams = host.querySelector(".w-fx-fams:not([data-c])");
+  const comp = () => { saveS(); wFxSyncClassic(); schedule(); };
+  const segN = host.querySelector('[data-c="n"]'), segC = host.querySelector('[data-c="count"]'), sv = host.querySelector('[data-c="sv"]');
+  for (let n = 1; n <= 5; n++) {
+    const b = document.createElement("button"); b.className = "w-chip"; b.textContent = n; b.setAttribute("aria-pressed", S.nStars === n);
+    b.onclick = () => { S.nStars = n; segN.querySelectorAll(".w-chip").forEach(c => c.setAttribute("aria-pressed", c === b)); sv.style.display = n > 1 ? "block" : "none"; uisChime(n * 2, 0.5); comp(); wToast(`${n} forme${n > 1 ? "s" : ""} par image, nouvelle série…`); };
+    segN.append(b);
+  }
+  for (const c of [12, 24, 36, 48]) {
+    const b = document.createElement("button"); b.className = "w-chip"; b.textContent = c; b.setAttribute("aria-pressed", S.count === c);
+    b.onclick = () => { S.count = c; segC.querySelectorAll(".w-chip").forEach(x => x.setAttribute("aria-pressed", x === b)); uisClick(); comp(); wToast(`${c} images par série, nouvelle série…`); };
+    segC.append(b);
+  }
+  sv.querySelector("input").oninput = e => { S.sizeVar = +e.target.value; clearTimeout(WFX.svT); WFX.svT = setTimeout(comp, 300); };
   for (const [k, p] of Object.entries(PRESETS)) {
     const b = document.createElement("button"); b.className = "w-fx-p"; b.dataset.k = k; b.title = p.desc; b.setAttribute("aria-pressed", S.preset === k);
     const cv = document.createElement("canvas"); cv.width = cv.height = 72; const t = document.createElement("span"); t.textContent = p.lab;
@@ -5337,7 +5355,7 @@ function wFx(host, preview) {
     if (a === "other") { const pool = current.length ? current : WORLD.nodes.map(n => n.scene); WFX.scene = pool[Math.floor(Math.random() * pool.length)] || null; wFxPreview(); wFxThumbs(); }
     if (a === "studio") { const s = wFxSample(); if (s) openMockup(s); }
     if (a === "classic") setWorld(false);
-    if (a === "clear") { for (const k of Object.keys(STYLES)) S.styles[k].on = false; host.querySelectorAll(".w-fx-st").forEach(r => { r.classList.remove("on"); r.querySelector(".w-sw").setAttribute("aria-checked", false); }); uisSwitch(false); wFxApply(); }
+    if (a === "clear") { for (const k of Object.keys(STYLES)) S.styles[k].on = false; host.querySelectorAll(".w-fx-styles .w-fx-st").forEach(r => { r.classList.remove("on"); r.querySelector(".w-sw").setAttribute("aria-checked", false); }); uisSwitch(false); wFxApply(); }
   });
   WFX.host = host; wFxThumbs(); if (preview) wFxPreview();
 }
@@ -5374,6 +5392,9 @@ function wFxSyncClassic() {
       if (c) c.checked = S.styles[k].on; if (r) { r.value = S.styles[k].k; r.disabled = !S.styles[k].on; }
     }
     for (const k of Object.keys(FAMS)) { const c = document.getElementById("fam-" + k); if (c) c.checked = !S.off.includes(k); }
+    const seg = document.getElementById("nstars"); if (seg) [...seg.children].forEach((c, i) => c.setAttribute("aria-pressed", i + 1 === S.nStars));
+    const sv = document.getElementById("sizevar"), svo = document.getElementById("sizevar-o"); if (sv) sv.value = S.sizeVar; if (svo) svo.textContent = Math.round(S.sizeVar * 100) + " %";
+    const cnt = document.getElementById("count"); if (cnt) cnt.value = S.count;
     if (typeof updateFxButton === "function") updateFxButton();
   } catch {}
 }
