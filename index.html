@@ -2002,7 +2002,8 @@ async function loadShared() {
   if (sh.style && sh.style.preset && PRESETS[sh.style.preset]) S.preset = sh.style.preset;
   if (sh.style && sh.style.trame) Object.assign(S.trame, sh.style.trame, { custom: null }), stampCache.clear();
   // logo en tête de la personne qui partage : appliqué pour cette page seulement (rien n'est gardé chez le visiteur)
-  if (sh.style && sh.style.head && sh.style.head.m) { HEADM = sh.style.head; HEADC = null; try { for (const w of RW.pool) w.postMessage({ op: "head", head: HEADM }); } catch {} }
+  try { const { data: hd } = await sb.from("atelier_settings").select("value").eq("key", "head").maybeSingle();   // le logo B2N par défaut du site
+    if (hd && hd.value && hd.value.m) { HEADM = Object.assign({}, hd.value, { on: true }); HEADC = null; try { for (const w of RW.pool) w.postMessage({ op: "head", head: HEADM }); } catch {} } } catch {}
   const { data: rows } = await sb.from("atelier_votes").select("id,user_id,v,stars,off,n,created_at")
     .eq("user_id", sh.user_id).eq("v", 1).order("created_at", { ascending: false }).limit(1000);
   renderFavs(scenesFromEntries((rows || []).map(r => [r.id, rowToVote(r)])));
@@ -2028,7 +2029,7 @@ async function saveShare() {
   const note = document.getElementById("share-note"), handle = cleanHandle(document.getElementById("share-handle").value);
   document.getElementById("share-handle").value = handle;
   if (handle.length < 2) { note.textContent = "Choisis un nom d'au moins 2 caractères (lettres, chiffres, . _ -)."; return; }
-  const style = { preset: S.preset, trame: Object.assign({}, S.trame, { custom: null }), head: shareHeadOf() };   // le logo en tête suit aussi le partage
+  const style = { preset: S.preset, trame: Object.assign({}, S.trame, { custom: null }) };   // (le logo en tête du partage = le logo par défaut du site, trop lourd pour être stocké ici)
   const { error } = await sb.from("atelier_shares").upsert({ user_id: me, handle, enabled: true, style, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) { note.textContent = error.code === "23505" ? "Ce nom est déjà pris, choisis-en un autre." : "Enregistrement impossible : " + error.message; return; }
   setShareState(handle);
@@ -2056,6 +2057,7 @@ function setupShare() {
 /* Le partage garde le même rendu que ta page Favoris : si tu as un logo en tête, il est envoyé avec le lien */
 function shareHeadOf() { return HEADM && HEADM.m ? { n: HEADM.n, m: HEADM.m, k: HEADM.k || 1, keep: HEADM.keep || 0, on: true } : null; }
 async function shareSyncHead() {
+  return;   // désactivé : le partage utilise le logo par défaut du site (atelier_settings)
   if (!sb || !me || SHARED_VIEW) return;
   try {
     const { data } = await sb.from("atelier_shares").select("style,enabled").eq("user_id", me).maybeSingle(); if (!data) return;
