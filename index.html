@@ -5101,7 +5101,6 @@ function wPanel(k) {
   if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); smLoopStop(); if (SM.rec) smRecToggle(); }
   if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
   if (typeof lnHide === "function") lnHide();
-  if (typeof wallShow === "function") try { wallShow(k === "sampler" || k === "dj"); } catch (e) { console.warn(e); }
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
   const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn }[k];
@@ -5428,7 +5427,7 @@ function wPSampler(p) {
     return;
   }
   if (mode === "synthe") {
-    p.innerHTML = wHead("Sampler · fais ta prod", tabs("synthe") + `<button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer 16 mesures</button>` + lnTogBtn())
+    p.innerHTML = wHead("Sampler · fais ta prod", tabs("synthe") + `<button class="w-pill dark w-live" id="sy-play" aria-pressed="${!!SY.playing}">${SY.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">${syHasSong() ? "● Enregistrer le morceau" : "● Enregistrer 16 mesures"}</button>` + lnTogBtn())
       + `<div class="w-scroll w-live" id="sy-host"></div>`;
     wPSynth(p.querySelector("#sy-host"));
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
@@ -5809,6 +5808,7 @@ function syRenderLoops() {
   box.querySelector("#lp-auto").onclick = syAutoSong;
   box.querySelector("#lp-song").onclick = () => { SY.song = !SY.song; uisSwitch(SY.song); sySave(); syRenderLoops(); };
   if (typeof syLearnTag === "function") syLearnTag();
+  const rb = document.getElementById("sp-rec"); if (rb && !rb.disabled && store.get("atelier-sampler-mode", "synthe") === "synthe") rb.textContent = syHasSong() ? "● Enregistrer le morceau" : "● Enregistrer 16 mesures";
 }
 // Transitions : jouées sur la dernière mesure avant le changement
 const SY_TR = {
@@ -6117,7 +6117,7 @@ function syMutate() {
 
 /* Interface */
 function wPSynth(host) {
-  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf"><canvas id="pf-cv" class="pf-cv" width="280" height="280" data-learn="pf"></canvas>
+  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf"><canvas id="pf-cv" class="pf-cv" width="640" height="640" data-learn="pf"></canvas>
     <button class="w-chip" id="pf-clip" title="Exporte un clip vidéo de la forme, avec le son, de la même durée que la prod">🎬 Clip</button><span class="pf-note" id="pf-note"></span><div class="pf-leg" id="pf-leg" hidden></div></aside>
   <div class="sy${SY.learn ? " learn" : ""}">
     <div class="sp-card ln-live" id="ln-live" hidden></div>
@@ -6346,7 +6346,7 @@ function prAuthorDefault() { const saved = store.get("atelier-pseudo", ""); if (
 async function prPublish(title, author) {
   const db = prDb(), uid = prMe(); if (!db || !uid) return;
   store.set("atelier-pseudo", author);
-  const { data, error } = await db.from("atelier_prods").insert({ user_id: uid, author, title, recipe: syRecipe(), parent: SY.parent || null }).select("id").single();
+  const { data, error } = await db.from("atelier_prods").insert({ user_id: uid, author, title, recipe: syFinished(syRecipe()).recipe, parent: SY.parent || null }).select("id").single();
   if (error) { wToast("Publication impossible, réessaie dans un instant"); uisNo(); return; }
   SY.published = data.id; PR.form = false; uisYes(); wToast("Prod publiée ✓"); prLoad(true);
 }
@@ -6479,13 +6479,20 @@ function syWav(buf, upTo) {
   let o = 44; for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, data[c][i] * g)); out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }
   return new Blob([out.buffer], { type: "audio/wav" });
 }
+function syFinished(recipe, loopBars = 16) {
+  const r = JSON.parse(JSON.stringify(recipe)), n = Array.isArray(r.chain) ? r.chain.length : 0;
+  if (n > 1) { r.song = true; return { recipe: r, bars: Math.min(64, n), song: true }; }
+  r.song = false; return { recipe: r, bars: loopBars, song: false };
+}
+const syHasSong = () => Array.isArray(SY.chain) && SY.chain.length > 1;
 async function syExport(bars = 16) {
   const b = document.getElementById("sp-rec"); if (b) { b.textContent = "● calcul…"; b.disabled = true; }
   try {
-    const R = await syOffline(syRecipe(), bars);
-    offerBlob(syWav(R.buf, R.barLen * bars + 2.5), `prod_tnb_${R.bpm}bpm_${bars}mesures.wav`); uisYes(); wToast(`${bars} mesures enregistrées en WAV`);
+    const F = syFinished(syRecipe(), bars); bars = F.bars;
+    const R = await syOffline(F.recipe, bars);
+    offerBlob(syWav(R.buf, R.barLen * bars + 2.5), `prod_tnb_${R.bpm}bpm_${F.song ? "morceau" : bars + "mesures"}.wav`); uisYes(); wToast(F.song ? `Le morceau entier (${bars} mesures) enregistré en WAV` : `${bars} mesures enregistrées en WAV`);
   } catch (e) { wToast("L'enregistrement a échoué"); uisNo(); }
-  if (b) { b.textContent = "● Enregistrer 16 mesures"; b.disabled = false; }
+  if (b) { b.textContent = syHasSong() ? "● Enregistrer le morceau" : "● Enregistrer 16 mesures"; b.disabled = false; }
 }
 
 /* ---------- Platines : deux decks, une table de mixage, des transitions ---------- */
@@ -6562,8 +6569,8 @@ function djPlay(d) {             // calé sur la prochaine mesure de l'autre pla
 async function djLoadDeck(d, recipe, title) {
   djAudio(); d.loading = true; d.title = title; djRenderDeck(d);
   try {
-    const r = prValid(recipe); const bars = r && r.song && r.chain ? Math.min(64, r.chain.length) : 8;
-    const R = await syOffline(recipe, bars);
+    const F = syFinished(recipe, 8), bars = F.bars;
+    const R = await syOffline(F.recipe, bars);
     const was = d.playing; djStop(d);
     Object.assign(d, { buf: R.buf, bpm: R.bpm, bars, barLen: R.barLen, rate: 1, off: 0, loopA: 0, loopB: bars * R.barLen, loading: false, peaks: djPeaks(R.buf, bars * R.barLen), synced: true, hue: ((hash01(title.length * 97 + bars) * 120) + (d.i ? 180 : 280)) % 360 | 0 });
     uisChime(d.i * 3 + 2, 0.5); if (was) djPlay(d);
@@ -8222,7 +8229,7 @@ const LRN_DECKS = [
     ["Que fait le bouton 🔬 d'une piste ?", "Il ouvre les couches du son (clic, corps, saturation, hauteurs…) avec leurs vraies valeurs. A / B compare avec le son d'origine."],
     ["Boucle ou arrangement ?", "Une boucle = 1 mesure de toutes les pistes. L'arrangement = la frise des boucles dans l'ordre, avec les transitions. C'est là que ça devient un morceau."],
     ["Les 4 transitions de l'arrangement ?", "✂ Coupure (silence sur le dernier temps), ⁂ Roulement (la caisse claire accélère), ⟋ Montée (souffle qui grimpe + chute de grave), ≋ Filtre (tout s'étouffe puis s'ouvre)."],
-    ["Comment garder ta prod ?", "« Publier » : elle part en ligne, tout le monde peut l'écouter, l'aimer et la remixer. « Enregistrer 16 mesures » donne un fichier WAV."],
+    ["Comment garder ta prod ?", "« Publier » : elle part en ligne, tout le monde peut l'écouter, l'aimer et la remixer. « Enregistrer » donne un fichier WAV : le morceau entier si tu as fait un arrangement, sinon 16 mesures de la boucle."],
   ]},
   { k: "echant", lab: "Échantillons", isl: "sampler", hue: 205, cards: [
     ["Qu'est-ce qu'un sample ?", "Un morceau d'un son existant (musique, voix, vidéo) qu'on découpe et rejoue comme un instrument. Base du hip-hop depuis les années 80."],
@@ -8546,8 +8553,8 @@ const PF_INST = {     // instrument → [gène, poids, libellé de la déformati
   pluck: ["sym", 0.7, "symétrie"], trumpet: ["persy", 0.8, "perspective"], akick: ["corps", 0.7, "corps"], asnare: ["bris", 0.7, "bris de verre"], astick: ["feston", 0.6, "festons"], hhc: ["turb", 0.5, "turbulences"], hho: ["ond", 0.6, "ondes"], hhp: ["grille", 0.4, "grille"], ride: ["kalei", 0.6, "kaléidoscope"], crash: ["bris", 1, "bris de verre"], atom: ["feston", 0.8, "festons"], mute: ["ond", 0.7, "ondes"], horns: ["fish", 0.8, "grand-angle"], brass: ["feston", 0.9, "festons"], metal: ["glitch", 0.7, "glitch"], glitch: ["glitch", 1, "glitch"], zap: ["glitch", 0.6, "glitch"], subdrop: ["coulure", 0.6, "coulures"], riser: ["tourb", 0.5, "tourbillon"],
 };
 const PF_PRESET = { Propre: "encre", Cassette: "riso", Vinyle: "papier", Radio: "plan", Club: "neon", Nuit: "holo", Glitch: "glitch" };
-const PF_POSTSTYLE = { tape: "usure", vinyl: "grain", lofi: "pixel", glue: "lissage", wide: "aberration", wash: "echo" };
-const PF_FXSTYLE = { crush: "pixel", echo: "echo", chorus: "aberration", phaser: "lignes", stutter: "trainee", pan: "trainee", ring: "contour", wobble: "rugosite", octave: "trainee", pump: "echo" };
+const PF_POSTSTYLE = { tape: "usure", vinyl: "grain", lofi: "lignes", glue: "lissage", wide: "aberration", wash: "echo" };
+const PF_FXSTYLE = { crush: "rugosite", echo: "echo", chorus: "aberration", phaser: "lignes", stutter: "trainee", pan: "trainee", ring: "contour", wobble: "trainee", octave: "trainee", pump: "echo" };
 const PF = { on: true, g: null, pulse: new Float32Array(0), q: [], last: 0, busy: false, seed: 7, exporting: false };
 const pfAmp = k => GENES[IDX[k]] && GENES[IDX[k]].amp;
 function pfSeed(r) { let h = 2166136261; for (const T of r.tracks) for (const c of T.inst) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) % 100000 + 1; }
@@ -8583,16 +8590,31 @@ function pfHit(pulse, inst, deg, track, v) {
   else if (inst === "snare" || inst === "clap") P("sym", 0.4);
   const b = track % 6; P(`b${b}len`, 0.35); if (deg) P(`b${b}ang`, Math.max(-1, Math.min(1, deg / 7)) * 0.5);
 }
-function pfRender(r, g, T, out) {
+// Rendu recadré : on cherche la forme dans l'image et on la centre, à la bonne taille (cadrage lissé pour ne pas sauter)
+const PF_TILE = document.createElement("canvas");
+function pfRender(r, g, T, out, box, clear) {
   const save = S.styles; S.styles = pfStyles(r);
-  try { const m = renderStar(g, PF.seed, T).mask, px = finish(m, T, PF.seed, pfPreset(r)); out.getContext("2d").putImageData(new ImageData(out.id === "pf-cv" ? wClearBg(px, T) : px, T, T), 0, 0); }
-  finally { S.styles = save; }
+  try {
+    const m = renderStar(g, PF.seed, T).mask, px = finish(m, T, PF.seed, pfPreset(r));
+    if (clear) {                                                     // juste la forme : on découpe à sa silhouette (bord adouci, les halos proches restent)
+      const a = boxBlur(m, T, Math.max(2, Math.round(T / 90)));
+      for (let i = 0; i < T * T; i++) px[i * 4 + 3] = Math.round(px[i * 4 + 3] * Math.max(0, Math.min(1, a[i] * 2.6)));
+    }
+    PF_TILE.width = PF_TILE.height = T; PF_TILE.getContext("2d").putImageData(new ImageData(px, T, T), 0, 0);
+    let x0 = T, y0 = T, x1 = 0, y1 = 0; for (let y = 0; y < T; y += 2) for (let x = 0; x < T; x += 2) if (m[y * T + x] > 0.4) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 <= x0) { x0 = 0; y0 = 0; x1 = T; y1 = T; }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, sz = Math.max(x1 - x0, y1 - y0) * 1.22 + T * 0.04;
+    if (!box.sz) Object.assign(box, { cx, cy, sz }); else { box.cx += (cx - box.cx) * 0.18; box.cy += (cy - box.cy) * 0.18; box.sz += (sz - box.sz) * 0.12; }
+    const W = out.width, H = out.height, k = Math.min(W, H) / box.sz, x = out.getContext("2d");
+    x.setTransform(1, 0, 0, 1, 0, 0); if (clear) x.clearRect(0, 0, W, H); else { x.fillStyle = `rgb(${px[0]},${px[1]},${px[2]})`; x.fillRect(0, 0, W, H); }
+    x.imageSmoothingQuality = "high"; x.drawImage(PF_TILE, W / 2 - box.cx * k, H / 2 - box.cy * k, T * k, T * k);
+  } finally { S.styles = save; }
 }
 // Direct : on lit l'état du Synthé et les coups programmés
 function pfQueue(T, i, st, t) { if (!PF.on || !SP.ctx || SP.ctx.constructor.name === "OfflineAudioContext") return; PF.q.push({ t, inst: T.inst, deg: st.d || 0, i, v: st.g ? 0.4 : 1 }); if (PF.q.length > 400) PF.q.splice(0, 200); }
 function pfFrame() {
   const cv = document.getElementById("pf-cv"); if (!cv || PF.busy || PF.exporting) return;
-  const now = performance.now(), mobile = innerWidth < 900; if (now - PF.last < (mobile ? 110 : 66)) return;
+  const now = performance.now(), mobile = innerWidth < 900; if (now - PF.last < Math.max(mobile ? 110 : 66, (PF.cost || 0) * 2.2)) return;
   const dt = Math.min(0.3, (now - (PF.last || now)) / 1000); PF.last = now;
   const r = { tracks: SY.tracks, loops: (syStore(), SY.loops), bpm: SY.bpm, swing: SY.swing, key: SY.key, post: SY.post };
   const target = pfTarget(r, SY.playing ? (SY.pl ?? SY.cur) : SY.cur);
@@ -8603,7 +8625,10 @@ function pfFrame() {
   const dec = Math.exp(-dt / 0.16); for (let i = 0; i < PF.pulse.length; i++) PF.pulse[i] *= dec;
   const g = PF.g.map((x, i) => Math.max(-1, Math.min(1, x + PF.pulse[i] + (GENES[i].k === "rot" && SY.playing ? 0.12 * Math.sin(t * 0.35) : 0))));
   PF.seed = pfSeed(r); PF.busy = true;
-  try { pfRender(r, g, cv.width, cv); } finally { PF.busy = false; }
+  const disp = Math.round(cv.getBoundingClientRect().width * Math.min(2, devicePixelRatio || 1)), back = Math.max(200, Math.min(1000, disp));
+  if (cv.width !== back) { cv.width = cv.height = back; }
+  const T = Math.round(Math.max(200, Math.min(mobile ? 280 : 400, back * 0.55))), t0 = performance.now();
+  try { pfRender(r, g, T, cv, PF.box || (PF.box = {}), true); } finally { PF.busy = false; PF.cost = performance.now() - t0; }
   pfLegend(r);
 }
 function pfLegend(r) {
@@ -8620,8 +8645,8 @@ async function pfClip() {
   const say = t => { if (note) note.textContent = t; };
   if (window.VideoEncoder) await ensureMuxer();
   if (!window.VideoEncoder || !window.Mp4Muxer) { say("L'export vidéo n'est pas pris en charge ici : essaie Chrome, Edge ou un Safari récent."); return; }
-  const recipe = syRecipe(), r = prValid(recipe); if (!r) return;
-  const bars = SY.song && SY.chain.length ? Math.min(64, SY.chain.length) : 16, sec = 60 / r.bpm / 4, barLen = sec * 16, dur = bars * barLen + 0.02;
+  const F = syFinished(syRecipe(), 16), recipe = F.recipe, r = prValid(recipe), songOn = F.song; if (!r) return;
+  const bars = F.bars, sec = 60 / r.bpm / 4, barLen = sec * 16, dur = bars * barLen + 0.02;
   PF.exporting = true; if (btn) btn.disabled = true; const was = !!SY.playing; if (was) syRun(false);
   try {
     say("Rendu du son…"); await new Promise(res => setTimeout(res, 30));
@@ -8645,21 +8670,21 @@ async function pfClip() {
     // les coups, dans l'ordre, d'après la recette (mêmes boucles, même arrangement, mêmes transitions)
     const ev = [], loopsN = r.loops.length;
     for (let b = 0; b < bars; b++) {
-      const li = SY.song && r.chain.length ? r.chain[b % r.chain.length] : (r.cur || 0), tr = SY.song && r.tr ? r.tr[b % r.chain.length] : 0, L = r.loops[Math.min(li, loopsN - 1)];
+      const li = songOn ? r.chain[b % r.chain.length] : (r.cur || 0), tr = songOn && r.tr ? r.tr[b % r.chain.length] : 0, L = r.loops[Math.min(li, loopsN - 1)];
       for (let s = 0; s < 16; s++) r.tracks.forEach((Tk, i) => { const st = L.steps[i] && L.steps[i][s]; if (!st || Tk.mute || (tr === "coupe" && s >= 12)) return; ev.push({ t: 0.02 + (b * 16 + s) * sec + (s % 2 ? r.swing * sec * 0.5 : 0), inst: Tk.inst, deg: st.d || 0, i, v: st.g ? 0.4 : 1, b }); });
     }
     ev.sort((a, b) => a.t - b.t);
-    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const x = cv.getContext("2d"); const tile = document.createElement("canvas"); tile.width = tile.height = T;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const cbox = {};
     PF.seed = pfSeed(r); let g = null, pulse = new Float32Array(GENES.length), k = 0; const dt = 1 / fps, dec = Math.exp(-dt / 0.16);
     const prev = document.getElementById("pf-cv");
     for (let f = 0; f < N && !err; f++) {
-      const t = f / fps, bar = Math.min(bars - 1, Math.floor(t / barLen)), li = SY.song && r.chain.length ? r.chain[bar % r.chain.length] : (r.cur || 0);
+      const t = f / fps, bar = Math.min(bars - 1, Math.floor(t / barLen)), li = songOn ? r.chain[bar % r.chain.length] : (r.cur || 0);
       const target = pfTarget(r, Math.min(li, loopsN - 1)); if (!g) g = target.slice(); for (let i = 0; i < g.length; i++) g[i] += (target[i] - g[i]) * Math.min(1, dt * 3);
       while (k < ev.length && ev[k].t <= t) { const e = ev[k++]; pfHit(pulse, e.inst, e.deg, e.i, e.v); }
       for (let i = 0; i < pulse.length; i++) pulse[i] *= dec;
       const gg = g.map((v, i) => Math.max(-1, Math.min(1, v + pulse[i] + (GENES[i].k === "rot" ? 0.12 * Math.sin(t * 0.35) : 0))));
-      pfRender(r, gg, T, tile); x.imageSmoothingQuality = "high"; x.drawImage(tile, 0, 0, W, H);
-      if (prev && f % 6 === 0) prev.getContext("2d").drawImage(tile, 0, 0, prev.width, prev.height);
+      pfRender(r, gg, T, cv, cbox, false);
+      if (prev && f % 6 === 0) { const px = prev.getContext("2d"); px.clearRect(0, 0, prev.width, prev.height); px.drawImage(cv, 0, 0, prev.width, prev.height); }
       const vf = new VideoFrame(cv, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
       if (f % 4 === 0) { say(`Rendu du clip : ${Math.round(100 * f / N)} %`); await new Promise(res => setTimeout(res, 0)); }
       while (venc.encodeQueueSize > 6) await new Promise(res => setTimeout(res, 5));
@@ -8671,16 +8696,16 @@ async function pfClip() {
   finally { PF.exporting = false; if (btn) btn.disabled = false; if (was) syRun(true); }
 }
 const PF_CSS = `
-.sy-wrap { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; max-width: 1600px; margin: 0 auto; padding: 80px 24px 150px; align-items: start; }
+.sy-wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(600px, 1060px); gap: 16px; padding: 80px 24px 150px 0; align-items: start; }
 .sy-wrap > .sy { padding: 0; max-width: none; margin: 0; min-width: 0; }
-.pf { position: sticky; top: 0; margin-top: -80px; height: calc(100vh - var(--wall-h, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
-.pf-cv { width: min(100%, 320px); aspect-ratio: 1; display: block; background: none; }
+.pf { position: sticky; top: 0; margin-top: -80px; height: calc(100vh - var(--wall-h, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 70px 8px 10px; box-sizing: border-box; }
+.pf-cv { width: min(100%, calc(100vh - var(--wall-h, 0px) - 150px), 720px); aspect-ratio: 1; display: block; background: none; }
 .pf-note { font-size: 10px; opacity: .6; min-height: 14px; text-align: center; max-width: 260px; }
 .pf-leg[hidden] { display: none; }
 @media (max-width: 900px) {
   .sy-wrap { grid-template-columns: 1fr; padding: 72px 12px 150px; gap: 8px; }
-  .pf { position: relative; top: 0; margin: 0; height: auto; }
-  .pf-cv { width: 180px; }
+  .pf { position: relative; top: 0; margin: 0; height: auto; padding: 0; }
+  .pf-cv { width: min(78vw, 300px); }
 }`;
 /* ---------- Le mur : un bandeau en béton tagué avec tes formes, et des riders qui glissent, font des tricks et dansent sur la musique ---------- */
 const WALL = { el: null, cv: null, x: null, W: 0, H: 0, dpr: 1, tex: null, tags: [], riders: [], on: store.get("atelier-wall", true), raf: 0, last: 0, beat: { t: 0, n: 0, en: 0, avg: 0.02, lastOn: 0, ph: 0 }, an: null, buf: null, key: "" };
