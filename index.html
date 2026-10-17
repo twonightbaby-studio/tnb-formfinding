@@ -751,7 +751,7 @@ const workCanvas = document.createElement("canvas");
 const workCtx = workCanvas.getContext("2d", { willReadFrequently: true });
 
 // Tête de bonhomme : un logo importé remplace le bout de la branche du haut (il suit les déformations)
-let HEADM = (() => { try { const h = JSON.parse(localStorage.getItem("atelier-head") || "null"); return h && h.on && h.m ? h : null; } catch { return null; } })(), HEADC = null;
+let HEADM = (() => { try { const h = JSON.parse(localStorage.getItem("atelier-head") || localStorage.getItem("atelier-head-default") || "null"); return h && h.on && h.m ? h : null; } catch { return null; } })(), HEADC = null;
 function headCanvasOf(h) {
   const n = h.n, c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(n, n) : document.createElement("canvas"); c.width = c.height = n;
   const x = c.getContext("2d"), id = x.createImageData(n, n); for (let i = 0; i < n * n; i++) id.data[i * 4 + 3] = h.m[i]; x.putImageData(id, 0, 0); return c;
@@ -1861,6 +1861,7 @@ async function applySession(session) {
     shareSyncHead();
     const { data } = await sb.rpc("atelier_is_admin");
     isOwner = !!data;
+    if (isOwner && typeof headPublishDefault === "function") headPublishDefault();
   }
   document.getElementById("logs-box").hidden = !isOwner;
   if (isOwner) loadLogs();
@@ -8977,12 +8978,33 @@ body.wall-on.wall-folded #w-bubbles { bottom: 30px; }
 body.wall-on .w-scroll { padding-bottom: 150px; }
 `;
 /* ---------- Tête de bonhomme = logo de la marque ---------- */
-function headStore() { try { return JSON.parse(localStorage.getItem("atelier-head") || "null"); } catch { return null; } }
-function headApply(h) {
-  try { localStorage.setItem("atelier-head", JSON.stringify(h)); } catch { wToast("Logo trop lourd pour être gardé dans ce navigateur"); }
+function headStore() { try { return JSON.parse(localStorage.getItem("atelier-head") || localStorage.getItem("atelier-head-default") || "null"); } catch { return null; } }
+// Logo B2N par défaut pour tout le site : enregistré une fois (depuis le compte propriétaire), appliqué chez tout le monde
+// tant que la personne n'a pas choisi autre chose (son propre logo, ou tête désactivée).
+const headOwn = () => { try { return JSON.parse(localStorage.getItem("atelier-head") || "null"); } catch { return null; } };
+async function headLoadDefault() {
+  if (typeof sb === "undefined" || !sb) return;
+  try {
+    const { data } = await sb.from("atelier_settings").select("value").eq("key", "head").maybeSingle();
+    const d = data && data.value && data.value.m ? Object.assign({}, data.value, { on: true }) : null, js = d ? JSON.stringify(d) : null;
+    if (js === localStorage.getItem("atelier-head-default")) return;
+    if (js) localStorage.setItem("atelier-head-default", js); else localStorage.removeItem("atelier-head-default");
+    if (!headOwn() && !(typeof SHARED_VIEW !== "undefined" && SHARED_VIEW)) { headApply(d, false); if (!WORLD.on && typeof showFocus === "function") try { showFocus(focusIdx); } catch {} }
+  } catch {}
+}
+async function headPublishDefault() {
+  const h = headOwn(); if (!h || !h.on || !h.m || typeof sb === "undefined" || !sb) return;
+  const value = { n: h.n, m: h.m, k: h.k || 1, keep: h.keep || 0 };
+  try { const { data } = await sb.from("atelier_settings").select("value").eq("key", "head").maybeSingle(); if (data && JSON.stringify(data.value) === JSON.stringify(value)) return;
+    const { error } = await sb.from("atelier_settings").upsert({ key: "head", value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (!error) { localStorage.setItem("atelier-head-default", JSON.stringify(Object.assign({}, value, { on: true }))); wToast("Ton logo est maintenant la tête par défaut du site"); } } catch {}
+}
+function headApply(h, persist = true) {
+  if (persist) try { localStorage.setItem("atelier-head", JSON.stringify(h)); } catch { wToast("Logo trop lourd pour être gardé dans ce navigateur"); }
   HEADM = h && h.on && h.m ? h : null; HEADC = null;
   for (const w of RW.pool) try { w.postMessage({ op: "head", head: HEADM }); } catch {}
   if (typeof shareSyncHead === "function") shareSyncHead();
+  if (persist && typeof isOwner !== "undefined" && isOwner) headPublishDefault();
   const scenes = new Set([...(current || []), ...WORLD.nodes.map(n => n.scene).filter(Boolean)]);
   for (const sc of scenes) { delete sc.mask; delete sc.fmask; delete sc.fkey; delete sc.fT; }
   WORLD.thumbs.clear(); for (const n of WORLD.nodes) n.img = null;
@@ -10405,6 +10427,8 @@ function kkComposer(W, H) {
     }
   };
 }
+
+setTimeout(headLoadDefault, 600);
 
 </script>
 
