@@ -5433,7 +5433,7 @@ function wPSampler(p) {
     p.querySelector("#sy-play").onclick = () => { uisClick(); syRun(!SY.playing); };
     p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
     p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "synthe") go(b.dataset.m); });
-    const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); syLoopView(); lnLive(); pfFrame(); };
+    const loop = () => { if (WORLD.panelKey !== "sampler" || !p.isConnected || !document.getElementById("sy-host")) return; requestAnimationFrame(loop); syStepView(); syLoopView(); lnLive(); if (!pfFrameGL()) pfFrame(); };
     requestAnimationFrame(loop);
     p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", e => e.pointerType === "mouse" && uisPlop()); b.dataset.snd = 1; } });
     p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
@@ -6117,8 +6117,9 @@ function syMutate() {
 
 /* Interface */
 function wPSynth(host) {
-  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf"><canvas id="pf-cv" class="pf-cv" width="640" height="640" data-learn="pf"></canvas>
+  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf"><canvas id="pf-cv" class="pf-cv" width="640" height="640"></canvas>
     <button class="w-chip" id="pf-clip" title="Exporte un clip vidéo de la forme, avec le son, de la même durée que la prod">🎬 Clip</button><span class="pf-note" id="pf-note"></span><div class="pf-leg" id="pf-leg" hidden></div></aside>
+  <div class="pf-split" id="pf-split" title="Glisse pour élargir ou réduire les panneaux · double-clic : taille d'origine"><i></i></div>
   <div class="sy${SY.learn ? " learn" : ""}">
     <div class="sp-card ln-live" id="ln-live" hidden></div>
     <div class="sy-top sp-card">
@@ -6138,6 +6139,7 @@ function wPSynth(host) {
     <div class="w-row"><button class="w-pill w-glass-ui" id="sy-add">+ Piste</button><span class="sp-hint">Touche le nom d'une piste pour changer de son. Pas : touche pour allumer · glisse vers la droite pour tenir la note · vers le haut / bas pour changer la note · appui long = note fantôme (douce) · sur les charleys, re-touche pour des roulements.</span></div>
   </div></div>`;
   host.querySelector("#pf-clip").onclick = () => { uisClick(); pfClip(); };
+  pfSplitter(host.querySelector(".sy-wrap"), host.querySelector("#pf-split"));
   const vb = host.querySelector("#sy-vibes");
   for (const k of Object.keys(SY_VIBES)) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = k; b.setAttribute("aria-pressed", SY.vibe === k); b.onclick = () => { uisClick(); syLoadVibe(k); if (SY.playing) { SY.ch = []; SY.tracks.forEach((_, i) => syChain(i)); } }; vb.append(b); }
   const ks = host.querySelector("#sy-key"), ps = host.querySelector("#sy-prog"); ks.value = SY.key; ps.value = SY.prog;
@@ -8657,19 +8659,23 @@ async function pfClip() {
     }
     ev.sort((a, b) => a.t - b.t);
     const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const cbox = {};
-    PF.seed = pfSeed(r); const st = { sp: 0, spv: 0, ph: 0, box: {} }, imp = new Float32Array(GENES.length), dt = 1 / fps, TT = 300, nS = ferroCount(r); let k = 0, env = 0;
-    const prev = document.getElementById("pf-cv"), px = new Uint8ClampedArray(TT * TT * 4);
+    PF.seed = pfSeed(r); const st = { sp: 0, spv: 0, ph: 0, box: {}, impact: 0, shake: 0, ring: 0, flash: 0 }, imp = new Float32Array(GENES.length), dt = 1 / fps, TT = 300, nS = ferroCount(r), fx = fglFx(r); let k = 0, env = 0, lastLi = -1;
+    const glc = document.createElement("canvas"); glc.width = W; glc.height = H; glc.dataset.keep = "1"; let G = null; try { G = fglInit(glc); } catch { G = null; } let gbox = null;
+    const prev = (() => { const c = document.getElementById("pf-cv"); return c && !(FG.G && FG.G.gl.canvas === c) ? c : null; })(), px = new Uint8ClampedArray(TT * TT * 4);
     for (let f = 0; f < N && !err; f++) {
       const t = f / fps, bar = Math.min(bars - 1, Math.floor(t / barLen)), li = songOn ? r.chain[bar % r.chain.length] : (r.cur || 0);
-      let kick = 0; while (k < ev.length && ev[k].t <= t) { const e = ev[k++]; pfHit(imp, e.inst, e.deg, e.i, e.v * 0.6); env = Math.min(1, env + 0.12 * e.v); if (["kick", "akick", "k808", "sub", "snare", "asnare", "clap", "crash"].includes(e.inst)) kick += e.v * (e.inst.includes("kick") || e.inst === "k808" ? 1 : 0.6); }
+      let kick = 0; const hits = []; while (k < ev.length && ev[k].t <= t) { const e = ev[k++]; pfHit(imp, e.inst, e.deg, e.i, e.v * 0.6); env = Math.min(1, env + 0.12 * e.v); const kd = fglKind(e.inst); if (kd) hits.push({ kind: kd, v: e.v }); if (["kick", "akick", "k808", "sub", "snare", "asnare", "clap", "crash"].includes(e.inst)) kick += e.v * (e.inst.includes("kick") || e.inst === "k808" ? 1 : 0.6); }
       env *= Math.exp(-dt / 0.6);
       const g = ferroSpring(st, pfTarget(r, Math.min(li, loopsN - 1)), dt, imp);
       const m = renderStar(g, PF.seed, TT).mask, { F, W } = ferroFields(m, TT);
       ferroSpikes(st, 0.1 + env * 0.7, dt, Math.min(1.2, kick)); const b = {};
-      ferroShade(F, W, TT, st.sp, st.ph, nS, px, b); ferroBox(st.box, b, TT, f ? 0.12 : 1);
-      ferroDraw(cv, TT, ferroPost(px, TT, r), st.box, "#eef0f4");
+      if (G) {
+        const section = songOn && lastLi >= 0 && li !== lastLi; lastLi = li; fglImpacts(st, hits, dt, t, section);
+        fglUpload(G, F, F, W, W, TT); const bb = fglBodyBox(F, TT); if (!gbox) gbox = { ...bb }; else { gbox.cx += (bb.cx - gbox.cx) * 0.12; gbox.cy += (bb.cy - gbox.cy) * 0.12; gbox.sz += (bb.sz - gbox.sz) * 0.08; }
+        fglDraw(G, glc, { cx: bb.mx, cy: bb.my, bx: gbox.cx, by: gbox.cy, bz: gbox.sz, blend: 0, sp: st.sp, ph: st.ph, n: nS, time: t, impact: st.impact, flash: st.flash, shake: st.shake, ring: st.ring, fx, bg: [0.933, 0.941, 0.957, 1] });
+      } else { ferroShade(F, W, TT, st.sp, st.ph, nS, px, b); ferroBox(st.box, b, TT, f ? 0.12 : 1); ferroDraw(cv, TT, ferroPost(px, TT, r), st.box, "#eef0f4"); }
       if (prev && f % 6 === 0) { const pc = prev.getContext("2d"); pc.clearRect(0, 0, prev.width, prev.height); pc.drawImage(cv, 0, 0, prev.width, prev.height); }
-      const vf = new VideoFrame(cv, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
+      const vf = new VideoFrame(G ? glc : cv, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
       if (f % 4 === 0) { say(`Rendu du clip : ${Math.round(100 * f / N)} %`); await new Promise(res => setTimeout(res, 0)); }
       while (venc.encodeQueueSize > 6) await new Promise(res => setTimeout(res, 5));
     }
@@ -8679,17 +8685,34 @@ async function pfClip() {
   } catch (e) { say("Le clip a échoué : " + (e && e.message ? e.message : "erreur")); uisNo(); }
   finally { PF.exporting = false; if (btn) btn.disabled = false; if (was) syRun(true); }
 }
+// Séparateur entre la forme et la prod : on glisse pour régler la largeur des deux panneaux
+function pfSplitter(wrap, bar) {
+  if (!wrap || !bar) return;
+  const apply = w => { wrap.style.gridTemplateColumns = w ? `${Math.round(w)}px 14px minmax(0, 1fr)` : ""; };
+  apply(store.get("atelier-pf-w", 0));
+  let drag = null;
+  bar.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); drag = { x: e.clientX, w: wrap.querySelector(".pf").getBoundingClientRect().width }; try { bar.setPointerCapture(e.pointerId); } catch {} bar.classList.add("on"); document.body.style.cursor = "col-resize"; });
+  bar.addEventListener("pointermove", e => { if (!drag) return; const W = wrap.getBoundingClientRect().width, w = Math.max(200, Math.min(W - 560, drag.w + e.clientX - drag.x)); apply(w); drag.cur = w; });
+  const end = () => { if (!drag) return; if (drag.cur) store.set("atelier-pf-w", Math.round(drag.cur)); drag = null; bar.classList.remove("on"); document.body.style.cursor = ""; };
+  bar.addEventListener("pointerup", end); bar.addEventListener("pointercancel", end);
+  bar.addEventListener("dblclick", () => { store.set("atelier-pf-w", 0); apply(0); uisSwitch(false); });
+}
 const PF_CSS = `
-.sy-wrap { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(600px, 1060px); gap: 16px; padding: 80px 24px 150px 0; align-items: start; }
+.sy-wrap { display: grid; grid-template-columns: minmax(260px, 1fr) 14px minmax(600px, 1060px); gap: 0; padding: 80px 24px 150px 0; align-items: start; }
 .sy-wrap > .sy { padding: 0; max-width: none; margin: 0; min-width: 0; }
-.pf { position: sticky; top: 0; margin-top: -80px; height: calc(100vh - var(--wall-h, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 70px 8px 10px; box-sizing: border-box; }
-.pf-cv { width: min(100%, calc(100vh - 220px), 460px); aspect-ratio: 1; display: block; background: none; }
+.pf { position: sticky; top: 0; margin-top: -80px; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 70px 8px 10px; box-sizing: border-box; min-width: 0; }
+.pf-cv { width: min(58%, calc(100vh - 220px)); min-width: 160px; aspect-ratio: 1; display: block; background: none; }
+.pf-split { position: sticky; top: 0; margin-top: -80px; height: 100vh; cursor: col-resize; display: flex; align-items: center; justify-content: center; touch-action: none; z-index: 3; }
+.pf-split i { width: 2px; height: 100%; background: transparent; transition: background .15s; border-radius: 2px; }
+.pf-split::after { content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 44px; margin: -22px 0 0 -3px; border-radius: 6px; background: rgb(124,92,230); opacity: 0; transition: opacity .15s; }
+.pf-split:hover i, .pf-split.on i { background: rgba(124,92,230,.35); } .pf-split:hover::after, .pf-split.on::after { opacity: 1; }
 .pf-note { font-size: 10px; opacity: .6; min-height: 14px; text-align: center; max-width: 260px; }
 .pf-leg[hidden] { display: none; }
 @media (max-width: 900px) {
-  .sy-wrap { grid-template-columns: 1fr; padding: 72px 12px 150px; gap: 8px; }
+  .sy-wrap { grid-template-columns: 1fr !important; padding: 72px 12px 150px; gap: 8px; }
   .pf { position: relative; top: 0; margin: 0; height: auto; padding: 0; }
   .pf-cv { width: min(78vw, 300px); }
+  .pf-split { display: none; }
 }`;
 /* ---------- Le mur : un bandeau en béton tagué avec tes formes, et des riders qui glissent, font des tricks et dansent sur la musique ---------- */
 const WALL = { el: null, cv: null, x: null, W: 0, H: 0, dpr: 1, tex: null, tags: [], riders: [], on: store.get("atelier-wall", true), raf: 0, last: 0, beat: { t: 0, n: 0, en: 0, avg: 0.02, lastOn: 0, ph: 0 }, an: null, buf: null, key: "" };
@@ -9031,9 +9054,9 @@ function ferroSpring(st, target, dt, imp) {
 }
 // Les pointes : un ressort aussi, poussé par l'énergie du son et les coups
 function ferroSpikes(st, energy, dt, kick) {
-  st.spv += kick * 7; const k = 26, c = 2 * Math.sqrt(k) * 0.45, n = Math.max(1, Math.ceil(dt / 0.016)), h = dt / n;
+  st.spv += kick * 3.5; const k = 26, c = 2 * Math.sqrt(k) * 0.45, n = Math.max(1, Math.ceil(dt / 0.016)), h = dt / n;
   for (let s = 0; s < n; s++) { const a = k * (energy - st.sp) - c * st.spv; st.spv += a * h; st.sp += st.spv * h; }
-  st.sp = Math.max(0, Math.min(1.6, st.sp)); st.ph += dt * (0.35 + st.sp * 0.6);
+  st.sp = Math.max(0, Math.min(1.2, st.sp)); st.ph += dt * (0.35 + st.sp * 0.6);
 }
 // Ombrage : noir profond brillant, reflets nets, reflet du ciel sur les bords. Fond transparent.
 function ferroShade(F, W, T, sp, ph, nS, out, box) {
@@ -9072,7 +9095,7 @@ function ferroBox(box, b, T, rate) {
   const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, sz = Math.max(b.x1 - b.x0, b.y1 - b.y0) * 1.5 + T * 0.05;
   if (!box.sz) Object.assign(box, { cx, cy, sz }); else { box.cx += (cx - box.cx) * rate; box.cy += (cy - box.cy) * rate; box.sz += (sz - box.sz) * rate * 0.7; }
 }
-const ferroCount = r => 9 + Math.round(Math.min(14, r.tracks.filter(T => !T.mute).length * 1.4));
+const ferroCount = r => 7 + Math.round(Math.min(9, r.tracks.filter(T => !T.mute).length * 0.8));
 // Direct
 function pfFrame() {
   const cv = document.getElementById("pf-cv"); if (!cv || PF.exporting) return;
@@ -9120,6 +9143,197 @@ function ferroPost(px, T, r) {
   for (let i = 0; i < n; i++) res[i * 4 + 3] = Math.round(255 * Math.max(0, Math.min(1, keep[i] * 1.6 - 0.15)));
   return res;
 }
+/* ---------- Ferrofluide sur la carte graphique (WebGL) : 60 images/s, net à toute taille, impact frames ---------- */
+const FGL_VS = `attribute vec2 a; varying vec2 v; void main(){ v = a * 0.5 + 0.5; v.y = 1.0 - v.y; gl_Position = vec4(a, 0.0, 1.0); }`;
+const FGL_FS = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 v;
+uniform sampler2D uTex; uniform vec2 uC; uniform vec3 uBox; uniform float uBlend, uSp, uPh, uN, uTime, uImpact, uFlash, uShake, uRing, uRes, uTexel;
+uniform vec4 uFxA; // grain, aberration, usure, lignes
+uniform vec4 uFxB; // vignette, inversion, pixel, délavé
+uniform vec4 uFxC; // rugosité, contour, échos, lissage
+uniform vec4 uBg;  // fond (clip) ; a = 0 → transparent
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2(1,0)), f.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y); }
+vec2 FW(vec2 p){ vec4 s = texture2D(uTex, p); return vec2(mix(s.r, s.g, uBlend), mix(s.b, s.a, uBlend)); }
+float field(vec2 p){
+  vec2 fw = FW(p); float f = fw.x, W = fw.y;
+  if (uSp > 0.01 && f < 0.6 && W > 0.004) {
+    vec2 d = p - uC; float a = atan(d.y, d.x) / 6.2831853 * uN + uPh * 0.5, k = floor(a), fr = a - k, tri = 1.0 - abs(2.0 * fr - 1.0);
+    float len = 0.55 + 0.45 * abs(sin(k * 12.9898 + floor(uPh * 0.25) * 3.1)), wob = sin(uPh * 1.7 + k * 2.3) * 0.15;
+    f += uSp * 1.5 * pow(tri, 2.6) * (len + wob) * W * (1.0 - max(0.0, (f - 0.25) / 0.35));
+  }
+  if (uRing > 0.01) { float lv = 0.42 - 0.38 * (1.0 - uRing); f = max(f, 0.62 * smoothstep(0.035, 0.0, abs(W - lv)) * uRing * step(f, 0.45)); }
+  return f;
+}
+vec3 shade(vec2 p, out float alpha){
+  float e = uTexel * 1.2, f = field(p);
+  float lo = 0.5 - 0.06 - uFxC.w * 0.08, hi = 0.5 + 0.06 + uFxC.w * 0.08;
+  alpha = smoothstep(lo, hi, f);
+  if (uFxC.y > 0.01) alpha *= 1.0 - smoothstep(0.62, 0.75, f) * uFxC.y;                       // contour seul
+  float gx = (field(p + vec2(e, 0.0)) - field(p - vec2(e, 0.0))) * 7.0, gy = (field(p + vec2(0.0, e)) - field(p - vec2(0.0, e))) * 7.0;
+  vec3 n = normalize(vec3(-gx, -gy, 1.0)); vec3 h = normalize(vec3(-0.45, -0.65, 1.62));
+  float nh = max(0.0, dot(n, h)), spec = pow(nh, 70.0) * 1.3 + pow(nh, 12.0) * 0.12, fres = pow(1.0 - n.z, 2.2), sky = 0.5 - n.y * 0.5;
+  vec3 c = vec3(0.035, 0.035, 0.05) + fres * vec3(0.59 * sky + 0.16, 0.55 * sky + 0.16, 0.75 * sky + 0.24) + spec;
+  if (uFxC.z > 0.01) c += uFxC.z * 0.22 * step(0.5, fract(f * 9.0 - uTime * 0.6)) * (1.0 - fres);  // échos : anneaux dans la matière
+  return c;
+}
+void main(){
+  vec2 uv = v;
+  uv = 0.5 + (uv - 0.5) / (1.0 + 0.07 * uImpact);                                                  // pop d'impact
+  uv += uShake * 0.012 * vec2(sin(uTime * 91.0), cos(uTime * 77.0));                               // secousse
+  if (uFxB.z > 0.01) { float px = 2.0 + uFxB.z * 7.0; uv = (floor(uv * uRes / px) + 0.5) * px / uRes; }
+  vec2 p = uBox.xy + (uv - 0.5) * uBox.z;
+  p += vec2(sin(p.y * 17.0 + uTime * 2.1), cos(p.x * 15.0 + uTime * 1.7)) * 0.0022 * (0.4 + uSp);   // liquide : ondulation permanente
+  if (uFxC.x > 0.01) p += (vec2(noise(p * 45.0 + uTime), noise(p * 45.0 - uTime)) - 0.5) * 0.006 * uFxC.x;
+  float a; vec3 c = shade(p, a);
+  if (uFxA.y > 0.01) { float ar, ab; vec3 cr = shade(p + vec2(uTexel * 2.5 * uFxA.y, 0.0), ar), cb = shade(p - vec2(uTexel * 2.5 * uFxA.y, 0.0), ab); c = vec3(cr.r, c.g, cb.b); c.r += (ar - a) * 0.8; c.b += (ab - a) * 0.9; a = max(a, max(ar, ab) * 0.9); }
+  if (uFxA.z > 0.01) { float wear = noise(p * 38.0) * 0.7 + noise(p * 110.0) * 0.3; a *= smoothstep(0.25 * uFxA.z, 0.25 * uFxA.z + 0.18, wear); c = mix(c, c + 0.08, uFxA.z * wear * 0.5); }
+  if (uFxA.w > 0.01) c *= 1.0 - uFxA.w * 0.4 * step(0.5, fract(gl_FragCoord.y / 3.0));
+  if (uFxB.x > 0.01) c *= 1.0 - uFxB.x * 0.7 * smoothstep(0.05, 0.45, length(p - uC));
+  if (uFxB.w > 0.01) { float g = dot(c, vec3(0.33)); c = mix(c, vec3(g) * 0.8 + vec3(0.12, 0.11, 0.1), uFxB.w * 0.5) + (noise(p * 9.0) - 0.5) * 0.1 * uFxB.w; }
+  if (uFxB.y > 0.01) c = mix(c, vec3(1.0) - c * 0.9, uFxB.y);
+  if (uFxA.x > 0.01) c += (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) * 0.22 * uFxA.x;
+  if (uFlash > 0.01) c = mix(c, vec3(1.0) - c, uFlash);                                            // impact frame
+  c = clamp(c, 0.0, 1.0);
+  gl_FragColor = uBg.a > 0.5 ? vec4(c * a + uBg.rgb * (1.0 - a), 1.0) : vec4(c * a, a);
+}`;
+function fglInit(cv) {
+  const gl = cv.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false, preserveDrawingBuffer: cv.dataset.keep === "1" });
+  if (!gl) return null;
+  const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, FGL_VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FGL_FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, "a"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  const U = {}; for (const n of ["uTex", "uC", "uBox", "uBlend", "uSp", "uPh", "uN", "uTime", "uImpact", "uFlash", "uShake", "uRing", "uRes", "uTexel", "uFxA", "uFxB", "uFxC", "uBg"]) U[n] = gl.getUniformLocation(pr, n);
+  gl.uniform1i(U.uTex, 0); gl.clearColor(0, 0, 0, 0);
+  return { gl, U, T: 0, buf: null };
+}
+// Les 4 champs (masques fondus) vont dans une seule texture RGBA
+function fglUpload(G, F0, F1, W0, W1, T) {
+  const gl = G.gl; if (!G.buf || G.buf.length !== T * T * 4) G.buf = new Uint8Array(T * T * 4); const B = G.buf;
+  for (let i = 0; i < T * T; i++) { const o = i * 4; B[o] = Math.min(255, F0[i] * 255); B[o + 1] = Math.min(255, F1[i] * 255); B[o + 2] = Math.min(255, W0[i] * 300); B[o + 3] = Math.min(255, W1[i] * 300); }
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, T, T, 0, gl.RGBA, gl.UNSIGNED_BYTE, B); G.T = T;
+}
+// Effets de post-traitement → réglages du shader (ils ne touchent que la forme)
+function fglFx(r) {
+  const st = pfStyles(r), k = n => st[n] && st[n].on ? Math.min(1.5, st[n].k) : 0;
+  return [[k("grain"), k("aberration"), k("usure"), k("lignes")], [k("vignette"), k("inversion"), k("pixel"), k("delave")], [k("rugosite"), k("contour"), k("echo") + k("trainee") * 0.5, k("lissage")]];
+}
+function fglDraw(G, cv, s) {
+  const gl = G.gl, U = G.U, W = cv.width, H = cv.height; gl.viewport(0, 0, W, H); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(U.uC, s.cx, s.cy); gl.uniform3f(U.uBox, s.bx, s.by, s.bz); gl.uniform1f(U.uBlend, s.blend); gl.uniform1f(U.uSp, s.sp); gl.uniform1f(U.uPh, s.ph); gl.uniform1f(U.uN, s.n);
+  gl.uniform1f(U.uTime, s.time); gl.uniform1f(U.uImpact, s.impact); gl.uniform1f(U.uFlash, s.flash); gl.uniform1f(U.uShake, s.shake); gl.uniform1f(U.uRing, s.ring); gl.uniform1f(U.uRes, W); gl.uniform1f(U.uTexel, 1 / G.T);
+  gl.uniform4fv(U.uFxA, s.fx[0]); gl.uniform4fv(U.uFxB, s.fx[1]); gl.uniform4fv(U.uFxC, s.fx[2]); gl.uniform4fv(U.uBg, s.bg || [0, 0, 0, 0]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+// Impacts : pop + onde de choc sur les kicks, secousse sur les caisses claires, flash inversé (rare) sur crash et changement de section
+function fglImpacts(st, hits, dt, now, section) {
+  for (const h of hits) {
+    if (h.kind === "kick") { st.impact = Math.max(st.impact, 0.7 * h.v + 0.3); st.ring = 1; }
+    else if (h.kind === "snare") { st.shake = Math.max(st.shake, 0.6 * h.v); st.impact = Math.max(st.impact, 0.35 * h.v); }
+    else if (h.kind === "crash" && now - (st.lastFlash || -9) > 2) { st.flash = 1; st.lastFlash = now; st.impact = 1; st.ring = 1; }
+  }
+  if (section && now - (st.lastFlash || -9) > 2) { st.flash = 1; st.lastFlash = now; st.impact = 1; st.ring = 1; }
+  st.impact *= Math.exp(-dt / 0.09); st.shake *= Math.exp(-dt / 0.07); st.ring *= Math.exp(-dt / 0.22); st.flash = st.flash > 0.5 ? st.flash - dt / 0.035 : Math.max(0, st.flash - dt / 0.02);
+  if (st.flash < 0.02) st.flash = 0;
+}
+const fglKind = inst => ["kick", "akick", "k808"].includes(inst) ? "kick" : ["snare", "asnare", "clap"].includes(inst) ? "snare" : inst === "crash" ? "crash" : null;
+function fglBodyBox(F, T) {
+  let sx = 0, sy = 0, n = 0, x0 = T, y0 = T, x1 = 0, y1 = 0;
+  for (let y = 0; y < T; y += 2) for (let x = 0; x < T; x += 2) if (F[y * T + x] > 0.5) { sx += x; sy += y; n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (!n) return { cx: 0.5, cy: 0.5, sz: 1 };
+  return { cx: (x0 + x1) / 2 / T, cy: (y0 + y1) / 2 / T, mx: sx / n / T, my: sy / n / T, sz: (Math.max(x1 - x0, y1 - y0) * 1.5 + T * 0.05) / T };
+}
+// Boucle directe (appelée à chaque image par le Synthé)
+const FG = { G: null, failed: false, box: null, impact: 0, shake: 0, ring: 0, flash: 0, sp: 0, spv: 0, ph: 0, last: 0, lastSection: -1, F0: null, F1: null, W0: null, W1: null, T: 0, t1: 0, iv: 120, pending: false, lastGene: 0, g: null, gv: null, cxy: [0.5, 0.5] };
+function pfFrameGL() {
+  const cv = document.getElementById("pf-cv"); if (!cv || PF.exporting) return true;
+  if (!FG.G || FG.G.gl.canvas !== cv) { if (FG.failed && FG.cv === cv) return false; try { FG.G = fglInit(cv); FG.cv = cv; } catch (e) { console.warn(e); FG.G = null; } if (!FG.G) { FG.failed = true; FG.cv = cv; return false; } FG.F1 = null; }
+  const now = performance.now(), mobile = innerWidth < 900;
+  const r = { tracks: SY.tracks, loops: SY.loops, bpm: SY.bpm, swing: SY.swing, key: SY.key, post: SY.post };
+  const t = SP.ctx ? SP.ctx.currentTime : 0;
+  PF.imp = PF.imp && PF.imp.length === GENES.length ? PF.imp : new Float32Array(GENES.length); let kick = 0; const hits = [], keep = [];
+  for (const e of PF.q) { if (e.t <= t) { pfHit(PF.imp, e.inst, e.deg, e.i, e.v * 0.6); const k = fglKind(e.inst); if (k) { hits.push({ kind: k, v: e.v }); kick += e.v * (k === "kick" ? 1 : 0.6); } } else keep.push(e); } PF.q = keep;
+  // nouvelle silhouette (worker), quelques fois par seconde
+  if (!FG.pending && now - FG.t1 > FG.iv) {
+    const dt = Math.min(0.3, (now - (FG.lastGene || now)) / 1000) || 0.1; FG.lastGene = now;
+    syStore(); const target = pfTarget(r, SY.playing ? (SY.pl ?? SY.cur) : SY.cur), g = ferroSpring(FG, target, dt, PF.imp); PF.seed = pfSeed(r);
+    const T = mobile ? 160 : 192; FG.pending = true; const t0 = performance.now();
+    workerCall({ op: "fast", scene: { stars: [{ g, seed: PF.seed, x: 0, y: 0, s: 1 }] }, T }).then(res => res ? res.mask : renderStar(g, PF.seed, T).mask).then(m => {
+      const { F, W } = ferroFields(m, T), tn = performance.now(), a = Math.min(1, (tn - FG.t1) / FG.iv), s = a * a * (3 - 2 * a);
+      if (FG.F1 && FG.F1.length === F.length) { FG.F0 = FG.F0.map((v, i) => v + (FG.F1[i] - v) * s); FG.W0 = FG.W0.map((v, i) => v + (FG.W1[i] - v) * s); } else { FG.F0 = F; FG.W0 = W; }
+      FG.F1 = F; FG.W1 = W; FG.T = T; fglUpload(FG.G, FG.F0, FG.F1, FG.W0, FG.W1, T);
+      const bb = fglBodyBox(F, T); FG.target = bb; if (!FG.box) FG.box = { ...bb };
+      FG.iv = Math.max(80, Math.min(220, (tn - t0) * 1.5 + 30)); FG.t1 = tn; FG.pending = false;
+    }).catch(() => { FG.pending = false; });
+  }
+  if (!FG.F1) return true;
+  const dt = Math.min(0.05, (now - (FG.last || now)) / 1000); FG.last = now;
+  let energy = 0; if (SY.playing && SP.an) { SP.an.getByteFrequencyData(SP.fbins); let s = 0; for (let i = 1; i < 24; i++) s += SP.fbins[i]; energy = Math.min(1, s / (23 * 255) * 1.6); }
+  ferroSpikes(FG, SY.playing ? 0.1 + energy * 0.7 : 0, dt, Math.min(1.2, kick));
+  const section = SY.playing && SY.song && SY.pos !== FG.lastSection && FG.lastSection >= 0 && SY.chain && SY.chain[SY.pos] !== SY.chain[FG.lastSection]; FG.lastSection = SY.playing && SY.song ? SY.pos : -1;
+  fglImpacts(FG, SY.playing ? hits : [], dt, now / 1000, section);
+  const tb = FG.target, B = FG.box, kb = Math.min(1, dt * 3); B.cx += (tb.cx - B.cx) * kb; B.cy += (tb.cy - B.cy) * kb; B.sz += (tb.sz - B.sz) * kb * 0.7; B.mx = tb.mx; B.my = tb.my;
+  const disp = Math.round(cv.getBoundingClientRect().width * Math.min(2, devicePixelRatio || 1)), back = Math.max(160, Math.min(1000, disp)); if (cv.width !== back) cv.width = cv.height = back;
+  const a0 = Math.min(1, (now - FG.t1) / FG.iv);
+  fglDraw(FG.G, cv, { cx: B.mx, cy: B.my, bx: B.cx, by: B.cy, bz: B.sz, blend: a0 * a0 * (3 - 2 * a0), sp: FG.sp, ph: FG.ph, n: ferroCount(r), time: now / 1000, impact: FG.impact, flash: FG.flash, shake: FG.shake, ring: FG.ring, fx: fglFx(r) });
+  pfLegend(r);
+  return true;
+}
+/* ---------- Mode Apprendre : au survol de la forme, ce qui la déforme (quoi, comment, combien) ---------- */
+function pfStats() {
+  syStore(); const L = SY.loops[SY.playing ? (SY.pl ?? SY.cur) : SY.cur] || SY.loops[SY.cur], rows = [];
+  SY.tracks.forEach((T, i) => {
+    const I = SY_INST[T.inst], M = PF_INST[T.inst]; if (!I) return;
+    const steps = (L && L.steps[i]) || T.steps || [], on = steps.filter(Boolean), dens = on.length / 16, held = on.reduce((a, s) => a + ((s && s.l) || 1), 0) / 16;
+    const e = T.mute ? 0 : (T.vol ?? 0.8) * Math.min(1, 0.25 + dens * 1.2 + held * 0.3);
+    rows.push({ hue: I.hue, lab: I.lab, def: M ? M[2] : "—", k: M ? Math.min(1, e * M[1]) : 0, mute: T.mute, how: `${on.length}/16 pas · volume ${Math.round((T.vol ?? 0.8) * 100)} %`, br: BR[i % 6] });
+  });
+  rows.sort((a, b) => b.k - a.k);
+  const bar = k => `<i class="ps-bar"><b style="width:${Math.round(Math.max(0, Math.min(1, k)) * 100)}%"></b></i><em>${Math.round(Math.max(0, Math.min(1, k)) * 100)} %</em>`;
+  const fx = Object.entries(pfStyles({ tracks: SY.tracks, post: SY.post })).filter(([, s]) => s.on).map(([k, s]) => `${STYLES[k] ? STYLES[k][0] : k} ${Math.round(Math.min(1.5, s.k) / 1.5 * 100)} %`);
+  const glob = [["Tempo", `${SY.bpm} bpm`, "étirement vertical", Math.abs(SY.bpm - 110) / 90], ["Swing", `${Math.round(SY.swing / 0.6 * 100)} %`, "cisaillement", SY.swing * 1.6], ["Tonalité", SY_KEYS[SY.key], "rotation", Math.abs(SY.key - 5.5) / 9]];
+  return `<div class="ps-h">Ce qui déforme la forme <small>${SY.playing ? "en direct" : "à l'arrêt"}</small></div>
+    <div class="ps-sec">Chaque son → sa déformation</div>
+    ${rows.map(r => `<div class="ps-r${r.mute ? " mute" : ""}"><span class="ps-n"><i style="background:hsl(${r.hue},45%,50%)"></i>${r.lab}</span><span class="ps-d">${r.def}</span>${bar(r.k)}<span class="ps-how">${r.mute ? "coupé" : r.how} · sculpte la branche ${r.br}</span></div>`).join("")}
+    <div class="ps-sec">Réglages globaux</div>
+    ${glob.map(([a, v, d, k]) => `<div class="ps-r"><span class="ps-n">${a} <small>${v}</small></span><span class="ps-d">${d}</span>${bar(k)}</div>`).join("")}
+    <div class="ps-sec">Matière</div>
+    <div class="ps-r"><span class="ps-n">Pointes</span><span class="ps-d">énergie du son + coups</span>${bar((FG.sp || 0) / 1.2)}</div>
+    <div class="ps-r"><span class="ps-n">Impacts</span><span class="ps-d">kick = pop + onde · caisse claire = secousse · crash = flash</span>${bar(FG.impact || 0)}</div>
+    <div class="ps-fx">Effets sur la forme : ${fx.length ? fx.join(" · ") : "aucun"} <small>(post-traitement et effets de pistes, fond toujours transparent)</small></div>`;
+}
+(() => {
+  const css = document.createElement("style"); css.textContent = `
+#pf-stats { position: fixed; left: 0; top: 0; z-index: 70; width: 340px; max-height: 70vh; overflow: auto; padding: 12px 14px; border-radius: 16px; background: rgba(252,252,255,.97); box-shadow: 0 16px 44px rgba(40,40,90,.2); font-size: 11px; line-height: 1.35; pointer-events: none; opacity: 0; transition: opacity .12s; font-family: var(--f-accent); color: #1b1d22; }
+#pf-stats.open { opacity: 1; }
+.ps-h { font-weight: 700; font-size: 12px; margin-bottom: 6px; display: flex; justify-content: space-between; } .ps-h small { font-weight: 400; opacity: .5; }
+.ps-sec { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; opacity: .45; margin: 8px 0 4px; }
+.ps-r { display: grid; grid-template-columns: 1fr 1fr 70px 34px; gap: 2px 8px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(27,29,34,.05); }
+.ps-r.mute { opacity: .4; }
+.ps-n { display: flex; align-items: center; gap: 5px; font-weight: 600; } .ps-n i { width: 7px; height: 7px; border-radius: 50%; flex: none; } .ps-n small { font-weight: 400; opacity: .55; }
+.ps-d { opacity: .75; } .ps-bar { height: 5px; border-radius: 3px; background: rgba(27,29,34,.08); overflow: hidden; } .ps-bar b { display: block; height: 100%; background: rgb(124,92,230); border-radius: 3px; }
+.ps-r em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; opacity: .7; } .ps-how { grid-column: 1 / -1; font-size: 9.5px; opacity: .5; }
+.ps-fx { margin-top: 8px; font-size: 10.5px; } .ps-fx small { opacity: .5; }`;
+  document.head.append(css);
+  let el = null, timer = 0, last = null;
+  const place = () => { if (!el || !last) return; const w = 340, h = el.offsetHeight; let x = last.x + 18, y = last.y + 18; if (x + w > innerWidth - 10) x = last.x - w - 18; if (y + h > innerHeight - 10) y = Math.max(10, innerHeight - h - 10); el.style.transform = `translate(${x}px, ${y}px)`; };
+  document.addEventListener("pointermove", e => {
+    const on = SY.learn && e.target && e.target.id === "pf-cv";
+    if (!on) { if (el && el.classList.contains("open")) { el.classList.remove("open"); clearInterval(timer); timer = 0; } return; }
+    if (!el) { el = document.createElement("div"); el.id = "pf-stats"; document.body.append(el); }
+    last = { x: e.clientX, y: e.clientY };
+    if (!el.classList.contains("open")) { el.innerHTML = pfStats(); el.classList.add("open"); clearInterval(timer); timer = setInterval(() => { el.innerHTML = pfStats(); place(); }, 300); }
+    place();
+  });
+})();
 
 
 </script>
