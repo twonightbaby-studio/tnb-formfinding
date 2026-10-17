@@ -5697,6 +5697,14 @@ const SY_VIBES = {
     syTrack("lead", syS("x...x.x...x.x...", syD([[0, 7], [4, 9], [6, 11], [10, 9], [12, 7]])), { tone: 0.45, space: 0.65, vol: 0.4, fx: { chorus: { on: true, k: 0.6 }, crush: { on: true, k: 0.25 } } }),
     syTrack("pad", syS("x...............", [], syL([[0, 16]])), { space: 0.8, vol: 0.42, move: 0.4 }),
     syTrack("chop", syS("..x.......x.....", syD([[2, 14], [10, 11]])), { space: 0.7, vol: 0.4, fx: { echo: { on: true, k: 0.35 } } }) ] },
+  "Indietronica (indie sleaze)": { bpm: 132, swing: 0, key: 9, prog: "i–VI–III–VII", post: { preset: "Club", space: "room", mix: true, duck: 0.55, fx: { crush: { on: true, k: 0.2 }, glue: { on: true, k: 0.75 }, tape: { on: true, k: 0.25 } }, filter: 0.55 }, tracks: [
+    syTrack("kick", syS("x...x...x...x..."), { drive: 0.7, tone: 0.55, move: 0.3 }),
+    syTrack("clap", syS("....x.......x..x"), { drive: 0.45, space: 0.3, vol: 0.7 }),
+    syTrack("hat", syS("..x...x...x...x."), { vol: 0.42, tone: 0.8, drive: 0.3 }),
+    syTrack("growl", syS("x.x.x.x.x.x.x.x.", syD([[4, 12], [10, 3], [14, 12]])), { drive: 0.9, tone: 0.6, move: 0.35, fx: { crush: { on: true, k: 0.35 }, pump: { on: true, k: 0.5 } } }),
+    syTrack("lead", syS("x..x..x.x..x..x.", syD([[0, 12], [3, 14], [6, 15], [8, 12], [11, 10], [14, 7]])), { tone: 0.7, space: 0.4, vol: 0.42, drive: 0.4, fx: { chorus: { on: true, k: 0.5 }, crush: { on: true, k: 0.3 } } }),
+    syTrack("stab", syS("x.....x.....x..."), { tone: 0.62, space: 0.35, vol: 0.45, fx: { pump: { on: true, k: 0.6 } } }),
+    syTrack("vox", syS("....x.....x.....", syD([[4, 7], [10, 12]]), syL([[4, 2], [10, 3]])), { space: 0.45, vol: 0.4, fx: { crush: { on: true, k: 0.4 }, echo: { on: true, k: 0.3 } } }) ] },
   "Psyché (Tame Impala)": { bpm: 100, swing: 0.1, key: 4, prog: "i–VII–VI–VII", post: { preset: "Cassette", space: "plate", mix: true, duck: 0.35, fx: { tape: { on: true, k: 0.5 }, wide: { on: true, k: 0.55 } }, filter: 0.5 }, tracks: [
     syTrack("kick", syS("x......xx.x....."), { tone: 0.4, drive: 0.3, fx: { phaser: { on: true, k: 0.4 } } }), syTrack("snare", syS("....x.......x..."), { tone: 0.5, drive: 0.35, fx: { phaser: { on: true, k: 0.5 } } }),
     syTrack("hat", syS("x.x.x.x.x.x.x.x."), { vol: 0.35, tone: 0.55, fx: { phaser: { on: true, k: 0.6 } } }),
@@ -8080,6 +8088,7 @@ const LEARN_VIBE = {
   "Sade-like": "Soul feutrée : basse qui chante, Rhodes, rim et shaker, swing lent, accords de jazz. Tout est retenu.",
   "French touch (Daft Punk)": "French touch : ~122 bpm, kick sur chaque temps (« four on the floor »), basse funky en octaves, accords filtrés qui pompent avec le kick.",
   "Alt sombre (070 Shake)": "Alt sombre façon 070 Shake : une pulsation de synthé qui avance en croches et pompe avec le kick, une 808 saturée, une caisse claire noyée dans une grande salle, un chœur en fond. Grille VI → VII → i : cinématographique, ça monte puis ça retombe dans le sombre.",
+  "Indietronica (indie sleaze)": "Indietronica façon ear / bassvictim / indie sleaze : kick quatre temps saturé, clap sale, charley ouvert à contretemps, une basse qui grogne en croches et pompe avec le kick, un lead criard désaccordé, des voix découpées et bitcrushées. Tout est un peu trop fort et trop sale : c'est le but. Électroclash 2007 rencontre l'hyperpop.",
   "Jerk rêveur (fakemink)": "Jerk rêveur façon fakemink : un rebond jerk rapide (kick décalé qui sautille), une 808 qui grésille, un lead flou et désaccordé, une nappe noyée de réverb, des voix pitchées très aigu. Le grain cassette fait le reste : rêveur, lo-fi, entre cloud rap et witch house.",
   "Funk live (batterie acoustique)": "Funk live : une vraie batterie. Grosse caisse syncopée, caisse claire avec plein de notes fantômes (le secret du groove), charley fermé qui coupe l'ouvert, descente de toms en fin de mesure. Basse jouée, Rhodes, et des cuivres qui piquent.",
   "Soul cuivrée (Just Blaze, Kanye)": "Soul cuivrée : l'âge d'or du sample soul (Just Blaze, Kanye, Jay-Z). Une section de cuivres qui frappe sur les temps forts, une trompette qui répond, des cors tenus en fond, une batterie qui balance. Grain de vinyle et de bande : on dirait un vieux disque samplé.",
