@@ -5146,7 +5146,7 @@ function wHead(title, extra = "") {
 function wPanel(k) {
   const p = document.getElementById("w-panel");
   if (k === WORLD.panelKey && k) return;
-  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); smLoopStop(); if (SM.rec) smRecToggle(); }
+  if (WORLD.panelKey === "sampler" && k !== "sampler" && typeof spPlay === "function") { spPlay(false); syRun(false); smLoopStop(); if (SM.rec) smRecToggle(); if (typeof grPanic === "function") grPanic(); }
   if (WORLD.panelKey === "dj" && k !== "dj" && typeof DJ !== "undefined") { DJ.decks.forEach(d => d.playing && djStop(d)); if (DJ.rec) djRec(); }
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
@@ -5468,8 +5468,14 @@ function spPreview(p) {          // aperçu d'un pad : sa séquence jouée vite,
 function wPSampler(p) {
   const mode = store.get("atelier-sampler-mode", "synthe");
   if (!document.getElementById("sy-css")) { const css = document.createElement("style"); css.id = "sy-css"; css.textContent = SY_CSS + PR_CSS + LP_CSS + FX2_CSS + LN_CSS + SD_CSS + AR_CSS + PF_CSS; document.head.append(css); }
-  const tabs = cur => [["synthe", "Synthé"], ["echant", "Échantillons"], ["radial", "Images"]].map(([m, l]) => `<button class="w-pill w-glass-ui w-live" data-m="${m}" aria-pressed="${cur === m || (m === "radial" && (cur === "radial" || cur === "patch"))}">${l}</button>`).join("");
-  const go = m => { uisSwitch(true); syRun(false); spPlay(false); smLoopStop(); store.set("atelier-sampler-mode", m); WORLD.panelKey = null; wPanel("sampler"); };
+  const tabs = cur => [["synthe", "Synthé"], ["echant", "Échantillons"], ["grain", "Granulaire"], ["radial", "Images"]].map(([m, l]) => `<button class="w-pill w-glass-ui w-live" data-m="${m}" aria-pressed="${cur === m || (m === "radial" && (cur === "radial" || cur === "patch"))}">${l}</button>`).join("");
+  const go = m => { uisSwitch(true); syRun(false); spPlay(false); smLoopStop(); if (m !== "grain") grPanic(); store.set("atelier-sampler-mode", m); WORLD.panelKey = null; wPanel("sampler"); };
+  if (mode === "grain") {
+    p.innerHTML = wHead("Sampler · granulaire", tabs("grain") + lnTogBtn()) + `<div class="w-scroll w-live" id="gr-host"></div>`;
+    wPGrain(p.querySelector("#gr-host"));
+    p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { if (b.dataset.m !== "grain") go(b.dataset.m); });
+    return;
+  }
   if (mode === "echant") {
     p.innerHTML = wHead("Sampler · échantillons", tabs("echant") + lnTogBtn() + `<button class="w-pill w-glass-ui w-live" id="sm-recb" aria-pressed="${!!SM.rec}">${SM.rec ? "■ Arrêter et garder" : "● Enregistrer"}</button>`) + `<div class="w-scroll w-live" id="sm-host"></div>`;
     wPSmp(p.querySelector("#sm-host"));
@@ -5490,7 +5496,7 @@ function wPSampler(p) {
     p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
     return;
   }
-  p.innerHTML = wHead("Sampler · images en musique", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="false">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="echant" aria-pressed="false">Échantillons</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
+  p.innerHTML = wHead("Sampler · images en musique", `<button class="w-pill w-glass-ui w-live" data-m="synthe" aria-pressed="false">Synthé</button><button class="w-pill w-glass-ui w-live" data-m="echant" aria-pressed="false">Échantillons</button><button class="w-pill w-glass-ui w-live" data-m="grain" aria-pressed="false">Granulaire</button><button class="w-pill w-glass-ui w-live" data-m="radial" aria-pressed="${mode === "radial"}">Radial</button><button class="w-pill w-glass-ui w-live" data-m="patch" aria-pressed="${mode === "patch"}">Patch</button><button class="w-pill dark w-live" id="sp-play" aria-pressed="${SP.playing}">${SP.playing ? "■ Stop" : "▶ Jouer"}</button><button class="w-pill w-glass-ui w-live" id="sp-rec" aria-pressed="false">● Enregistrer</button>`)
     + `<div class="w-scroll w-live"><div class="sp">
       <section class="sp-pads sp-card"><div class="w-sec">Pads <span>touche : dans la boucle</span></div><div class="sp-grid" id="sp-grid"></div>
         <div class="w-row"><label class="w-pill w-glass-ui" style="cursor:pointer">Importer une image<input type="file" accept="image/*" id="sp-file" hidden></label><button class="w-pill w-glass-ui" id="sp-series">Formes de la série</button></div>
@@ -5539,7 +5545,7 @@ function wPSampler(p) {
 }`;
     document.head.append(css);
   }
-  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); if (b.dataset.m === "synthe" || b.dataset.m === "echant") { spPlay(false); WORLD.panelKey = null; wPanel("sampler"); return; } p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  p.querySelectorAll("[data-m]").forEach(b => b.onclick = () => { uisSwitch(b.dataset.m === "radial"); store.set("atelier-sampler-mode", b.dataset.m); if (b.dataset.m === "synthe" || b.dataset.m === "echant" || b.dataset.m === "grain") { spPlay(false); WORLD.panelKey = null; wPanel("sampler"); return; } p.querySelectorAll("[data-m]").forEach(x => x.setAttribute("aria-pressed", x === b)); });
   p.querySelector("#sp-play").onclick = () => { uisClick(); spPlay(!SP.playing); };
   p.querySelector("#sp-rec").onclick = () => { uisClick(); spRec(); };
   p.querySelectorAll("[data-mood]").forEach(r => r.oninput = () => { SP.mood[r.dataset.mood] = +r.value; spApplyMood(); spSave(); spBpmLabel(); });
@@ -10143,6 +10149,171 @@ const TL_CSS = `
 .tl-f[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
 .tl-bgc { position: relative; overflow: hidden; } .tl-bgc input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 @media (max-width: 900px) { .tl { grid-template-columns: 1fr; padding: 72px 12px 150px; } .tl-stage { position: relative; top: 0; } }
+`;
+
+/* ---------- Sampler · Granulaire : accords à un doigt (façon HiChord) → moteur à grains (façon nanobox lemondrop / Microcosm) ----------
+   Une touche = un accord du ton choisi. Le son de l'accord (ou ton échantillon) est découpé en milliers de minuscules « grains »
+   (10 à 500 ms), rejoués en nuage : position, éparpillement, taille, densité, hauteur… On crée comme un enfant (une touche),
+   on peaufine comme un scientifique (chaque paramètre du nuage). */
+const GR_DEG_MAJ = ["I", "ii", "iii", "IV", "V", "vi", "vii°"], GR_DEG_MIN = ["i", "ii°", "III", "iv", "v", "VI", "VII"];
+const GR_SCALE = { maj: [0, 2, 4, 5, 7, 9, 11], min: [0, 2, 3, 5, 7, 8, 10] };
+const GR_PRESETS = {
+  "Nuage":      { pos: 0.35, spray: 0.25, size: 0.18, dens: 28, pitch: 0, shim: 0.1, scan: 0.04, wide: 0.7, rel: 2.2, verb: 0.55, tone: 0.7, rev: 0 },
+  "Brume":      { pos: 0.5, spray: 0.6, size: 0.42, dens: 18, pitch: 0, shim: 0, scan: 0.01, wide: 0.9, rel: 4, verb: 0.75, tone: 0.45, rev: 0.15 },
+  "Shimmer":    { pos: 0.4, spray: 0.3, size: 0.22, dens: 36, pitch: 0, shim: 0.55, scan: 0.06, wide: 0.85, rel: 3, verb: 0.7, tone: 0.85, rev: 0 },
+  "Poussière":  { pos: 0.3, spray: 0.9, size: 0.03, dens: 70, pitch: 0, shim: 0.15, scan: 0, wide: 1, rel: 1.4, verb: 0.4, tone: 0.9, rev: 0.3 },
+  "Bégaiement": { pos: 0.2, spray: 0.05, size: 0.09, dens: 12, pitch: 0, shim: 0, scan: 0, wide: 0.3, rel: 0.8, verb: 0.25, tone: 0.75, rev: 0, sync: true },
+  "Gel":        { pos: 0.45, spray: 0.08, size: 0.3, dens: 40, pitch: -12, shim: 0.25, scan: 0, wide: 0.8, rel: 6, verb: 0.65, tone: 0.55, rev: 0.4 },
+};
+const GR = Object.assign({ key: 0, scale: "min", oct: 3, timbre: "verre", src: "accord", sev: false, sus: false, add9: false, hold: false, preset: "Nuage", bpm: 90 }, GR_PRESETS["Nuage"], store.get("atelier-grain", {}));
+GR.rt = { ac: null, held: new Set(), buf: null, grains: [], timer: 0, next: 0, scanPos: null, chord: [] };
+const grSave = () => { const o = {}; for (const k of Object.keys(GR)) if (k !== "rt") o[k] = GR[k]; store.set("atelier-grain", o); };
+// accord du degré d (0-6) dans le ton : tierces empilées ; 7e / sus / add9 en modificateurs (comme les boutons du HiChord)
+function grChord(d) {
+  const sc = GR_SCALE[GR.scale], at = k => sc[(d + k) % 7] + 12 * Math.floor((d + k) / 7);
+  let n = [at(0), GR.sus ? at(3) : at(2), at(4)]; if (GR.sev) n.push(at(6)); if (GR.add9) n.push(at(8));
+  const root = 12 * (GR.oct + 1) + GR.key; return n.map(x => root + x);
+}
+const grHz = m => 440 * Math.pow(2, (m - 69) / 12);
+// tables d'onde (un cycle) : le timbre de la source avant découpe en grains
+const GR_WT = {};
+function grTable(kind) {
+  if (GR_WT[kind]) return GR_WT[kind]; const N = 2048, t = new Float32Array(N), H = kind === "corde" ? 24 : kind === "voix" ? 14 : 5;
+  for (let h = 1; h <= H; h++) { const a = kind === "corde" ? 1 / h : kind === "voix" ? (h % 2 ? 1 / (h * h) : 0) * (1 + 2.5 * Math.exp(-((h - 5) ** 2) / 3)) : 1 / (h * h * h); for (let i = 0; i < N; i++) t[i] += a * Math.sin(2 * Math.PI * h * i / N); }
+  let m = 0; for (const v of t) m = Math.max(m, Math.abs(v)); for (let i = 0; i < N; i++) t[i] /= m; return (GR_WT[kind] = t);
+}
+// source : l'accord rendu en 4 s (2 voix légèrement désaccordées par note + respiration lente)
+function grRenderChord(ac, notes) {
+  const sr = ac.sampleRate, L = Math.round(sr * 4), b = ac.createBuffer(2, L, sr), T = grTable(GR.timbre), N = T.length;
+  for (let c = 0; c < 2; c++) { const d = b.getChannelData(c);
+    notes.forEach((m, k) => { for (const det of [-0.06, 0.06]) { const inc = grHz(m) * Math.pow(2, (det + (c ? 0.02 : -0.02)) / 12) / sr * N, a = 0.3 / notes.length; let ph = Math.random() * N;
+      for (let i = 0; i < L; i++) { d[i] += a * T[ph | 0] * (0.85 + 0.15 * Math.sin(i / sr * (0.7 + k * 0.23) * 2 * Math.PI)); ph += inc; if (ph >= N) ph -= N; } } }); }
+  return b;
+}
+function grEnsure() {
+  const R = GR.rt; if (R.ac) { if (R.ac.state === "suspended") R.ac.resume(); return R.ac; }
+  const ac = R.ac = new (window.AudioContext || window.webkitAudioContext)();
+  R.bus = ac.createGain(); R.flt = ac.createBiquadFilter(); R.flt.type = "lowpass"; R.amp = ac.createGain(); R.amp.gain.value = 0;
+  R.dry = ac.createGain(); R.wet = ac.createGain(); R.cv = ac.createConvolver(); R.cv.buffer = spIR(ac, "hall");
+  R.out = ac.createGain(); R.out.gain.value = 2.4; const comp = ac.createDynamicsCompressor(); comp.threshold.value = -10; comp.ratio.value = 8; comp.attack.value = 0.005; comp.release.value = 0.2;
+  R.bus.connect(R.flt); R.flt.connect(R.amp); R.amp.connect(R.dry); R.amp.connect(R.cv); R.cv.connect(R.wet); R.dry.connect(R.out); R.wet.connect(R.out); R.out.connect(comp); comp.connect(ac.destination);
+  R.rec = ac.createMediaStreamDestination(); comp.connect(R.rec); R.ana = ac.createAnalyser(); R.ana.fftSize = 1024; comp.connect(R.ana);
+  grApplyFx(); return ac;
+}
+function grApplyFx() { const R = GR.rt; if (!R.ac) return; const t = R.ac.currentTime; R.flt.frequency.setTargetAtTime(200 * Math.pow(90, GR.tone), t, 0.05); R.dry.gain.setTargetAtTime(1 - GR.verb * 0.7, t, 0.05); R.wet.gain.setTargetAtTime(GR.verb * 1.3, t, 0.05); }
+function grSource() { return GR.src === "echant" && typeof SM !== "undefined" && SM.buf ? SM.buf : GR.rt.buf; }
+// le moteur : un ordonnanceur qui pose des grains un peu en avance (Poisson autour de la densité)
+function grTick() {
+  const R = GR.rt, ac = R.ac; if (!ac) return; const B = grSource(); if (!B) return;
+  const now = ac.currentTime, horizon = now + 0.12;
+  if (R.next < now) R.next = now;
+  if (R.scanPos == null) R.scanPos = GR.pos;
+  while (R.next < horizon) {
+    const t = R.next, size = Math.max(0.01, GR.size * (0.85 + 0.3 * Math.random()));
+    R.scanPos = (R.scanPos + GR.scan * (1 / Math.max(1, GR.dens)) + 1) % 1;
+    let p = (GR.scan ? R.scanPos : GR.pos) + (Math.random() - 0.5) * GR.spray; p = ((p % 1) + 1) % 1;
+    const off = Math.min(B.duration - size - 0.01, Math.max(0, p * B.duration));
+    let semi = GR.pitch; if (Math.random() < GR.shim) semi += Math.random() < 0.7 ? 12 : 19;
+    if (GR.src === "echant" && R.chord.length) semi += R.chord[(Math.random() * R.chord.length) | 0] - R.chord[0];   // échantillon : chaque grain prend une note de l'accord
+    const rate = Math.pow(2, semi / 12), src = ac.createBufferSource(), g = ac.createGain(), pan = ac.createStereoPanner ? ac.createStereoPanner() : null;
+    src.buffer = B; src.playbackRate.value = rate; if (GR.rev && Math.random() < GR.rev) src.playbackRate.value = rate * 0.5;   // « reverse » simulé : grains plus graves et lents
+    const env = new Float32Array(32); for (let i = 0; i < 32; i++) env[i] = Math.sin(Math.PI * i / 31) ** 2 * 0.55;   // fenêtre de Hann : pas de clic
+    g.gain.setValueAtTime(0, t); try { g.gain.setValueCurveAtTime(env, t, size); } catch {}
+    src.connect(g); if (pan) { pan.pan.value = (Math.random() * 2 - 1) * GR.wide; g.connect(pan); pan.connect(R.bus); } else g.connect(R.bus);
+    src.start(t, off, size * rate + 0.02); src.stop(t + size + 0.05);
+    R.grains.push({ p: off / B.duration, s: semi, t, d: size }); if (R.grains.length > 400) R.grains.splice(0, R.grains.length - 400);
+    const dens = Math.max(1, GR.dens); R.next += GR.sync ? 60 / GR.bpm / 4 : -Math.log(1 - Math.random()) / dens;
+  }
+}
+function grStart() { const R = GR.rt; if (R.timer) return; R.timer = setInterval(grTick, 25); }
+function grStop() { const R = GR.rt; clearInterval(R.timer); R.timer = 0; }
+function grPress(d) {
+  const ac = grEnsure(), R = GR.rt; R.held.add(d); R.lastDeg = d;
+  R.chord = grChord(d); if (GR.src !== "echant" || !SM?.buf) R.buf = grRenderChord(ac, R.chord);
+  R.scanPos = null; const t = ac.currentTime; R.amp.gain.cancelScheduledValues(t); R.amp.gain.setTargetAtTime(1, t, 0.04); grStart();
+}
+function grRelease(d) {
+  const R = GR.rt; R.held.delete(d); if (R.held.size || GR.hold || !R.ac) return;
+  const t = R.ac.currentTime; R.amp.gain.cancelScheduledValues(t); R.amp.gain.setTargetAtTime(0, t, GR.rel / 4);
+  clearTimeout(R.stopT); R.stopT = setTimeout(() => { if (!R.held.size && !GR.hold) grStop(); }, GR.rel * 1500 + 300);
+}
+function grPanic() { const R = GR.rt; R.held.clear(); if (R.ac) { const t = R.ac.currentTime; R.amp.gain.cancelScheduledValues(t); R.amp.gain.setTargetAtTime(0, t, 0.3); } setTimeout(grStop, 900); }
+function wPGrain(host) {
+  if (!document.getElementById("gr-css")) { const c = document.createElement("style"); c.id = "gr-css"; c.textContent = GR_CSS; document.head.append(c); }
+  const deg = GR.scale === "maj" ? GR_DEG_MAJ : GR_DEG_MIN;
+  host.innerHTML = `<div class="gr">
+    <section class="gr-dev sp-card">
+      <div class="gr-row"><div class="gr-screen"><canvas id="gr-cv" width="720" height="300"></canvas><span id="gr-lab"></span></div></div>
+      <div class="gr-keys">${deg.map((l, i) => `<button class="gr-key" data-d="${i}"><b>${l}</b><small>${i + 1}</small></button>`).join("")}</div>
+      <div class="gr-mods ir-chips"><button class="w-chip" data-mod="sev" aria-pressed="${GR.sev}">7e</button><button class="w-chip" data-mod="sus" aria-pressed="${GR.sus}">sus4</button><button class="w-chip" data-mod="add9" aria-pressed="${GR.add9}">add9</button><button class="w-chip" data-mod="hold" aria-pressed="${GR.hold}">Tenir ∞</button><button class="w-chip" data-a="panic">Silence</button></div>
+      <p class="sp-hint">Une touche = un accord (touches 1 à 7 du clavier). Les modificateurs changent la couleur : 7e = plus jazz, sus4 = suspendu, add9 = plus ouvert. « Tenir » gèle le nuage, comme la Microcosm.</p>
+    </section>
+    <section class="gr-ctl sp-card">
+      <div class="w-sec">Ton</div><div class="ir-chips" id="gr-key"></div>
+      <div class="ir-chips"><button class="w-chip" data-sc="maj" aria-pressed="${GR.scale === "maj"}">Majeur</button><button class="w-chip" data-sc="min" aria-pressed="${GR.scale === "min"}">Mineur</button><button class="w-chip" data-oc="-1">Octave −</button><button class="w-chip" data-oc="1">Octave +</button></div>
+      <div class="w-sec">Source des grains</div><div class="ir-chips"><button class="w-chip" data-src="accord" aria-pressed="${GR.src === "accord"}">L'accord</button><button class="w-chip" data-src="echant" aria-pressed="${GR.src === "echant"}">Mon échantillon</button></div>
+      <div class="ir-chips" id="gr-tim"></div>
+      <div class="w-sec">Nuage</div><div class="ir-chips" id="gr-pre"></div>
+      <div class="ir-sl" id="gr-sl"></div>
+      <div class="ir-chips" style="margin-top:6px"><button class="w-chip" data-a="rec">● Enregistrer</button></div>
+      <p class="sp-hint">Comment ça marche : le son est découpé en grains de quelques millisecondes, chacun avec une petite enveloppe en cloche (pas de clic), rejoués par dizaines chaque seconde. Taille courte = texture granuleuse, longue = nappe. Éparpillement = le nuage pioche partout dans le son. Défilement = la tête de lecture avance toute seule (étirement temporel).</p>
+    </section></div>`;
+  const kbox = host.querySelector("#gr-key"); SY_KEYS.forEach((n, i) => { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = n; b.setAttribute("aria-pressed", GR.key === i); b.onclick = () => { GR.key = i; grSave(); kbox.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); }; kbox.append(b); });
+  host.querySelectorAll("[data-sc]").forEach(b => b.onclick = () => { GR.scale = b.dataset.sc; grSave(); uisClick(); wPGrain(host); });
+  host.querySelectorAll("[data-oc]").forEach(b => b.onclick = () => { GR.oct = Math.max(1, Math.min(5, GR.oct + +b.dataset.oc)); grSave(); uisClick(); wToast("Octave " + GR.oct); });
+  host.querySelectorAll("[data-src]").forEach(b => b.onclick = () => { if (b.dataset.src === "echant" && !(typeof SM !== "undefined" && SM.buf)) { wToast("Charge d'abord un son dans l'onglet Échantillons"); return; } GR.src = b.dataset.src; grSave(); host.querySelectorAll("[data-src]").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); });
+  const tim = host.querySelector("#gr-tim"); for (const [k, l] of [["verre", "Verre"], ["corde", "Cordes"], ["voix", "Voix"]]) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", GR.timbre === k); b.onclick = () => { GR.timbre = k; grSave(); tim.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); if (GR.rt.held.size || GR.hold) { const R = GR.rt; if (R.ac && R.chord.length) R.buf = grRenderChord(R.ac, R.chord); } }; tim.append(b); }
+  host.querySelectorAll("[data-mod]").forEach(b => b.onclick = () => { const k = b.dataset.mod; GR[k] = !GR[k]; b.setAttribute("aria-pressed", GR[k]); grSave(); uisSwitch(GR[k]); if (k === "hold" && !GR.hold && !GR.rt.held.size) grRelease(-1); });
+  host.querySelector('[data-a="panic"]').onclick = () => { GR.hold = false; host.querySelector('[data-mod="hold"]').setAttribute("aria-pressed", false); grPanic(); };
+  const SL = [["pos", "Position", 0, 1, 0.01, v => Math.round(v * 100) + " %"], ["spray", "Éparpillement", 0, 1, 0.01, v => Math.round(v * 100) + " %"], ["size", "Taille du grain", 0.01, 0.5, 0.005, v => Math.round(v * 1000) + " ms"], ["dens", "Densité", 2, 90, 1, v => v + " /s"],
+    ["pitch", "Hauteur", -24, 12, 1, v => (v > 0 ? "+" : "") + v + " dt"], ["shim", "Scintillement", 0, 1, 0.01, v => Math.round(v * 100) + " %"], ["scan", "Défilement", -0.3, 0.3, 0.005, v => (v * 100).toFixed(1) + " %"], ["wide", "Largeur stéréo", 0, 1, 0.01, v => Math.round(v * 100) + " %"],
+    ["rel", "Relâche", 0.2, 8, 0.1, v => v.toFixed(1) + " s"], ["verb", "Réverbe", 0, 1, 0.01, v => Math.round(v * 100) + " %"], ["tone", "Filtre", 0, 1, 0.01, v => Math.round(200 * Math.pow(90, v)) + " Hz"], ["rev", "Grains graves", 0, 1, 0.01, v => Math.round(v * 100) + " %"]];
+  const sl = host.querySelector("#gr-sl"), inputs = {};
+  for (const [k, l, mn, mx, st, f] of SL) { const w = document.createElement("label"); w.className = "w-fx-tr"; w.dataset.learn = "gr:" + k; w.innerHTML = `<small>${l}</small><output></output><input class="w-range" type="range" min="${mn}" max="${mx}" step="${st}">`; const r = w.querySelector("input"), o = w.querySelector("output"); r.value = GR[k]; o.textContent = f(+GR[k]); r.oninput = () => { GR[k] = +r.value; o.textContent = f(GR[k]); grSave(); grApplyFx(); }; inputs[k] = [r, o, f]; sl.append(w); }
+  const pre = host.querySelector("#gr-pre"); for (const k of Object.keys(GR_PRESETS)) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = k; b.setAttribute("aria-pressed", GR.preset === k); b.onclick = () => { Object.assign(GR, { sync: false }, GR_PRESETS[k]); GR.preset = k; grSave(); grApplyFx(); for (const [kk, [r, o, f]] of Object.entries(inputs)) { r.value = GR[kk]; o.textContent = f(+GR[kk]); } pre.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); }; pre.append(b); }
+  // touches
+  host.querySelectorAll(".gr-key").forEach(b => { const d = +b.dataset.d;
+    b.addEventListener("pointerdown", e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add("on"); grPress(d); });
+    const up = () => { if (!b.classList.contains("on")) return; b.classList.remove("on"); grRelease(d); }; b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up); });
+  const kd = e => { if (!host.isConnected) { removeEventListener("keydown", kd, true); removeEventListener("keyup", ku, true); return; } const m = /^Digit([1-7])$/.exec(e.code); if (!m || e.repeat || e.target.closest("input,textarea")) return; e.preventDefault(); e.stopPropagation(); const d = +m[1] - 1; host.querySelector(`.gr-key[data-d="${d}"]`)?.classList.add("on"); grPress(d); };
+  const ku = e => { const m = /^Digit([1-7])$/.exec(e.code); if (!m || !host.isConnected) return; const d = +m[1] - 1; host.querySelector(`.gr-key[data-d="${d}"]`)?.classList.remove("on"); grRelease(d); };
+  addEventListener("keydown", kd, true); addEventListener("keyup", ku, true);
+  // enregistrement (ce que tu joues, en direct)
+  const rb = host.querySelector('[data-a="rec"]');
+  rb.onclick = () => { const R = GR.rt; grEnsure();
+    if (R.mr && R.mr.state === "recording") { R.mr.stop(); return; }
+    const chunks = []; R.mr = new MediaRecorder(R.rec.stream); R.mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+    R.mr.onstop = async () => { rb.textContent = "● Enregistrer"; rb.setAttribute("aria-pressed", false); const blob = new Blob(chunks, { type: R.mr.mimeType || "audio/webm" });
+      try { const ab = await R.ac.decodeAudioData(await blob.arrayBuffer()); offerBlob(syWav(ab), "tnb_granulaire.wav"); } catch { offerBlob(blob, "tnb_granulaire.webm"); } uisYes(); };
+    R.mr.start(); rb.textContent = "■ Arrêter et garder"; rb.setAttribute("aria-pressed", true); uisSwitch(true); };
+  // écran : la forme d'onde de la source + les grains qui naissent et s'éteignent (comme l'écran du lemondrop)
+  const cv = host.querySelector("#gr-cv"), x = cv.getContext("2d"), lab = host.querySelector("#gr-lab"); let wave = null, waveOf = null;
+  const draw = () => {
+    if (!cv.isConnected) return; requestAnimationFrame(draw);
+    const W = cv.width, H = cv.height, R = GR.rt, B = grSource(); x.clearRect(0, 0, W, H);
+    x.fillStyle = "#0e0f14"; x.fillRect(0, 0, W, H);
+    if (B && waveOf !== B) { waveOf = B; const d = B.getChannelData(0), n = W, st = Math.floor(d.length / n); wave = new Float32Array(n); for (let i = 0; i < n; i++) { let m = 0; for (let j = 0; j < st; j += 8) m = Math.max(m, Math.abs(d[i * st + j])); wave[i] = m; } }
+    if (wave) { x.fillStyle = "rgba(255,255,255,.14)"; for (let i = 0; i < W; i++) { const h = wave[i] * H * 0.42; x.fillRect(i, H / 2 - h, 1, 2 * h); } }
+    const p0 = (GR.scan && R.scanPos != null ? R.scanPos : GR.pos) * W, sw = GR.spray * W; x.fillStyle = "rgba(255,210,63,.12)"; x.fillRect(p0 - sw / 2, 0, sw, H); x.fillStyle = "#ffd23f"; x.fillRect(p0 - 1, 0, 2, H);
+    const now = R.ac ? R.ac.currentTime : 0, cols = (typeof IRIS !== "undefined" && IRIS.stops) ? IRIS.stops.map(s => s[1]) : ["#ff5fa2", "#33c4ff", "#ffd23f"];
+    for (const g of R.grains) { const age = now - g.t; if (age < 0 || age > g.d + 0.6) continue; const a = age < g.d ? 1 : 1 - (age - g.d) / 0.6; x.globalAlpha = Math.max(0, a) * 0.9; x.fillStyle = cols[(Math.abs(g.s) / 12 | 0) % cols.length]; const y = H / 2 - g.s * H / 60 + (g.p * 997 % 1 - 0.5) * H * 0.5; x.beginPath(); x.arc(g.p * W, y, 2 + g.d * 30, 0, Math.PI * 2); x.fill(); }
+    x.globalAlpha = 1;
+    const deg = GR.scale === "maj" ? GR_DEG_MAJ : GR_DEG_MIN; lab.textContent = R.chord.length ? `${deg[R.lastDeg ?? 0]} · ${R.chord.map(m => SY_KEYS[m % 12]).join(" ")}${GR.hold ? " · tenu" : ""}` : "Touche un accord";
+  };
+  requestAnimationFrame(draw);
+}
+const GR_CSS = `
+.gr { display: grid; grid-template-columns: minmax(300px, 1.1fr) minmax(320px, 440px); gap: 22px; max-width: 1240px; margin: 0 auto; padding: 84px 22px 150px; align-items: start; }
+.gr-dev { border-radius: 30px; padding: 18px; background: linear-gradient(160deg, #f3f2ee, #dedcd6); box-shadow: inset 0 1px 0 #fff, 0 24px 60px rgba(40,40,60,.18); display: flex; flex-direction: column; gap: 14px; }
+.gr-screen { position: relative; border-radius: 16px; overflow: hidden; background: #0e0f14; box-shadow: inset 0 0 0 3px #2a2b33, 0 2px 0 #fff; }
+.gr-screen canvas { width: 100%; display: block; aspect-ratio: 720 / 300; }
+.gr-screen span { position: absolute; left: 12px; top: 8px; font: 600 12px var(--f-accent); color: #ffd23f; letter-spacing: .06em; }
+.gr-keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+.gr-key { aspect-ratio: 0.8; border-radius: 14px; border: 0; background: linear-gradient(180deg, #fbfbf8, #e7e5df); box-shadow: 0 5px 0 #c9c6be, 0 8px 16px rgba(40,40,60,.15); cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #1b1d22; touch-action: none; user-select: none; transition: transform .06s, box-shadow .06s; }
+.gr-key b { font: 600 18px var(--f-main); } .gr-key small { font: 11px var(--f-accent); opacity: .45; }
+.gr-key.on { transform: translateY(4px); box-shadow: 0 1px 0 #c9c6be, 0 0 0 3px #ffd23f, 0 0 26px rgba(255,210,63,.55); }
+.gr-ctl { border-radius: 26px; padding: 16px 18px; background: rgba(250,250,253,.92); display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+@media (max-width: 900px) { .gr { grid-template-columns: 1fr; padding: 72px 12px 150px; } .gr-keys { gap: 5px; } .gr-key b { font-size: 14px; } }
 `;
 
 </script>
