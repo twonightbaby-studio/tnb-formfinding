@@ -4616,7 +4616,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -6238,7 +6238,16 @@ function syPicker(anchor, T, i) {
   const groups = [["Batterie", Object.keys(SY_INST).filter(k => (SY_INST[k].kind === "drum" || k === "tom" || k === "k808") && !TX.includes(k) && !SY_INST[k].ac)], ["Batterie acoustique", Object.keys(SY_INST).filter(k => SY_INST[k].ac)], ["Basses", ["fbass", "sub", "k808", "reese", "growl", "acid"]], ["Accords", ["keys", "pad", "strings", "choir", "stab"]], ["Mélodie", ["piano", "flute", "vox", "chop", "lead", "hoover"]], ["Cuivres", ["trumpet", "mute", "horns", "brass"]], ["Textures", TX], ["Cloches (à doser)", ["bell", "glass", "pluck"]]];
   m.innerHTML = groups.map(([g, ks]) => `<div class="w-sec">${g}</div><div class="sy-pick-g">${ks.map(k => `<button class="w-chip" data-k="${k}" aria-pressed="${T.inst === k}">${SY_INST[k].lab}</button>`).join("")}</div>`).join("");
   m.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); T.inst = b.dataset.k; T.steps = T.steps.map(st => st ? Object.assign({ v: SY_INST[T.inst].roll ? st.v : 1, d: st.d || 0 }, st.l > 1 ? { l: st.l } : {}, st.g ? { g: true } : {}) : 0); if (SY.ch && SY.ch[i]) { try { SY.ch[i].vol.disconnect(); } catch {} SY.ch[i] = null; } syAudition(T, i, T.steps.find(Boolean) || { v: 1, d: 0 }); sySave(); m.remove(); syRender(); });
-  anchor.closest(".sy-tr").append(m);
+  // fenêtre flottante, toujours entièrement visible : elle défile toute seule si la liste est plus haute que l'écran
+  document.body.append(m); m.style.position = "fixed";
+  const place = () => {
+    const r = anchor.getBoundingClientRect(), w = Math.min(440, innerWidth - 24), below = innerHeight - r.bottom - 16, above = r.top - 16;
+    m.style.width = w + "px"; m.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left)) + "px";
+    if (below >= 320 || below >= above) { m.style.top = (r.bottom + 6) + "px"; m.style.bottom = ""; m.style.maxHeight = Math.max(200, below) + "px"; }
+    else { m.style.top = ""; m.style.bottom = (innerHeight - r.top + 6) + "px"; m.style.maxHeight = Math.max(200, above) + "px"; }
+  };
+  place(); const host = document.getElementById("sy-host"); const onScroll = () => { if (!m.isConnected) { host && host.removeEventListener("scroll", onScroll); return; } place(); }; if (host) host.addEventListener("scroll", onScroll);
+  m.addEventListener("wheel", e => e.stopPropagation(), { passive: true });
   setTimeout(() => document.addEventListener("pointerdown", function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("pointerdown", off, true); } }, true), 0);
 }
 function syStepView() {
@@ -6292,7 +6301,7 @@ const SY_CSS = `
 .sy-knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: rgba(27,29,34,.8); transform-origin: 1px 13px; transform: rotate(var(--a)); }
 .sy-knob.on { box-shadow: 0 0 0 2px hsl(var(--h, 262), 50%, 60%), 0 2px 8px rgba(0,0,0,.2); }
 .sy-top .sy-knob { width: 40px; height: 40px; } .sy-top .sy-knob::after { transform-origin: 1px 16px; } .sy-top .sy-knob::before { -webkit-mask: radial-gradient(circle, transparent 22px, #000 22.5px); mask: radial-gradient(circle, transparent 22px, #000 22.5px); }
-.sy-pick { position: absolute; left: 10px; top: 52px; z-index: 6; width: min(420px, calc(100vw - 48px)); padding: 12px; border-radius: 20px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-direction: column; gap: 6px; }
+.sy-pick { position: fixed; z-index: 90; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; font-size: 12px; padding: 12px; border-radius: 20px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-direction: column; gap: 6px; }
 .sy-pick-g { display: flex; flex-wrap: wrap; gap: 5px; }
 @media (max-width: 900px) {
   .sy { padding: 72px 12px 150px; }
