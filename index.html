@@ -6117,8 +6117,8 @@ function syMutate() {
 
 /* Interface */
 function wPSynth(host) {
-  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf" data-learn="pf"><div class="pf-head"><b>La forme de ta prod</b><button class="w-chip" id="pf-clip" title="Exporte un clip vidéo de la forme, avec le son, de la même durée que la prod">🎬 Clip</button></div>
-    <canvas id="pf-cv" class="pf-cv" width="240" height="240"></canvas><div class="pf-leg" id="pf-leg"></div><span class="pf-note" id="pf-note">Chaque son, bouton et effet sculpte la forme ; chaque coup la fait réagir. Le clip dure exactement comme la prod.</span></aside>
+  host.innerHTML = `<div class="sy-wrap"><aside class="pf" id="pf"><canvas id="pf-cv" class="pf-cv" width="280" height="280" data-learn="pf"></canvas>
+    <button class="w-chip" id="pf-clip" title="Exporte un clip vidéo de la forme, avec le son, de la même durée que la prod">🎬 Clip</button><span class="pf-note" id="pf-note"></span><div class="pf-leg" id="pf-leg" hidden></div></aside>
   <div class="sy${SY.learn ? " learn" : ""}">
     <div class="sp-card ln-live" id="ln-live" hidden></div>
     <div class="sy-top sp-card">
@@ -8547,7 +8547,7 @@ const PF_INST = {     // instrument → [gène, poids, libellé de la déformati
 };
 const PF_PRESET = { Propre: "encre", Cassette: "riso", Vinyle: "papier", Radio: "plan", Club: "neon", Nuit: "holo", Glitch: "glitch" };
 const PF_POSTSTYLE = { tape: "usure", vinyl: "grain", lofi: "pixel", glue: "lissage", wide: "aberration", wash: "echo" };
-const PF_FXSTYLE = { crush: "pixel", echo: "echo", chorus: "aberration", phaser: "lignes", stutter: "trainee", pan: "trainee", ring: "contour", wobble: "rugosite", octave: "vignette", pump: "vignette" };
+const PF_FXSTYLE = { crush: "pixel", echo: "echo", chorus: "aberration", phaser: "lignes", stutter: "trainee", pan: "trainee", ring: "contour", wobble: "rugosite", octave: "trainee", pump: "echo" };
 const PF = { on: true, g: null, pulse: new Float32Array(0), q: [], last: 0, busy: false, seed: 7, exporting: false };
 const pfAmp = k => GENES[IDX[k]] && GENES[IDX[k]].amp;
 function pfSeed(r) { let h = 2166136261; for (const T of r.tracks) for (const c of T.inst) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) % 100000 + 1; }
@@ -8585,7 +8585,7 @@ function pfHit(pulse, inst, deg, track, v) {
 }
 function pfRender(r, g, T, out) {
   const save = S.styles; S.styles = pfStyles(r);
-  try { const m = renderStar(g, PF.seed, T).mask, px = finish(m, T, PF.seed, pfPreset(r)); out.getContext("2d").putImageData(new ImageData(px, T, T), 0, 0); }
+  try { const m = renderStar(g, PF.seed, T).mask, px = finish(m, T, PF.seed, pfPreset(r)); out.getContext("2d").putImageData(new ImageData(out.id === "pf-cv" ? wClearBg(px, T) : px, T, T), 0, 0); }
   finally { S.styles = save; }
 }
 // Direct : on lit l'état du Synthé et les coups programmés
@@ -8671,18 +8671,16 @@ async function pfClip() {
   finally { PF.exporting = false; if (btn) btn.disabled = false; if (was) syRun(true); }
 }
 const PF_CSS = `
-.sy-wrap { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; max-width: 1600px; margin: 0 auto; padding: 80px 24px 150px; align-items: start; }
+.sy-wrap { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 16px; max-width: 1600px; margin: 0 auto; padding: 80px 24px 150px; align-items: start; }
 .sy-wrap > .sy { padding: 0; max-width: none; margin: 0; min-width: 0; }
-.pf { position: sticky; top: 80px; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 26px; background: rgba(250,250,253,.88); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 14px 40px rgba(40,40,90,.08); font-size: 12px; }
-.pf-cv { width: 100%; aspect-ratio: 1; border-radius: 18px; background: #f3f3f6; display: block; }
-.pf-leg { display: flex; flex-wrap: wrap; gap: 5px; } .pf-leg span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; background: rgba(27,29,34,.05); font-size: 10px; }
-.pf-leg i { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h), 45%, 50%); } .pf-leg .pf-r { background: none; opacity: .55; }
-.pf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .pf-head b { font-size: 12px; }
-.pf-note { font-size: 10px; opacity: .65; min-height: 14px; }
+.pf { position: sticky; top: 0; margin-top: -80px; height: calc(100vh - var(--wall-h, 0px)); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.pf-cv { width: min(100%, 320px); aspect-ratio: 1; display: block; background: none; }
+.pf-note { font-size: 10px; opacity: .6; min-height: 14px; text-align: center; max-width: 260px; }
+.pf-leg[hidden] { display: none; }
 @media (max-width: 900px) {
-  .sy-wrap { grid-template-columns: 1fr; padding: 72px 12px 150px; gap: 12px; }
-  .pf { position: relative; top: 0; display: grid; grid-template-columns: 132px 1fr; align-items: start; }
-  .pf-cv { grid-row: span 3; }
+  .sy-wrap { grid-template-columns: 1fr; padding: 72px 12px 150px; gap: 8px; }
+  .pf { position: relative; top: 0; margin: 0; height: auto; }
+  .pf-cv { width: 180px; }
 }`;
 /* ---------- Le mur : un bandeau en béton tagué avec tes formes, et des riders qui glissent, font des tricks et dansent sur la musique ---------- */
 const WALL = { el: null, cv: null, x: null, W: 0, H: 0, dpr: 1, tex: null, tags: [], riders: [], on: store.get("atelier-wall", true), raf: 0, last: 0, beat: { t: 0, n: 0, en: 0, avg: 0.02, lastOn: 0, ph: 0 }, an: null, buf: null, key: "" };
