@@ -4437,7 +4437,8 @@ const W_ISLANDS = [
   { k: "diffusion", lab: "Diffusion", r: 260, note: 60, a: [0.62, 0.95], p: [0.62, 1.05] },
   { k: "dj", lab: "Platines", r: 260, note: 55, a: [-1.3, 0.9], p: [-0.62, 1.95] },
   { k: "learn", lab: "Apprendre", r: 250, note: 62, a: [1.3, 0.9], p: [0.62, 1.95] },
-  { k: "iris", lab: "Couleurs", r: 240, note: 64, a: [0, 1.25], p: [0, 1.5] },
+  { k: "iris", lab: "Couleurs", r: 240, note: 64, a: [-0.42, 1.35], p: [-0.36, 2.75] },
+  { k: "pavage", lab: "Pavages", r: 240, note: 67, a: [0.42, 1.35], p: [0.36, 2.75] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4585,7 +4586,7 @@ body.world { overflow: hidden; }
 <div id="w-mark">TwoNightBaby · formfinding</div>
 <div id="w-hint">Glisse pour te déplacer · zoome · touche une forme ou un îlot</div>
 <div id="w-panel"></div>
-<div id="w-node" class="w-glass-ui" role="dialog" aria-label="Forme choisie"><span class="w-info"></span><button class="w-n" title="Non">✕</button><button class="w-m" title="Voir sur un vêtement">◐</button><button class="w-y" title="Oui">✓</button></div>
+<div id="w-node" class="w-glass-ui" role="dialog" aria-label="Forme choisie"><span class="w-info"></span><button class="w-n" title="Non">✕</button><button class="w-m" title="Voir sur un vêtement">◐</button><button class="w-c" title="En faire un personnage">✎</button><button class="w-y" title="Oui">✓</button></div>
 <div class="w-sheet w-glass-ui" id="w-coll" role="dialog" aria-label="Ma collection"></div>
 <div class="w-sheet w-glass-ui" id="w-pop" role="dialog" aria-label="Profil"></div>
 <nav id="w-bubbles" aria-label="Raccourcis">
@@ -4656,7 +4657,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".ir, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -4733,6 +4734,7 @@ function worldEvents() {
   nd.querySelector(".w-y").onclick = () => wVoteNode(1);
   nd.querySelector(".w-n").onclick = () => wVoteNode(-1);
   nd.querySelector(".w-m").onclick = () => { const n = WORLD.sel; if (n) { uisClick(); openMockup(n.scene); } };
+  nd.querySelector(".w-c").onclick = () => { const n = WORLD.sel; if (n) { uisClick(); chOpen(n.scene); } };
 
   // Clavier : quand le monde est affiché, les raccourcis de l'ancienne vue sont coupés
   const smOn = () => WORLD.panelKey === "sampler" && store.get("atelier-sampler-mode", "synthe") === "echant" && typeof SM !== "undefined" && SM.buf;
@@ -5040,6 +5042,9 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "pavage") {                      // petits hexagones qui pavent
+    for (const [ox, oy] of [[0, 0], [0.52, 0], [-0.52, 0], [0.26, 0.45], [-0.26, 0.45], [0.26, -0.45], [-0.26, -0.45]]) for (let q = 0; q <= 6; q++) { const a = q * Math.PI / 3 + Math.PI / 6, px = cx + (ox + Math.cos(a) * 0.29) * s, py = cy + (oy + Math.sin(a) * 0.29) * s; if (q) x.lineTo(px, py); else x.moveTo(px, py); }
+    x.stroke();
   } else if (k === "iris") {                        // écailles irisées
     for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) { const ox = (i - 1) * 0.36 + (j % 2) * 0.18 - 0.09, oy = (j - 1) * 0.3; x.moveTo(cx + (ox + 0.17) * s, cy + oy * s); x.arc(cx + ox * s, cy + oy * s, 0.17 * s, 0, Math.PI); }
     x.stroke();
@@ -5146,7 +5151,7 @@ function wPanel(k) {
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5188,7 +5193,7 @@ function wSyncCards() {
 function wFillCard(el, sc) {
   el.dataset.id = sc.id;
   el.innerHTML = `<div class="w-glass" tabindex="0"><canvas></canvas><span class="w-badge">✓</span></div>
-  <div class="w-act"><button class="w-glass-ui w-n" title="Non">✕</button><button class="w-glass-ui w-m" title="Voir sur un vêtement">◐</button><button class="w-glass-ui w-y" title="Oui">✓</button></div>`;
+  <div class="w-act"><button class="w-glass-ui w-n" title="Non">✕</button><button class="w-glass-ui w-m" title="Voir sur un vêtement">◐</button><button class="w-glass-ui w-c" title="En faire un personnage">✎</button><button class="w-glass-ui w-y" title="Oui">✓</button></div>`;
   WORLD.cards.set(sc.id, el);
   const glass = el.querySelector(".w-glass"), cv = el.querySelector("canvas");
   wPaintInto(cv, sc, 240);
@@ -5209,6 +5214,7 @@ function wFillCard(el, sc) {
   el.querySelector(".w-y").onclick = () => vote(1);
   el.querySelector(".w-n").onclick = () => vote(-1);
   el.querySelector(".w-m").onclick = () => { uisClick(); openMockup(sc); };
+  el.querySelector(".w-c").onclick = () => { uisClick(); chOpen(sc); };
   glass.addEventListener("dblclick", () => vote(1));
   glass.addEventListener("keydown", e => { if (e.key === "ArrowUp" || e.key === "y") vote(1); if (e.key === "ArrowDown" || e.key === "n") vote(-1); });
 }
@@ -9863,6 +9869,255 @@ const JW_CSS = `
 @media (max-width: 900px) { #jw { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } .jw-side { border-left: 0; } }
 `;
 
+
+/* ---------- Personnage rapide : on masque, on ajoute, on peint une forme → personnage / illustration en cel shading ---------- */
+const CH = { docs: new Map(), opt: Object.assign({ style: "cel2", light: 225, line: 5, shadow: 0.55, inner: true, bg: "transparent", bgc: "#f3efe7", pal: ["#ff5fa2", "#ffd23f", "#33c4ff", "#6ef0a0", "#1b1d22", "#ffffff"] }, store.get("atelier-chara", {})) };
+const CH_TOOLS = [["peindre", "🖌 Peindre"], ["ajouter", "＋ Ajouter"], ["masquer", "✂ Masquer"], ["yeux", "◉ Yeux"]];
+const CH_STYLES = [["cel2", "Cel 2 tons"], ["cel3", "Cel 3 tons"], ["aplat", "Aplat"], ["trait", "Trait seul"]];
+const chHex = h => { const v = parseInt(h.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+function chDoc(scene, S) {
+  let d = CH.docs.get(scene.id); if (d && d.S === S) return d;
+  d = { S, base: renderSceneMask(scene, S).mask, add: new Float32Array(S * S), cut: new Float32Array(S * S), col: new Uint8Array(S * S), eyes: [], undo: [] };
+  CH.docs.set(scene.id, d); return d;
+}
+function chSnap(d) { d.undo.push({ add: d.add.slice(), cut: d.cut.slice(), col: d.col.slice(), eyes: d.eyes.map(e => Object.assign({}, e)) }); if (d.undo.length > 25) d.undo.shift(); }
+// Rendu cel shading : volume deviné depuis la silhouette (flou = bombé), lumière quantifiée en 2 ou 3 tons, contour + traits entre les zones de couleur
+function chRender(d, o, out) {
+  const S = d.S, N = S * S, sh = new Float32Array(N);
+  for (let i = 0; i < N; i++) sh[i] = Math.max(0, Math.min(1, d.base[i] + d.add[i] - d.cut[i]));
+  const A = boxBlur(sh, S, 1), H = boxBlur(boxBlur(sh, S, Math.round(S / 36)), S, Math.round(S / 48)), lw = Math.max(0, o.line) * S / 640, E = lw > 0 ? boxBlur(sh, S, Math.max(1, Math.round(lw))) : null;
+  const la = o.light * Math.PI / 180, L = [Math.cos(la), Math.sin(la), 0.9], ll = Math.hypot(...L); L[0] /= ll; L[1] /= ll; L[2] /= ll;
+  const pal = o.pal.map(chHex), sc = [58, 44, 110], k = S / 9;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x, a = Math.max(0, Math.min(1, (A[i] - 0.42) / 0.16)); const q = i * 4;
+    if (a <= 0) { out[q + 3] = 0; continue; }
+    const c = pal[d.col[i] ? d.col[i] - 1 : 0];
+    let r = c[0], g = c[1], b = c[2];
+    if (o.style === "trait") { r = g = b = 255; }
+    else if (o.style !== "aplat") {
+      const hx = (H[Math.min(N - 1, i + 1)] - H[Math.max(0, i - 1)]) * k, hy = (H[Math.min(N - 1, i + S)] - H[Math.max(0, i - S)]) * k, nl = Math.hypot(hx, hy, 1);
+      const lam = (-hx * L[0] - hy * L[1] + L[2]) / nl;
+      if (lam < 0.62) { const s = o.shadow; r = r * (1 - s) + r * sc[0] / 255 * s; g = g * (1 - s) + g * sc[1] / 255 * s; b = b * (1 - s) + b * sc[2] / 255 * s; }
+      else if (o.style === "cel3" && lam > 0.93) { r += (255 - r) * 0.55; g += (255 - g) * 0.55; b += (255 - b) * 0.55; }
+    }
+    let line = 0;
+    if (E && E[i] < 0.985 && sh[i] > 0.3) line = 1;   // contour extérieur
+    if (o.inner && !line && lw > 0) { const w = Math.max(1, Math.round(lw * 0.5)); const c0 = d.col[i]; if ((x + w < S && d.col[i + w] !== c0 && sh[i + w] > 0.5) || (y + w < S && d.col[i + w * S] !== c0 && sh[i + w * S] > 0.5)) line = 1; }
+    if (line) { r = g = b = o.style === "trait" ? 20 : 18; }
+    out[q] = r; out[q + 1] = g; out[q + 2] = b; out[q + 3] = a * 255;
+  }
+}
+function chDrawEyes(x, d, sc) {
+  for (const e of d.eyes) {
+    const X = e.x * sc, Y = e.y * sc, R = e.r * sc;
+    x.fillStyle = "#fff"; x.strokeStyle = "#121216"; x.lineWidth = Math.max(1.5, R * 0.18);
+    x.beginPath(); x.ellipse(X, Y, R * 0.82, R, 0, 0, Math.PI * 2); x.fill(); x.stroke();
+    x.fillStyle = "#121216"; x.beginPath(); x.ellipse(X + R * 0.18, Y + R * 0.12, R * 0.42, R * 0.52, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = "#fff"; x.beginPath(); x.arc(X + R * 0.02, Y - R * 0.12, R * 0.15, 0, Math.PI * 2); x.fill();
+  }
+}
+function chOpen(scene) {
+  if (!scene) { wToast("Choisis d'abord une forme"); return; }
+  if (!document.getElementById("ch-css")) { const c = document.createElement("style"); c.id = "ch-css"; c.textContent = CH_CSS; document.head.append(c); }
+  document.getElementById("ch")?.remove();
+  const S = 640, d = chDoc(scene, S), o = CH.opt; let tool = "peindre", brush = 22, colI = 1, eyeR = 26;
+  const el = document.createElement("div"); el.id = "ch";
+  el.innerHTML = `<div class="ch-stage"><canvas width="${S}" height="${S}"></canvas><div class="ch-hint">Dessine directement sur la forme · Ctrl+Z pour annuler</div></div>
+    <aside class="ch-side"><div class="ch-top"><b>Personnage</b><button class="w-pill w-glass-ui" data-a="close">✕ Fermer</button></div>
+      <div class="w-sec">Outil</div><div class="ir-chips" data-g="tool"></div>
+      <label class="w-fx-tr"><small>Taille du pinceau</small><output></output><input class="w-range" type="range" min="4" max="90" step="1" data-k="brush"></label>
+      <div class="w-sec">Couleurs <span>la première = le corps</span></div><div class="ch-pal"></div>
+      <div class="w-sec">Rendu</div><div class="ir-chips" data-g="style"></div>
+      <label class="w-fx-tr"><small>Lumière</small><output></output><input class="w-range" type="range" min="0" max="360" step="1" data-k="light"></label>
+      <label class="w-fx-tr"><small>Ombre</small><output></output><input class="w-range" type="range" min="0" max="1" step="0.01" data-k="shadow"></label>
+      <label class="w-fx-tr"><small>Contour</small><output></output><input class="w-range" type="range" min="0" max="16" step="0.5" data-k="line"></label>
+      <div class="ir-chips"><button class="w-chip" data-a="inner" aria-pressed="${o.inner}">Traits entre les couleurs</button><button class="w-chip" data-a="bg" aria-pressed="${o.bg !== "transparent"}">Fond coloré</button><label class="w-chip ch-bgc" ${o.bg === "transparent" ? "hidden" : ""}>Couleur du fond<input type="color" value="${o.bgc}"></label></div>
+      <div class="ir-chips" style="margin-top:6px"><button class="w-chip" data-a="undo">↶ Annuler</button><button class="w-chip" data-a="reset">Repartir de la forme</button><button class="w-chip" data-a="png">Télécharger (PNG)</button></div>
+      <p class="sp-hint">Masquer enlève de la matière, Ajouter en remet (un bras, une oreille…), Peindre colore une zone, Yeux pose un œil d'un clic (glisse pour sa taille). Le volume et les ombres sont devinés depuis la silhouette.</p>
+    </aside>`;
+  document.body.append(el); uisSwoosh(true);
+  const cv = el.querySelector("canvas"), x = cv.getContext("2d"), img = x.createImageData(S, S);
+  let raf = 0; const draw = () => { raf = 0; chRender(d, o, img.data); x.clearRect(0, 0, S, S); if (o.bg !== "transparent") { x.fillStyle = o.bgc; x.fillRect(0, 0, S, S); const t = document.createElement("canvas"); t.width = t.height = S; t.getContext("2d").putImageData(img, 0, 0); x.drawImage(t, 0, 0); } else x.putImageData(img, 0, 0); chDrawEyes(x, d, 1); };
+  const redraw = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  const save = () => store.set("atelier-chara", o);
+  const chips = (g, list, get, set) => { const box = el.querySelector(`[data-g="${g}"]`); for (const [k, l] of list) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", get() === k); b.onclick = () => { set(k); box.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); }; box.append(b); } };
+  chips("tool", CH_TOOLS, () => tool, k => { tool = k; cv.dataset.tool = k; }); cv.dataset.tool = tool;
+  chips("style", CH_STYLES, () => o.style, k => { o.style = k; save(); redraw(); });
+  const pal = el.querySelector(".ch-pal");
+  const drawPal = () => { pal.innerHTML = ""; o.pal.forEach((c, j) => { const w = document.createElement("label"); w.className = "ch-sw"; w.style.background = c; w.setAttribute("aria-pressed", colI === j + 1); w.innerHTML = `<input type="color" value="${c}">`; const inp = w.querySelector("input"); w.onclick = e => { if (colI !== j + 1) { e.preventDefault(); colI = j + 1; tool = "peindre"; el.querySelectorAll('[data-g="tool"] .w-chip').forEach((z, k) => z.setAttribute("aria-pressed", k === 0)); cv.dataset.tool = tool; drawPal(); uisClick(); } }; inp.oninput = () => { o.pal[j] = inp.value; w.style.background = inp.value; save(); redraw(); }; pal.append(w); }); };
+  drawPal();
+  const vals = { brush: () => brush, light: () => o.light, shadow: () => o.shadow, line: () => o.line }, fmt = { brush: v => v + " px", light: v => v + "°", shadow: v => Math.round(v * 100) + " %", line: v => v + " px" };
+  el.querySelectorAll("input[data-k]").forEach(r => { const k = r.dataset.k, out = r.parentElement.querySelector("output"); r.value = vals[k](); out.textContent = fmt[k](+r.value); r.oninput = () => { const v = +r.value; out.textContent = fmt[k](v); if (k === "brush") brush = v; else { o[k] = v; save(); redraw(); } }; });
+  el.querySelector('[data-a="inner"]').onclick = e => { o.inner = !o.inner; e.currentTarget.setAttribute("aria-pressed", o.inner); save(); redraw(); };
+  el.querySelector('[data-a="bg"]').onclick = e => { o.bg = o.bg === "transparent" ? "color" : "transparent"; e.currentTarget.setAttribute("aria-pressed", o.bg !== "transparent"); el.querySelector(".ch-bgc").hidden = o.bg === "transparent"; save(); redraw(); };
+  el.querySelector(".ch-bgc input").oninput = e => { o.bgc = e.target.value; save(); redraw(); };
+  const undo = () => { const u = d.undo.pop(); if (!u) return; d.add = u.add; d.cut = u.cut; d.col = u.col; d.eyes = u.eyes; uisClick(); redraw(); };
+  el.querySelector('[data-a="undo"]').onclick = undo;
+  el.querySelector('[data-a="reset"]').onclick = () => { chSnap(d); d.add.fill(0); d.cut.fill(0); d.col.fill(0); d.eyes = []; uisSwitch(false); redraw(); };
+  el.querySelector('[data-a="png"]').onclick = () => {
+    const K = 2, c2 = document.createElement("canvas"); c2.width = c2.height = S * K; const x2 = c2.getContext("2d"); x2.imageSmoothingQuality = "high";
+    if (o.bg !== "transparent") { x2.fillStyle = o.bgc; x2.fillRect(0, 0, S * K, S * K); }
+    const t = document.createElement("canvas"); t.width = t.height = S; t.getContext("2d").putImageData(img, 0, 0); x2.drawImage(t, 0, 0, S * K, S * K); chDrawEyes(x2, d, K);
+    c2.toBlob(b => offerBlob(b, `tnb_personnage_${o.style}.png`)); uisYes();
+  };
+  // dessin
+  const at = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * S, (e.clientY - r.top) / r.height * S]; };
+  const stamp = (px, py) => {
+    const R = brush, R2 = R * R, x0 = Math.max(0, Math.floor(px - R)), x1 = Math.min(S - 1, Math.ceil(px + R)), y0 = Math.max(0, Math.floor(py - R)), y1 = Math.min(S - 1, Math.ceil(py + R));
+    for (let y = y0; y <= y1; y++) for (let xx = x0; xx <= x1; xx++) { const dd = (xx - px) ** 2 + (y - py) ** 2; if (dd > R2) continue; const i = y * S + xx, soft = Math.min(1, (1 - Math.sqrt(dd) / R) * 3);
+      if (tool === "peindre") d.col[i] = colI === 1 ? 0 : colI;
+      else if (tool === "ajouter") { d.add[i] = Math.max(d.add[i], soft); d.cut[i] = Math.min(d.cut[i], 1 - soft); }
+      else if (tool === "masquer") { d.cut[i] = Math.max(d.cut[i], soft); d.add[i] = Math.min(d.add[i], 1 - soft); } }
+  };
+  let drag = null;
+  cv.addEventListener("pointerdown", e => {
+    e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch {} chSnap(d); const [px, py] = at(e);
+    if (tool === "yeux") { const eye = { x: px, y: py, r: eyeR }; d.eyes.push(eye); drag = { eye, x: px, y: py }; uisClick(); redraw(); return; }
+    drag = { x: px, y: py }; stamp(px, py); redraw();
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return; const [px, py] = at(e);
+    if (drag.eye) { drag.eye.r = eyeR = Math.max(6, Math.min(120, Math.hypot(px - drag.x, py - drag.y) || eyeR)); redraw(); return; }
+    const dist = Math.hypot(px - drag.x, py - drag.y), n = Math.max(1, Math.ceil(dist / (brush * 0.35)));
+    for (let k = 1; k <= n; k++) stamp(drag.x + (px - drag.x) * k / n, drag.y + (py - drag.y) * k / n);
+    drag.x = px; drag.y = py; redraw();
+  });
+  const end = () => { drag = null; }; cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+  const key = e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.stopPropagation(); undo(); } if (e.key === "Escape") close(); };
+  const close = () => { el.remove(); uisSwoosh(false); removeEventListener("keydown", key, true); };
+  addEventListener("keydown", key, true);
+  el.querySelector('[data-a="close"]').onclick = close;
+  draw();
+}
+const CH_CSS = `
+#ch { position: fixed; inset: 0; z-index: 100; display: grid; grid-template-columns: minmax(0, 1fr) 360px; background: radial-gradient(circle at 40% 40%, #ffffff, #ececf1 60%, #dcdde5); color: #1b1d22; }
+.ch-stage { position: relative; display: grid; place-items: center; padding: 24px; min-height: 0; }
+.ch-stage canvas { width: min(100%, calc(100vh - 80px)); aspect-ratio: 1; border-radius: 22px; touch-action: none; cursor: crosshair; background: repeating-conic-gradient(rgba(27,29,34,.05) 0 25%, transparent 0 50%) 0 0 / 22px 22px; box-shadow: 0 30px 80px rgba(40,40,90,.16); }
+.ch-hint { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; pointer-events: none; }
+.ch-side { overflow-y: auto; padding: 18px; background: rgba(250,250,253,.92); display: flex; flex-direction: column; gap: 8px; font-size: 12px; box-shadow: -10px 0 40px rgba(40,40,90,.08); }
+.ch-top { display: flex; justify-content: space-between; align-items: center; } .ch-top b { font-size: 18px; font-weight: 600; }
+.ch-pal { display: flex; gap: 8px; flex-wrap: wrap; }
+.ch-sw { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(27,29,34,.18); position: relative; overflow: hidden; }
+.ch-sw[aria-pressed="true"] { box-shadow: 0 0 0 3px #fff, 0 0 0 5px #1b1d22; }
+.ch-sw input { position: absolute; inset: 0; opacity: 0; cursor: pointer; pointer-events: none; }
+.ch-sw[aria-pressed="true"] input { pointer-events: auto; }
+.ch-bgc { position: relative; overflow: hidden; } .ch-bgc input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+@media (max-width: 860px) { #ch { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } }
+`;
+
+/* ---------- Îlot Pavages : tes formes répétées selon les groupes de symétrie du plan (motifs raccord, rosaces) ---------- */
+const TL = Object.assign({ group: "p4", cell: 120, size: 0.9, rot: 0, jit: 0, colors: "palette", bg: "#f3efe7", bgOn: true, ids: [] }, store.get("atelier-tile", {}));
+const TL_GROUPS = [
+  ["p1", "Grille", "Une seule orientation, répétée en carré : le plus simple des 17 groupes de papier peint."],
+  ["brique", "Quinconce", "Chaque rangée décalée d'un demi-pas, comme des briques."],
+  ["p2", "Demi-tour", "Rotation de 180° en damier : le motif se répond tête-bêche."],
+  ["p4", "Quart de tour", "Quatre copies tournées de 90° autour d'un point : le groupe p4."],
+  ["pmm", "Miroirs", "Deux miroirs perpendiculaires : chaque case est le reflet de sa voisine (pmm)."],
+  ["p3", "Trois branches", "Réseau hexagonal, trois copies à 120° autour de chaque nœud (p3)."],
+  ["p6", "Rosace à 6", "Réseau hexagonal, six copies à 60° : une rosace qui pave le plan (p6)."],
+  ["p6m", "Kaléidoscope", "Six copies alternées par miroir : la symétrie la plus riche du plan (p6m)."],
+];
+// Chaque groupe = une période rectangulaire PW × PH (raccord parfait) + la liste des copies du motif dans cette période
+function tlLattice(g, c) {
+  const M = (x, y, r = 0, fx = 1, fy = 1) => ({ x, y, r, fx, fy });
+  if (g === "p1") return { PW: c, PH: c, m: [M(c / 2, c / 2)] };
+  if (g === "brique") return { PW: c, PH: 2 * c, m: [M(c / 2, c / 2), M(0, 1.5 * c)] };
+  if (g === "p2") return { PW: 2 * c, PH: 2 * c, m: [M(c / 2, c / 2), M(1.5 * c, c / 2, 180), M(c / 2, 1.5 * c, 180), M(1.5 * c, 1.5 * c)] };
+  if (g === "p4") return { PW: 2 * c, PH: 2 * c, m: [M(c / 2, c / 2, 0), M(1.5 * c, c / 2, 90), M(1.5 * c, 1.5 * c, 180), M(c / 2, 1.5 * c, 270)] };
+  if (g === "pmm") return { PW: 2 * c, PH: 2 * c, m: [M(c / 2, c / 2), M(1.5 * c, c / 2, 0, -1, 1), M(c / 2, 1.5 * c, 0, 1, -1), M(1.5 * c, 1.5 * c, 0, -1, -1)] };
+  const d = 2 * c, h = d * Math.sqrt(3), n = g === "p3" ? 3 : 6, rad = c * 0.5, m = [];
+  for (const [cx, cy] of [[0, 0], [d / 2, h / 2]]) for (let k = 0; k < n; k++) { const a = k * 360 / n, ar = (a - 90) * Math.PI / 180; m.push(M(cx + Math.cos(ar) * rad, cy + Math.sin(ar) * rad, a, g === "p6m" && k % 2 ? -1 : 1, 1)); }
+  return { PW: d, PH: h, m };
+}
+const TL_SPR = new Map();
+function tlSprite(scene, color, T) {
+  const key = scene.id + "|" + color + "|" + T; let c = TL_SPR.get(key); if (c) return c;
+  const m = renderSceneMask(scene, T).mask; c = document.createElement("canvas"); c.width = c.height = T; const x = c.getContext("2d"), id = x.createImageData(T, T), [r, g, b] = chHex(color);
+  for (let i = 0; i < T * T; i++) { id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = b; id.data[i * 4 + 3] = Math.max(0, Math.min(1, (m[i] - 0.4) / 0.2)) * 255; }
+  x.putImageData(id, 0, 0); TL_SPR.set(key, c); if (TL_SPR.size > 60) TL_SPR.delete(TL_SPR.keys().next().value); return c;
+}
+function tlColors() {
+  if (TL.colors === "noir") return ["#141418"];
+  if (TL.colors === "deux") return ["#141418", "#ff4f9a"];
+  try { return IRIS.stops.map(s => s[1]); } catch { return ["#ff4f9a", "#ffd23f", "#33c4ff"]; }
+}
+// Dessine le pavage sur un canvas W×H ; « tile » = exactement une période (pour un motif raccord)
+function tlDraw(x, W, H, forms, scale = 1, tile = false) {
+  const c = TL.cell * scale, L = tlLattice(TL.group, c), cols = tlColors(), T = Math.max(48, Math.min(512, Math.round(c * TL.size * 1.4)));
+  x.clearRect(0, 0, W, H);
+  if (TL.bgOn) { x.fillStyle = TL.bg; x.fillRect(0, 0, W, H); }
+  if (!forms.length) return;
+  const iris = TL.colors === "irise";
+  const layer = iris ? document.createElement("canvas") : null; if (layer) { layer.width = W; layer.height = H; }
+  const t = layer ? layer.getContext("2d") : x, sz = c * TL.size;
+  const nx = Math.ceil(W / L.PW) + 2, ny = Math.ceil(H / L.PH) + 2, ox = tile ? 0 : (W / 2) % L.PW, oy = tile ? 0 : (H / 2) % L.PH;
+  let rnd = 1; const rr = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647 - 0.5; };
+  for (let j = -1; j < ny; j++) for (let i = -1; i < nx; i++) L.m.forEach((m, k) => {
+    rnd = 1 + ((k * 73 + 1) * 9973) % 100000;   // désordre identique dans chaque période → reste raccord
+    const sc = forms[k % forms.length], nc = cols.length, col = cols[(((k + (TL.group === "p1" || TL.group === "brique" ? i + j : 0)) % nc) + nc) % nc];
+    const X = ox + i * L.PW + m.x, Y = oy + j * L.PH + m.y; if (X < -sz || Y < -sz || X > W + sz || Y > H + sz) return;
+    t.save(); t.translate(X, Y); t.rotate((m.r + TL.rot + TL.jit * 90 * rr()) * Math.PI / 180); t.scale(m.fx, m.fy);
+    t.drawImage(tlSprite(sc, iris ? "#000000" : col, T), -sz / 2, -sz / 2, sz, sz); t.restore();
+  });
+  if (iris) {
+    const S = 400, ic = document.createElement("canvas"); ic.width = ic.height = S; const id = ic.getContext("2d").createImageData(S, S); irisRender(IRIS, S, S, id.data, null, null); ic.getContext("2d").putImageData(id, 0, 0);
+    t.globalCompositeOperation = "source-in"; t.drawImage(ic, 0, 0, W, H); t.globalCompositeOperation = "source-over"; x.drawImage(layer, 0, 0);
+  }
+}
+function tlForms() {
+  const pool = tlPool(); let f = TL.ids.map(id => pool.find(s => s.id === id)).filter(Boolean);
+  if (!f.length) f = pool.slice(0, 1); return f;
+}
+function tlPool() { let p = []; try { p = [...wMyFavs(40)]; } catch {} for (const s of current || []) if (p.length < 40 && !p.includes(s)) p.push(s); return p; }
+function wPTile(p) {
+  if (!document.getElementById("tl-css")) { const c = document.createElement("style"); c.id = "tl-css"; c.textContent = TL_CSS; document.head.append(c); }
+  p.innerHTML = wHead("Pavages · symétries du plan", `<button class="w-pill w-glass-ui w-live" data-a="tile">Télécharger la tuile raccord</button><button class="w-pill w-glass-ui w-live" data-a="poster">Affiche 2400 px</button>`)
+    + `<div class="w-scroll w-live"><div class="tl">
+      <div class="tl-stage"><canvas id="tl-cv"></canvas><p class="tl-info" id="tl-info"></p></div>
+      <div class="tl-ctl sp-card">
+        <div class="w-sec">Symétrie</div><div class="ir-chips" id="tl-g"></div>
+        <div class="w-sec">Motifs <span>choisis 1 à 3 formes : elles alternent</span></div><div class="tl-forms"></div>
+        <div class="w-sec">Couleurs</div><div class="ir-chips" id="tl-c"></div>
+        <div class="ir-sl" id="tl-sl"></div>
+        <div class="ir-chips"><button class="w-chip" data-a="bg" aria-pressed="${TL.bgOn}">Fond</button><label class="w-chip tl-bgc">Couleur du fond<input type="color" value="${TL.bg}"></label></div>
+        <p class="sp-hint">Un pavage, c'est un motif + des règles de copie (translation, rotation, miroir). Mathématiquement il n'existe que 17 façons de paver un plan avec un motif qui se répète : les « groupes de papier peint ». La tuile téléchargée se raccorde parfaitement : prête pour un imprimé textile.</p>
+      </div></div></div>`;
+  const cv = p.querySelector("#tl-cv"), x = cv.getContext("2d"), save = () => store.set("atelier-tile", TL);
+  let tmr = 0; const draw = () => { const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1), W = Math.max(200, Math.round(r.width * d)), H = Math.max(200, Math.round(r.height * d)); cv.width = W; cv.height = H; tlDraw(x, W, H, tlForms(), d); const gi = TL_GROUPS.find(g => g[0] === TL.group); p.querySelector("#tl-info").textContent = gi ? gi[2] : ""; };
+  const redraw = () => { clearTimeout(tmr); tmr = setTimeout(draw, 30); };
+  const gbox = p.querySelector("#tl-g"); for (const [k, l] of TL_GROUPS) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", TL.group === k); b.onclick = () => { TL.group = k; save(); gbox.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); redraw(); }; gbox.append(b); }
+  const cbox = p.querySelector("#tl-c"); for (const [k, l] of [["palette", "Palette de l'îlot Couleurs"], ["irise", "Irisé"], ["deux", "Deux tons"], ["noir", "Noir"]]) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", TL.colors === k); b.onclick = () => { TL.colors = k; save(); cbox.querySelectorAll(".w-chip").forEach(z => z.setAttribute("aria-pressed", z === b)); uisClick(); redraw(); }; cbox.append(b); }
+  const SL = [["cell", "Pas de la grille", 40, 260, 1, v => v + " px"], ["size", "Taille du motif", 0.3, 1.8, 0.01, v => Math.round(v * 100) + " %"], ["rot", "Rotation du motif", 0, 360, 1, v => v + "°"], ["jit", "Désordre", 0, 1, 0.01, v => Math.round(v * 100) + " %"]];
+  const sl = p.querySelector("#tl-sl"); for (const [k, l, mn, mx, st, f] of SL) { const w = document.createElement("label"); w.className = "w-fx-tr"; w.innerHTML = `<small>${l}</small><output></output><input class="w-range" type="range" min="${mn}" max="${mx}" step="${st}">`; const r = w.querySelector("input"), o = w.querySelector("output"); r.value = TL[k]; o.textContent = f(TL[k]); r.oninput = () => { TL[k] = +r.value; o.textContent = f(TL[k]); save(); redraw(); }; sl.append(w); }
+  p.querySelector('[data-a="bg"]').onclick = e => { TL.bgOn = !TL.bgOn; e.currentTarget.setAttribute("aria-pressed", TL.bgOn); save(); redraw(); };
+  p.querySelector(".tl-bgc input").oninput = e => { TL.bg = e.target.value; TL.bgOn = true; p.querySelector('[data-a="bg"]').setAttribute("aria-pressed", true); save(); redraw(); };
+  const fbox = p.querySelector(".tl-forms"), pool = tlPool().slice(0, 24);
+  const syncSel = () => fbox.querySelectorAll("[data-id]").forEach(b => b.setAttribute("aria-pressed", TL.ids.includes(b.dataset.id)));
+  for (const sc of pool) {
+    const b = document.createElement("button"); b.className = "tl-f"; b.dataset.id = sc.id; const c = tlSprite(sc, "#1b1d22", 96); const im = document.createElement("canvas"); im.width = im.height = 96; im.getContext("2d").drawImage(c, 0, 0); b.append(im);
+    b.onclick = () => { const i = TL.ids.indexOf(sc.id); if (i >= 0) TL.ids.splice(i, 1); else { TL.ids.push(sc.id); if (TL.ids.length > 3) TL.ids.shift(); } save(); syncSel(); uisClick(); redraw(); };
+    fbox.append(b);
+  }
+  if (!TL.ids.some(id => pool.find(s => s.id === id)) && pool[0]) TL.ids = [pool[0].id];
+  syncSel();
+  const exp = (W, H, tile, name) => { const c = document.createElement("canvas"); c.width = W; c.height = H; tlDraw(c.getContext("2d"), W, H, tlForms(), tile ? 2 : W / 1000, tile); c.toBlob(b => offerBlob(b, name)); uisYes(); };
+  p.querySelector('[data-a="tile"]').onclick = () => { const L = tlLattice(TL.group, TL.cell * 2); exp(Math.round(L.PW), Math.round(L.PH), true, `tnb_pavage_${TL.group}_tuile.png`); wToast("Tuile raccord : elle se répète sans couture"); };
+  p.querySelector('[data-a="poster"]').onclick = () => exp(2400, 2400, false, `tnb_pavage_${TL.group}.png`);
+  requestAnimationFrame(draw); addEventListener("resize", redraw, { once: true });
+}
+const TL_CSS = `
+.tl { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 440px); gap: 22px; max-width: 1240px; margin: 0 auto; padding: 84px 22px 150px; align-items: start; }
+.tl-stage { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 10px; }
+#tl-cv { width: 100%; aspect-ratio: 1; border-radius: 28px; box-shadow: 0 30px 80px rgba(40,40,90,.2); background: repeating-conic-gradient(rgba(27,29,34,.05) 0 25%, transparent 0 50%) 0 0 / 22px 22px; }
+.tl-info { margin: 0; font-size: 12px; opacity: .7; text-align: center; }
+.tl-ctl { border-radius: 26px; padding: 16px 18px; background: rgba(250,250,253,.92); display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.tl-forms { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; }
+.tl-f { aspect-ratio: 1; border-radius: 12px; border: 1px solid rgba(27,29,34,.12); background: #fff; padding: 4px; cursor: pointer; }
+.tl-f canvas { width: 100%; height: 100%; display: block; }
+.tl-f[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
+.tl-bgc { position: relative; overflow: hidden; } .tl-bgc input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+@media (max-width: 900px) { .tl { grid-template-columns: 1fr; padding: 72px 12px 150px; } .tl-stage { position: relative; top: 0; } }
+`;
 
 </script>
 
