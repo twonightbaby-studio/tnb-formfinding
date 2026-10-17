@@ -749,7 +749,7 @@ function headCanvasOf(h) {
 function renderStar(g, seed, T, count = false) {
   const r = mulberry(seed);
   const v = k => { const x = g[IDX[k]]; return x === undefined ? (GENES[IDX[k]].amp ? -1 : 0) : x; };
-  const u = T / 200, c = T / 2, h = T / 2;
+  const u = T / 200, c = T / 2, h = T / 2; let headAt = null;
 
   // 1. étoile de base
   workCanvas.width = workCanvas.height = T;
@@ -772,14 +772,21 @@ function renderStar(g, seed, T, count = false) {
       disk(c + t * lg * Math.cos(a), c + t * lg * Math.sin(a), rad);
     }
     if (HEADM && i === 0) {
-      if (!HEADC) HEADC = headCanvasOf(HEADM);
-      const a = ang + courb, s = 46 * u * (HEADM.k || 1), hx = c + lg * Math.cos(a) + Math.cos(a) * s * 0.42, hy = c + lg * Math.sin(a) + Math.sin(a) * s * 0.42;
-      workCtx.save(); workCtx.translate(hx, hy); workCtx.rotate(a + Math.PI / 2); workCtx.drawImage(HEADC, -s / 2, -s / 2, s, s); workCtx.restore();
+      const a = ang + courb, s = 46 * u * (HEADM.k || 1);
+      headAt = { a, s, x: c + lg * Math.cos(a) + Math.cos(a) * s * 0.42, y: c + lg * Math.sin(a) + Math.sin(a) * s * 0.42 };
     }
   }
   const px = workCtx.getImageData(0, 0, T, T).data;
   const base = new Float32Array(T * T);
   for (let i = 0; i < T * T; i++) base[i] = px[i * 4 + 3] / 255;
+  // la tête (logo) est dessinée à part : elle peut suivre les déformations… ou garder son intégrité (réglage « keep »)
+  let headB = null; const keep = HEADM ? clamp(+HEADM.keep || 0, 0, 1) : 0;
+  if (headAt) {
+    if (!HEADC) HEADC = headCanvasOf(HEADM);
+    workCtx.clearRect(0, 0, T, T); workCtx.save(); workCtx.translate(headAt.x, headAt.y); workCtx.rotate(headAt.a + Math.PI / 2); workCtx.drawImage(HEADC, -headAt.s / 2, -headAt.s / 2, headAt.s, headAt.s); workCtx.restore();
+    const hp = workCtx.getImageData(0, 0, T, T).data; headB = new Float32Array(T * T); for (let i = 0; i < T * T; i++) headB[i] = hp[i * 4 + 3] / 255;
+    if (!keep) { for (let i = 0; i < T * T; i++) base[i] = Math.max(base[i], headB[i]); headB = null; }
+  }
 
   // 2. déformations (ordre d'application : de la première à la dernière)
   const maps = [];
@@ -883,12 +890,13 @@ function renderStar(g, seed, T, count = false) {
   const mask = new Float32Array(T * T), body = new Uint8Array(T * T);
   const morph = v("morph");
   const bodyN = bodyR / h * (1.35 + 0.25 * Math.max(0, morph)), b2 = bodyN * bodyN;
-  const p = [0, 0];
+  const p = [0, 0], QX = headB ? new Float32Array(T * T) : null, QY = headB ? new Float32Array(T * T) : null;
+  const samp = (A, qx, qy) => { if (qx <= -1 || qx >= 1 || qy <= -1 || qy >= 1) return 0; const fx = (qx + 1) * h - 0.5, fy = (qy + 1) * h - 0.5, ix = clamp(Math.floor(fx), 0, T - 2), iy = clamp(Math.floor(fy), 0, T - 2), ax = clamp(fx - ix, 0, 1), ay = clamp(fy - iy, 0, 1), j = iy * T + ix; return (A[j] * (1 - ax) + A[j + 1] * ax) * (1 - ay) + (A[j + T] * (1 - ax) + A[j + T + 1] * ax) * ay; };
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
     const i = y * T + x;
     p[0] = (x + 0.5 - h) / h; p[1] = (y + 0.5 - h) / h;
     for (let m = maps.length - 1; m >= 0; m--) maps[m](p);
-    const qx = p[0], qy = p[1];
+    const qx = p[0], qy = p[1]; if (QX) { QX[i] = qx; QY[i] = qy; }
     if (qx * qx + qy * qy < b2) body[i] = 1;
     if (qx <= -1 || qx >= 1 || qy <= -1 || qy >= 1) continue;
     const fx = (qx + 1) * h - 0.5, fy = (qy + 1) * h - 0.5;
@@ -897,6 +905,22 @@ function renderStar(g, seed, T, count = false) {
     mask[i] = (base[j] * (1 - ax) + base[j + 1] * ax) * (1 - ay) + (base[j + T] * (1 - ax) + base[j + T + 1] * ax) * ay;
   }
 
+  // 3 bis. tête « intègre » : on mesure où la déformation l'a emmenée (centre, taille), puis on y pose le logo intact.
+  // Le réglage glisse en continu de « suit la déformation » (0) à « logo intact » (1).
+  let headM = null;
+  if (headB) {
+    let sw = 0, sx0 = 0, sy0 = 0, a0 = 0, hx0 = 0, hy0 = 0;
+    for (let i = 0; i < T * T; i++) { const d = samp(headB, QX[i], QY[i]); if (d > 0.02) { sw += d; sx0 += d * (i % T + 0.5); sy0 += d * (Math.floor(i / T) + 0.5); } const o = headB[i]; if (o > 0.02) { a0 += o; hx0 += o * (i % T + 0.5); hy0 += o * (Math.floor(i / T) + 0.5); } }
+    headM = new Float32Array(T * T);
+    if (sw > 1 && a0 > 1) {
+      const cx = sx0 / sw, cy = sy0 / sw, ox = hx0 / a0, oy = hy0 / a0, sg = clamp(Math.sqrt(sw / a0), 0.7, 1.4);
+      for (let i = 0; i < T * T; i++) {
+        const rx = ((ox + ((i % T + 0.5) - cx) / sg) - h) / h, ry = ((oy + ((Math.floor(i / T) + 0.5) - cy) / sg) - h) / h;   // source du logo intact
+        headM[i] = samp(headB, QX[i] + (rx - QX[i]) * keep, QY[i] + (ry - QY[i]) * keep);
+        mask[i] = Math.max(mask[i], headM[i]);
+      }
+    }
+  }
   // 4. lissage par interpolation + épaisseur générale (flou puis seuil adouci)
   const ls = Math.max(0, v("lisse"));
   let out = mask;
@@ -906,6 +930,7 @@ function renderStar(g, seed, T, count = false) {
     out = new Float32Array(T * T);
     for (let i = 0; i < T * T; i++) out[i] = smooth(t - 0.08, t + 0.08, b[i]);
   }
+  if (headM && keep > 0.02) { if (out === mask) out = mask.slice(); for (let i = 0; i < T * T; i++) out[i] = Math.max(out[i], headM[i] * Math.min(1, keep * 1.6)); }   // le logo intact reste net même quand le corps est lissé
   return { mask: out, branches: count ? countBranches(out, body, T, u) : 6 };
 }
 
@@ -6312,8 +6337,9 @@ const SY_CSS = `
 .sy-knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: rgba(27,29,34,.8); transform-origin: 1px 13px; transform: rotate(var(--a)); }
 .sy-knob.on { box-shadow: 0 0 0 2px hsl(var(--h, 262), 50%, 60%), 0 2px 8px rgba(0,0,0,.2); }
 .sy-top .sy-knob { width: 40px; height: 40px; } .sy-top .sy-knob::after { transform-origin: 1px 16px; } .sy-top .sy-knob::before { -webkit-mask: radial-gradient(circle, transparent 22px, #000 22.5px); mask: radial-gradient(circle, transparent 22px, #000 22.5px); }
-.sy-pick { position: fixed; z-index: 90; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; font-size: 12px; padding: 12px; border-radius: 20px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-direction: column; gap: 6px; }
+.sy-pick { color: #1b1d22; position: fixed; z-index: 90; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; font-size: 12px; padding: 12px; border-radius: 20px; background: #f8f8fb; box-shadow: 0 18px 50px rgba(40,40,90,.2); display: flex; flex-direction: column; gap: 6px; }
 .sy-pick-g { display: flex; flex-wrap: wrap; gap: 5px; }
+.sy-pick .w-sec { opacity: 1; color: #5b5f6b; font-weight: 600; } .sy-pick .w-chip { font-size: 12px; color: #1b1d22; background: #fff; border-color: rgba(27,29,34,.2); } .sy-pick .w-chip:hover { background: #ececf2; } .sy-pick .w-chip[aria-pressed="true"] { background: #1b1d22; color: #fff; }
 @media (max-width: 900px) {
   .sy { padding: 72px 12px 150px; }
   .sy-tr { grid-template-columns: 1fr; gap: 8px; padding: 10px; }
@@ -8912,19 +8938,23 @@ async function headImport(file) {
   const d = x.getImageData(0, 0, n, n).data; let transp = 0; for (let i = 0; i < n * n; i++) if (d[i * 4 + 3] < 200) transp++;
   const useAlpha = transp > n * n * 0.05, m = new Array(n * n);
   for (let i = 0; i < n * n; i++) { const a = d[i * 4 + 3] / 255, lum = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255; m[i] = Math.round(255 * (useAlpha ? a * (lum > 0.92 ? 0 : 1) : Math.max(0, Math.min(1, (0.82 - lum) / 0.4)))); }
-  return { n, m, k: (headStore() || {}).k || 1, on: true };
+  return { n, m, k: (headStore() || {}).k || 1, keep: (headStore() || {}).keep || 0, on: true };
 }
 function wFxHead(box) {
   if (!box) return; const h = headStore(), on = !!(h && h.on && h.m);
   box.innerHTML = `<div class="w-fx-tbox${on ? " on" : ""}"><div class="w-row" style="justify-content:space-between;align-items:center"><b>Logo en tête</b><button class="w-sw" role="switch" aria-checked="${on}" ${h && h.m ? "" : "disabled"}></button></div>
-    <small style="opacity:.6">La branche du haut devient le cou, ton logo devient la tête. Il suit les déformations de chaque forme. PNG transparent ou SVG idéal ; sur fond blanc, le blanc est retiré.</small>
+    <small style="opacity:.6">La branche du haut devient le cou, ton logo devient la tête. Il suit les déformations de chaque forme, ou garde son intégrité (réglage plus bas). PNG transparent ou SVG idéal ; sur fond blanc, le blanc est retiré.</small>
     <div class="w-row" style="gap:10px;align-items:center"><canvas class="w-head-prev" width="96" height="96"></canvas><label class="w-chip" style="cursor:pointer">${h && h.m ? "Changer de logo" : "＋ Importer le logo"}<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" hidden></label></div>
-    <label class="w-fx-tr" ${h && h.m ? "" : "hidden"}><small>Taille de la tête</small><output></output><input class="w-range" type="range" min="0.5" max="2" step="0.05"></label></div>`;
+    <label class="w-fx-tr" ${h && h.m ? "" : "hidden"}><small>Taille de la tête</small><output></output><input class="w-range" type="range" min="0.5" max="2" step="0.05" data-hk="k"></label>
+    <label class="w-fx-tr" ${h && h.m ? "" : "hidden"} title="0 : le logo suit toutes les déformations · 100 % : le logo reste intact, il se place juste où la forme l'emmène"><small>Garder l'intégrité du logo</small><output></output><input class="w-range" type="range" min="0" max="1" step="0.01" data-hk="keep"></label></div>`;
   const pv = box.querySelector("canvas"); if (h && h.m) { const x = pv.getContext("2d"), id = x.createImageData(h.n, h.n); for (let i = 0; i < h.n * h.n; i++) { id.data[i * 4 + 3] = h.m[i]; } x.putImageData(id, 0, 0); }
   box.querySelector("input[type=file]").onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const nh = await headImport(f); uisYes(); headApply(nh); wFxHead(box); wToast("Logo posé en tête : les formes se redessinent…"); } catch { wToast("Ce fichier n'a pas pu être lu"); uisNo(); } };
   box.querySelector(".w-sw").onclick = () => { const cur = headStore(); if (!cur || !cur.m) return; cur.on = !cur.on; uisSwitch(cur.on); headApply(cur); wFxHead(box); };
-  const r = box.querySelector("input[type=range]"), o = box.querySelector("output"); if (h) { r.value = h.k || 1; o.textContent = "×" + (+r.value).toFixed(2); }
-  r.oninput = () => { o.textContent = "×" + (+r.value).toFixed(2); clearTimeout(wFxHead.t); wFxHead.t = setTimeout(() => { const cur = headStore(); if (!cur) return; cur.k = +r.value; headApply(cur); }, 250); };
+  box.querySelectorAll("input[data-hk]").forEach(r => {
+    const k = r.dataset.hk, o = r.parentElement.querySelector("output"), fmt = v => k === "k" ? "×" + v.toFixed(2) : Math.round(v * 100) + " %";
+    r.value = h ? (k === "k" ? h.k || 1 : h.keep || 0) : (k === "k" ? 1 : 0); o.textContent = fmt(+r.value);
+    r.oninput = () => { o.textContent = fmt(+r.value); clearTimeout(wFxHead.t); wFxHead.t = setTimeout(() => { const cur = headStore(); if (!cur) return; cur[k] = +r.value; headApply(cur); }, 250); };
+  });
 }
 (() => { const c = document.createElement("style"); c.textContent = `.w-head-prev { width: 56px; height: 56px; border-radius: 12px; background: repeating-conic-gradient(rgba(27,29,34,.06) 0 25%, transparent 0 50%) 0 0 / 12px 12px; }`; document.head.append(c); })();
 /* ---------- Cuivres : trompette, trompette bouchée (sourdine harmon), cors, section de cuivres ---------- */
@@ -9576,35 +9606,136 @@ const VINYL_CSS = `
 `;
 
 /* ---------- Bijoux 3D : la forme devient un pendentif (chrome, or, acrylique…), aperçu sur chaîne, bague, zip, porte-clés ---------- */
-const JW = { open: false, opt: Object.assign({ mat: "chrome", sup: "chaine", thick: 0.35, inflate: 0.55, color: "#ff2fb3", rot: true }, store.get("atelier-jewel", {})) };
+const JW = { open: false, opt: Object.assign({ mat: "chrome", sup: "chaine", fin: 0.6, inflate: 0.55, lis: 0.5, color: "#ff2fb3", rot: true }, store.get("atelier-jewel", {})) };
+if (JW.opt.fin == null) JW.opt.fin = 0.6; if (JW.opt.lis == null) JW.opt.lis = 0.5;
 const JW_MATS = [["chrome", "Chrome"], ["or", "Or"], ["argent", "Argent brossé"], ["acrylique", "Acrylique"], ["email", "Émail irisé"]];
 const JW_SUPS = [["chaine", "Chaîne"], ["bague", "Bague"], ["zip", "Tirette de zip"], ["cles", "Porte-clés"], ["seul", "Seul"]];
-// Géométrie : un relief gonflé des deux côtés, bord arrondi, silhouette recalée sur le contour exact
-function jwGeometry(mask, N, thick, inflate) {
-  // champ lissé ; chaque sommet du bord est recalé exactement sur le contour (ligne 0,5) → silhouette lisse, sans escaliers
-  const F = boxBlur(mask, N, 2), D = boxBlur(mask, N, Math.max(3, Math.round(N / 14))), V = N + 1;
+// Géométrie en deux temps : (1) la topologie, calculée une fois par forme (maillage recalé sur le contour, distance au bord) ;
+// (2) les hauteurs, recalculées à chaque réglage → on peut interpoler en douceur d'un réglage à l'autre, sans reconstruire.
+// Le bord est partagé entre l'avant et l'arrière (aucune couture) et le profil est un arc de cercle : tangente verticale au bord → surface continue.
+function jwEDT(inside, V) {   // distance euclidienne exacte (Felzenszwalb) de chaque sommet intérieur au sommet extérieur le plus proche
+  const INF = 1e12, D = new Float64Array(V * V), f = new Float64Array(V), d = new Float64Array(V), v = new Int32Array(V), z = new Float64Array(V + 1);
+  const pass = (get, set) => {
+    for (let q = 0; q < V; q++) f[q] = get(q);
+    let k = 0; v[0] = 0; z[0] = -INF; z[1] = INF;
+    for (let q = 1; q < V; q++) { let sx; for (;;) { sx = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); if (sx <= z[k] && k > 0) k--; else break; } if (sx <= z[k]) { v[0] = q; z[0] = -INF; z[1] = INF; k = 0; continue; } k++; v[k] = q; z[k] = sx; z[k + 1] = INF; }
+    k = 0; for (let q = 0; q < V; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+    for (let q = 0; q < V; q++) set(q, d[q]);
+  };
+  for (let i = 0; i < V * V; i++) D[i] = inside[i] ? INF : 0;
+  for (let x = 0; x < V; x++) pass(y => D[y * V + x], (y, val) => D[y * V + x] = val);
+  for (let y = 0; y < V; y++) pass(x => D[y * V + x], (x, val) => D[y * V + x] = val);
+  return D;
+}
+function jwTopo(mask, N) {
+  const F = boxBlur(mask, N, 2), V = N + 1;
   const at = (A, x, y) => A[Math.max(0, Math.min(N - 1, y)) * N + Math.max(0, Math.min(N - 1, x))];
   const fAt = (x, y) => { const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0; return (at(F, x0, y0) * (1 - fx) + at(F, x0 + 1, y0) * fx) * (1 - fy) + (at(F, x0, y0 + 1) * (1 - fx) + at(F, x0 + 1, y0 + 1) * fx) * fy; };
-  const inside = new Uint8Array(V * V), used = new Uint8Array(V * V), px = new Float32Array(V * V), py = new Float32Array(V * V), hh = new Float32Array(V * V);
-  for (let y = 0; y < V; y++) for (let x = 0; x < V; x++) { const i = y * V + x; px[i] = x - 0.5; py[i] = y - 0.5; inside[i] = fAt(px[i], py[i]) >= 0.5 ? 1 : 0; }
+  const fv = new Float32Array(V * V), inside = new Uint8Array(V * V);
+  for (let y = 0; y < V; y++) for (let x = 0; x < V; x++) { const i = y * V + x; fv[i] = fAt(x - 0.5, y - 0.5); inside[i] = fv[i] >= 0.5 ? 1 : 0; }
+  const E = jwEDT(inside, V);
+  // « marching triangles » : on découpe chaque triangle de la grille le long du contour exact (f = 0,5).
+  // Les sommets du bord sont posés SUR les arêtes coupées → jamais de triangle retourné, silhouette lisse.
+  const X = [], Y = [], rim = [], gmap = new Int32Array(V * V).fill(-1), cmap = new Map();
+  const gv = i => { if (gmap[i] < 0) { gmap[i] = X.length; X.push(i % V - 0.5); Y.push(Math.floor(i / V) - 0.5); rim.push(0); } return gmap[i]; };
+  const cv = (i, o) => {   // sommet de bord sur l'arête intérieur i → extérieur o
+    const key = i < o ? i * V * V + o : o * V * V + i; let j = cmap.get(key); if (j !== undefined) return j;
+    let t = (fv[i] - 0.5) / Math.max(1e-6, fv[i] - fv[o]); t = Math.max(0.02, Math.min(0.98, t));
+    j = X.length; X.push((i % V - 0.5) + ((o % V) - (i % V)) * t); Y.push((Math.floor(i / V) - 0.5) + (Math.floor(o / V) - Math.floor(i / V)) * t); rim.push(1); cmap.set(key, j); return j;
+  };
   const tris = [];
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const a0 = y * V + x, b0 = a0 + 1, c0 = a0 + V, d0 = c0 + 1;
-    for (const t of [[a0, c0, b0], [b0, c0, d0]]) { const k = inside[t[0]] + inside[t[1]] + inside[t[2]]; if (k >= 2 || (k === 1 && Math.random() < 0)) { tris.push(t); t.forEach(j => used[j] = 1); } }
+    for (const t of [[a0, c0, b0], [b0, c0, d0]]) {
+      const k = inside[t[0]] + inside[t[1]] + inside[t[2]]; if (!k) continue;
+      if (k === 3) { tris.push([gv(t[0]), gv(t[1]), gv(t[2])]); continue; }
+      let o = 0;
+      if (k === 2) { while (inside[t[o]]) o++; const P = t[(o + 1) % 3], Q = t[(o + 2) % 3], O = t[o];   // P, Q dedans, O dehors (ordre conservé : O, P, Q)
+        const cP = cv(P, O), cQ = cv(Q, O); tris.push([cP, gv(P), gv(Q)], [cP, gv(Q), cQ]); }
+      else { while (!inside[t[o]]) o++; const I = t[o], P = t[(o + 1) % 3], Q = t[(o + 2) % 3]; tris.push([gv(I), cv(I, P), cv(I, Q)]); }
+    }
   }
-  for (let i = 0; i < V * V; i++) {
-    if (!used[i]) continue; let X = px[i], Y = py[i], f = fAt(X, Y);
-    if (f < 0.62) for (let k = 0; k < 4; k++) { const gx = (fAt(X + 0.7, Y) - fAt(X - 0.7, Y)) / 1.4, gy = (fAt(X, Y + 0.7) - fAt(X, Y - 0.7)) / 1.4, g2 = gx * gx + gy * gy; if (g2 < 1e-6) break; const st = (0.5 - f) / g2; X += Math.max(-1.2, Math.min(1.2, st * gx)); Y += Math.max(-1.2, Math.min(1.2, st * gy)); f = fAt(X, Y); }
-    px[i] = X; py[i] = Y;
-    const edge = Math.max(0, Math.min(1, (f - 0.5) / 0.25)), dome = Math.max(0, at(D, Math.round(X), Math.round(Y)) - 0.35) / 0.65;
-    hh[i] = (thick * 0.11 * Math.sqrt(edge) + inflate * 0.16 * Math.pow(dome, 0.7) * Math.sqrt(edge)) * N / 2;
+  const n = X.length, dist = new Float32Array(n);
+  const SE = new Float32Array(V * V); for (let i = 0; i < V * V; i++) SE[i] = Math.sqrt(E[i]);
+  const eAt = (x, y) => { x += 0.5; y += 0.5; const x0 = Math.max(0, Math.min(V - 2, Math.floor(x))), y0 = Math.max(0, Math.min(V - 2, Math.floor(y))), fx = Math.max(0, Math.min(1, x - x0)), fy = Math.max(0, Math.min(1, y - y0)); return (SE[y0 * V + x0] * (1 - fx) + SE[y0 * V + x0 + 1] * fx) * (1 - fy) + (SE[(y0 + 1) * V + x0] * (1 - fx) + SE[(y0 + 1) * V + x0 + 1] * fx) * fy; };
+  // distance au contour : près du bord, distance « signée » lisse (f − 0,5)/|∇f| ; plus loin, distance exacte — fondues l'une dans l'autre
+  for (let j = 0; j < n; j++) if (!rim[j]) {
+    const x = X[j], y = Y[j], f = fAt(x, y), gx = (fAt(x + 0.8, y) - fAt(x - 0.8, y)) / 1.6, gy = (fAt(x, y + 0.8) - fAt(x, y - 0.8)) / 1.6, g = Math.hypot(gx, gy);
+    const de = eAt(x, y) - 0.5, dl = g > 0.02 ? (f - 0.5) / g : de, w = Math.max(0, Math.min(1, (de - 1.5) / 2.5));
+    dist[j] = Math.max(0.05, dl * (1 - w) + de * w);
   }
-  const map = new Int32Array(V * V).fill(-1), pos = [], uv = [], idx = []; let n = 0;
-  for (let i = 0; i < V * V; i++) if (used[i]) map[i] = n++;
-  for (const side of [1, -1]) for (let i = 0; i < V * V; i++) if (used[i]) { pos.push((px[i] / N - 0.5) * 2, -(py[i] / N - 0.5) * 2, side * hh[i] / N * 2); uv.push(px[i] / N, 1 - py[i] / N); }
-  for (const [p, q, r] of tris) { idx.push(map[p], map[q], map[r]); idx.push(map[p] + n, map[r] + n, map[q] + n); }
-  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingBox();
-  return g;
+  // tranche raffinée : chaque arête bord→intérieur est découpée en K segments (espacés pour que la hauteur monte régulièrement)
+  // → la courbure du bord est décrite par plusieurs rangées de sommets, plus de dents de scie dans les reflets
+  const K = 5, XX = Array.from(X), YY = Array.from(Y), DD = Array.from(dist), RR = Array.from(rim), split = new Map();
+  const chain = (r, i) => {   // sommets de r (bord) vers i (intérieur), r et i inclus
+    const key = r + "_" + i; let c = split.get(key); if (c) return c; c = [r];
+    for (let k = 1; k < K; k++) { const t = Math.pow(k / K, 2); XX.push(XX[r] + (XX[i] - XX[r]) * t); YY.push(YY[r] + (YY[i] - YY[r]) * t); DD.push(DD[i] * t); RR.push(0); c.push(XX.length - 1); }
+    c.push(i); split.set(key, c); return c;
+  };
+  const T2 = [], quad = (a, b, c, d) => { T2.push([a, b, c], [a, c, d]); };
+  for (const [p, q, r] of tris) {
+    const v = [p, q, r], rr = v.map(j => rim[j]), nr = rr[0] + rr[1] + rr[2];
+    if (nr === 0 || nr === 3) { T2.push(v); continue; }
+    // on fait tourner le triangle (sens conservé) pour avoir une forme canonique
+    let o = 0; if (nr === 2) { while (!(rr[o] && rr[(o + 1) % 3])) o++; } else { while (!rr[o]) o++; }
+    const A = v[o], B = v[(o + 1) % 3], C = v[(o + 2) % 3];
+    if (nr === 2) {   // A, B au bord ; C intérieur
+      const ca = chain(A, C), cb = chain(B, C);
+      for (let k = 0; k < K - 1; k++) quad(ca[k], cb[k], cb[k + 1], ca[k + 1]);
+      T2.push([ca[K - 1], cb[K - 1], C]);
+    } else {          // A au bord ; B, C intérieurs
+      const ab = chain(A, B), ac = chain(A, C);
+      T2.push([A, ab[1], ac[1]]);
+      for (let k = 1; k < K; k++) quad(ab[k], ab[k + 1], ac[k + 1], ac[k]);
+    }
+  }
+  const n2 = XX.length, nb2 = Array.from({ length: n2 }, () => new Set());
+  for (const [a2, b2, c2] of T2) { nb2[a2].add(b2).add(c2); nb2[b2].add(a2).add(c2); nb2[c2].add(a2).add(b2); }
+  const nbS = new Int32Array(n2 + 1), nbL = []; for (let j = 0; j < n2; j++) { nbS[j] = nbL.length; nb2[j].forEach(k => nbL.push(k)); } nbS[n2] = nbL.length;
+  const rim2 = Uint8Array.from(RR), dist2 = Float32Array.from(DD);
+  // sommets arrière : le bord réutilise ceux de l'avant
+  const back = new Int32Array(n2); let m = n2; for (let j = 0; j < n2; j++) back[j] = rim2[j] ? j : m++;
+  const pos = new Float32Array(m * 3), uv = new Float32Array(m * 2), idx = [];
+  for (let j = 0; j < n2; j++) for (const k of [j, back[j]]) { pos[k * 3] = (XX[j] / N - 0.5) * 2; pos[k * 3 + 1] = -(YY[j] / N - 0.5) * 2; uv[k * 2] = XX[j] / N; uv[k * 2 + 1] = 1 - YY[j] / N; }
+  for (const [a2, b2, c2] of T2) { idx.push(a2, b2, c2); idx.push(back[a2], back[c2], back[b2]); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
+  const rimN = new Float32Array(n2 * 2);   // normale du bord = direction sortante du contour (exacte, pas déduite des triangles)
+  for (let j = 0; j < n2; j++) if (rim2[j]) { const gx = fAt(XX[j] + 0.8, YY[j]) - fAt(XX[j] - 0.8, YY[j]), gy = fAt(XX[j], YY[j] + 0.8) - fAt(XX[j], YY[j] - 0.8), l = Math.hypot(gx, gy) || 1; rimN[j * 2] = -gx / l; rimN[j * 2 + 1] = gy / l; }
+  return { rimN, N, n: n2, m, dist: dist2, rim: rim2, back, nbStart: nbS, nbList: Int32Array.from(nbL), geo: g, h: new Float32Array(n2) };
+}
+// Les facteurs, appliqués partout de la même façon :
+//  finesse   → rayon du profil arrondi (fin = fil délicat ; épais = galet) — identique sur chaque branche
+//  gonflement→ bombé supplémentaire là où la forme est large
+//  lissage   → diffusion du volume (membrane), pour des transitions continues entre branches fines et zones larges
+function jwHeights(T, o) {
+  const { N, n, dist, rim, nbStart, nbList } = T, R = N * (0.012 + 0.1 * (1 - o.fin)), H = new Float32Array(n);
+  for (let j = 0; j < n; j++) { if (rim[j]) continue; const d = dist[j], dd = Math.min(d, R), h = Math.sqrt(Math.max(0, 2 * R * dd - dd * dd)) + o.inflate * 0.38 * Math.pow(Math.max(0, d - R), 0.85); H[j] = h * h; }
+  const it = Math.round(o.lis * 40), B = new Float32Array(n);
+  for (let k = 0; k < it; k++) { for (let j = 0; j < n; j++) { if (rim[j]) { B[j] = 0; continue; } let s = 0, c = 0; for (let q = nbStart[j]; q < nbStart[j + 1]; q++) { s += H[nbList[q]]; c++; } B[j] = H[j] * 0.4 + (c ? s / c : H[j]) * 0.6; } H.set(B); }
+  const k = 0.3 + 1.5 * Math.pow(1 - o.fin, 1.2);   // la finesse règle aussi l'épaisseur de tout le bijou, uniformément
+  for (let j = 0; j < n; j++) H[j] = Math.sqrt(H[j]) / N * 2 * k;
+  return H;
+}
+function jwApplyH(T, H) {
+  const p = T.geo.attributes.position.array, { n, back } = T;
+  for (let j = 0; j < n; j++) { p[j * 3 + 2] = H[j]; if (back[j] !== j) p[back[j] * 3 + 2] = -H[j]; }
+  T.geo.attributes.position.needsUpdate = true;
+  if (!T.geo.attributes.normal) T.geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(p.length), 3));
+  // normales tirées de la pente du volume (moindres carrés sur les voisins), indépendantes de la forme des triangles → reflets continus
+  const nr = T.geo.attributes.normal.array, A = new Float32Array(n * 3), Bn = new Float32Array(n * 3), { nbStart, nbList, rim } = T, RN = T.rimN;
+  for (let j = 0; j < n; j++) {
+    if (rim[j]) { A[j * 3] = RN[j * 2]; A[j * 3 + 1] = RN[j * 2 + 1]; A[j * 3 + 2] = 0; continue; }
+    const xj = p[j * 3], yj = p[j * 3 + 1], hj = H[j]; let sxx = 0, sxy = 0, syy = 0, sxh = 0, syh = 0;
+    for (let q = nbStart[j]; q < nbStart[j + 1]; q++) { const k = nbList[q], dx = p[k * 3] - xj, dy = p[k * 3 + 1] - yj, dh = H[k] - hj, w = 1 / (dx * dx + dy * dy + 1e-9); sxx += w * dx * dx; sxy += w * dx * dy; syy += w * dy * dy; sxh += w * dx * dh; syh += w * dy * dh; }
+    const det = sxx * syy - sxy * sxy; let gx = 0, gy = 0; if (Math.abs(det) > 1e-12) { gx = (syy * sxh - sxy * syh) / det; gy = (sxx * syh - sxy * sxh) / det; }
+    const l = Math.hypot(gx, gy, 1); A[j * 3] = -gx / l; A[j * 3 + 1] = -gy / l; A[j * 3 + 2] = 1 / l;
+  }
+  for (let it = 0; it < 4; it++) {
+    for (let j = 0; j < n; j++) { if (rim[j]) { Bn[j * 3] = A[j * 3]; Bn[j * 3 + 1] = A[j * 3 + 1]; Bn[j * 3 + 2] = 0; continue; } let x = A[j * 3] * 2, y = A[j * 3 + 1] * 2, z = A[j * 3 + 2] * 2; for (let q = nbStart[j]; q < nbStart[j + 1]; q++) { const k = nbList[q]; x += A[k * 3]; y += A[k * 3 + 1]; z += A[k * 3 + 2]; } const l = Math.hypot(x, y, z) || 1; Bn[j * 3] = x / l; Bn[j * 3 + 1] = y / l; Bn[j * 3 + 2] = z / l; }
+    A.set(Bn);
+  }
+  for (let j = 0; j < n; j++) { nr[j * 3] = A[j * 3]; nr[j * 3 + 1] = A[j * 3 + 1]; nr[j * 3 + 2] = A[j * 3 + 2]; const b = back[j]; if (b !== j) { nr[b * 3] = A[j * 3]; nr[b * 3 + 1] = A[j * 3 + 1]; nr[b * 3 + 2] = -A[j * 3 + 2]; } }
+  T.geo.attributes.normal.needsUpdate = true; T.geo.computeBoundingBox(); T.geo.computeBoundingSphere();
 }
 // Studio : environnement fait maison (bandes de lumière + touches de couleur vives), pour des reflets nets
 function jwEnv(renderer) {
@@ -9623,9 +9754,9 @@ function jwMaterial(kind, color) {
 }
 const jwMetal = kind => kind === "or" ? jwMaterial("or") : kind === "argent" ? jwMaterial("argent") : jwMaterial("chrome");
 // Les supports
-function jwSupport(sup, matKind, bbox) {
-  const G = new THREE.Group(), metal = jwMetal(matKind === "acrylique" || matKind === "email" ? "argent" : matKind), top = bbox.max.y;
-  const link = (r, t) => new THREE.TorusGeometry(r, t, 12, 28);
+function jwSupport(sup, matKind, bbox, fin = 0.6) {
+  const G = new THREE.Group(), metal = jwMetal(matKind === "acrylique" || matKind === "email" ? "argent" : matKind), top = bbox.max.y, sk = 0.55 + 0.9 * (1 - fin);   // la finesse vaut aussi pour la chaîne, l'anneau, la bague
+  const link = (r, t) => new THREE.TorusGeometry(r, t * sk, 12, 28);
   if (sup === "chaine") {
     const bail = new THREE.Mesh(link(0.09, 0.022), metal); bail.position.set(0, top + 0.06, 0); bail.rotation.y = Math.PI / 2; G.add(bail);
     const pts = []; for (let i = 0; i <= 80; i++) { const s = i / 80 * 2 - 1; pts.push(new THREE.Vector3(s * 1.6, top + 0.16 + (Math.cosh(s * 1.35) - 1) * 0.9, -Math.abs(s) * 0.25)); }
@@ -9634,7 +9765,7 @@ function jwSupport(sup, matKind, bbox) {
     for (let i = 0; i < n; i++) { const t = i / n, p = curve.getPointAt(t), tg = curve.getTangentAt(t); q.setFromUnitVectors(up, tg); const tw = new THREE.Quaternion().setFromAxisAngle(tg, i % 2 ? Math.PI / 2 : 0); q.premultiply(tw); m.compose(p, q, new THREE.Vector3(1, 1, 1)); inst.setMatrixAt(i, m); }
     G.add(inst);
   } else if (sup === "bague") {
-    const R = 0.6, band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.085, 28, 120), metal); band.position.set(0, bbox.min.y + 0.12 - R, -0.05); band.rotation.x = 0.22; G.add(band);   // l'anneau, debout sous le bijou
+    const R = 0.6, band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.085 * sk, 28, 120), metal); band.position.set(0, bbox.min.y + 0.12 - R, -0.05); band.rotation.x = 0.22; G.add(band);   // l'anneau, debout sous le bijou
     const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.16, 32), metal); seat.position.set(0, bbox.min.y + 0.06, -0.05); G.add(seat);
   } else if (sup === "zip") {
     const tape = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.9 }), tooth = metal;
@@ -9645,7 +9776,7 @@ function jwSupport(sup, matKind, bbox) {
     const ring = new THREE.Mesh(link(0.07, 0.018), metal); ring.position.set(0, top + 0.47, 0.06); ring.rotation.y = Math.PI / 2; G.add(ring);
     const bail = new THREE.Mesh(link(0.06, 0.016), metal); bail.position.set(0, top + 0.1, 0); G.add(bail);
   } else if (sup === "cles") {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 16, 80), metal); ring.position.set(0.15, top + 0.62, 0); ring.rotation.y = 0.3; G.add(ring);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03 * sk, 16, 80), metal); ring.position.set(0.15, top + 0.62, 0); ring.rotation.y = 0.3; G.add(ring);
     for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(link(0.06, 0.016), metal); l.position.set(0.02 * i, top + 0.08 + i * 0.09, 0); l.rotation.y = i % 2 ? Math.PI / 2 : 0; G.add(l); }
   }
   return G;
@@ -9662,8 +9793,10 @@ async function jwOpen(scene) {
       <label class="jw-col" data-show="acrylique"><span>Couleur de l'acrylique</span><input type="color"></label>
       <div class="w-sec">Porté sur</div><div class="ir-chips" data-g="sup"></div>
       <div class="w-sec">Volume</div>
-      <label class="w-fx-tr"><small>Épaisseur</small><output></output><input class="w-range" type="range" min="0.05" max="1" step="0.01" data-k="thick"></label>
+      <label class="w-fx-tr"><small>Finesse</small><output></output><input class="w-range" type="range" min="0" max="1" step="0.01" data-k="fin"></label>
       <label class="w-fx-tr"><small>Gonflement</small><output></output><input class="w-range" type="range" min="0" max="1.2" step="0.01" data-k="inflate"></label>
+      <label class="w-fx-tr"><small>Lissage</small><output></output><input class="w-range" type="range" min="0" max="1" step="0.01" data-k="lis"></label>
+      <p class="sp-hint" style="margin:2px 0 0">Chaque réglage s'applique partout : la finesse vaut pour toutes les branches et pour la chaîne. Le volume glisse en douceur d'un réglage à l'autre.</p>
       <div class="ir-chips" style="margin-top:6px"><button class="w-chip" data-a="rot" aria-pressed="${JW.opt.rot}">⟳ Rotation</button><button class="w-chip" data-a="png">Télécharger l'image</button></div>
       <div class="w-sec">Autre forme</div><div class="jw-thumbs"></div>
       <p class="sp-hint">L'émail irisé utilise ta palette de l'îlot Couleurs. L'acrylique est un plastique translucide : il laisse passer et colore la lumière.</p></aside>`;
@@ -9673,12 +9806,16 @@ async function jwOpen(scene) {
   const sc3 = new THREE.Scene(), cam = new THREE.PerspectiveCamera(32, 1, 0.01, 100); cam.position.set(0, 0.25, 4.6);
   sc3.environment = jwEnv(renderer); const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 3, 4); sc3.add(key, new THREE.AmbientLight(0xffffff, 0.25));
   const ctrl = new THREE.OrbitControls(cam, cv); ctrl.enableDamping = true; ctrl.autoRotate = JW.opt.rot; ctrl.autoRotateSpeed = 1.6; ctrl.minDistance = 1.6; ctrl.maxDistance = 9;
-  const root = new THREE.Group(); sc3.add(root); let cur = scene, mask = null;
+  const root = new THREE.Group(); sc3.add(root); let cur = scene, mask = null, topo = null, Hcur = null, Htgt = null, pend = null, sup = null, pop = 1;
+  const placeSup = () => {   // le support suit le haut/bas du volume
+    if (sup) { root.remove(sup); sup.traverse(m => m.geometry && m.geometry.dispose()); sup = null; }
+    if (JW.opt.sup !== "seul") { sup = jwSupport(JW.opt.sup, JW.opt.mat, topo.geo.boundingBox, JW.opt.fin); root.add(sup); }
+  };
+  const retarget = () => { if (topo) Htgt = jwHeights(topo, JW.opt); };   // nouvelle cible : le volume y glisse image après image
   const build = () => {
-    root.children.slice().forEach(o => { root.remove(o); o.traverse && o.traverse(m => { m.geometry && m.geometry.dispose(); }); });
-    if (!mask) mask = renderSceneMask(cur, 200).mask;
-    const geo = jwGeometry(mask, 200, JW.opt.thick, JW.opt.inflate), pend = new THREE.Mesh(geo, jwMaterial(JW.opt.mat, JW.opt.color)); root.add(pend);
-    if (JW.opt.sup !== "seul") root.add(jwSupport(JW.opt.sup, JW.opt.mat, geo.boundingBox));
+    root.children.slice().forEach(o => { root.remove(o); o.traverse && o.traverse(m => { m.geometry && m.geometry !== (topo && topo.geo) && m.geometry.dispose(); }); });
+    if (!mask) { mask = renderSceneMask(cur, 240).mask; if (topo) topo.geo.dispose(); topo = jwTopo(mask, 240); Htgt = jwHeights(topo, JW.opt); Hcur = Htgt.map(v => v * 0.15); pop = 0; }
+    jwApplyH(topo, Hcur); pend = new THREE.Mesh(topo.geo, jwMaterial(JW.opt.mat, JW.opt.color)); root.add(pend); sup = null; placeSup();
     const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()); root.position.sub(c).add(new THREE.Vector3(0, 0, 0));
     ctrl.target.set(0, 0, 0); cam.position.setLength(Math.max(3.2, Math.max(s.x, s.y) * 2.3)); ctrl.update();
   };
@@ -9687,15 +9824,22 @@ async function jwOpen(scene) {
   const showCol = () => { el.querySelector('[data-show="acrylique"]').hidden = JW.opt.mat !== "acrylique"; };
   chips("mat", JW_MATS, "mat"); chips("sup", JW_SUPS, "sup"); showCol();
   const ci = el.querySelector('.jw-col input'); ci.value = JW.opt.color; ci.oninput = () => { JW.opt.color = ci.value; store.set("atelier-jewel", JW.opt); clearTimeout(ci.t); ci.t = setTimeout(build, 120); };
-  el.querySelectorAll("input[data-k]").forEach(r => { const o = r.parentElement.querySelector("output"), k = r.dataset.k; r.value = JW.opt[k]; o.textContent = Math.round(JW.opt[k] * 100) + " %"; r.oninput = () => { JW.opt[k] = +r.value; o.textContent = Math.round(+r.value * 100) + " %"; store.set("atelier-jewel", JW.opt); clearTimeout(r.t); r.t = setTimeout(build, 90); }; });
+  el.querySelectorAll("input[data-k]").forEach(r => { const o = r.parentElement.querySelector("output"), k = r.dataset.k; r.value = JW.opt[k]; o.textContent = Math.round(JW.opt[k] * 100) + " %"; r.oninput = () => { JW.opt[k] = +r.value; o.textContent = Math.round(+r.value * 100) + " %"; store.set("atelier-jewel", JW.opt); retarget(); if (k === "fin") { clearTimeout(r.t); r.t = setTimeout(placeSup, 60); } }; });
   el.querySelector('[data-a="rot"]').onclick = e => { JW.opt.rot = !JW.opt.rot; ctrl.autoRotate = JW.opt.rot; e.currentTarget.setAttribute("aria-pressed", JW.opt.rot); store.set("atelier-jewel", JW.opt); uisSwitch(JW.opt.rot); };
   el.querySelector('[data-a="png"]').onclick = () => { renderer.render(sc3, cam); cv.toBlob(b => offerBlob(b, `tnb_bijou_${JW.opt.mat}_${JW.opt.sup}.png`)); uisYes(); };
   let alive = true; const close = () => { alive = false; JW.open = false; renderer.dispose(); el.remove(); uisSwoosh(false); removeEventListener("resize", resize); };
   el.querySelector('[data-a="close"]').onclick = close; addEventListener("resize", resize);
   let favs = []; try { favs = wMyFavs(18); } catch {} const pool = [...new Set([scene, ...favs, ...(current || []).slice(0, 12)])].filter(Boolean).slice(0, 18);
   try { wThumbs(el.querySelector(".jw-thumbs"), pool, s => { cur = s; mask = null; uisPlop(); build(); }); } catch {}
+  let sinceSup = 0;
   resize(); build();
-  const clock = new THREE.Clock(); const loop = () => { if (!alive) return; requestAnimationFrame(loop); const t = clock.getElapsedTime(); if (JW.opt.sup === "chaine" || JW.opt.sup === "zip" || JW.opt.sup === "cles") root.rotation.z = Math.sin(t * 1.3) * 0.03; ctrl.update(); renderer.render(sc3, cam); };
+  const clock = new THREE.Clock(); const loop = () => { if (!alive) return; requestAnimationFrame(loop); const t = clock.getElapsedTime(); if (JW.opt.sup === "chaine" || JW.opt.sup === "zip" || JW.opt.sup === "cles") root.rotation.z = Math.sin(t * 1.3) * 0.03;
+    if (topo && Htgt) {   // interpolation continue du volume vers la cible (ressort amorti)
+      let moved = 0; for (let j = 0; j < Hcur.length; j++) { const dlt = Htgt[j] - Hcur[j]; if (Math.abs(dlt) > 1e-4) { Hcur[j] += dlt * 0.18; moved = 1; } }
+      if (moved) { jwApplyH(topo, Hcur); if (++sinceSup > 8) { sinceSup = 0; placeSup(); } } else if (sinceSup) { sinceSup = 0; placeSup(); }
+    }
+    if (pend && pop < 1) { pop = Math.min(1, pop + 0.06); const e = 1 - Math.pow(1 - pop, 3), sc = 0.6 + 0.4 * e + Math.sin(pop * Math.PI) * 0.06; pend.scale.setScalar(sc); }
+    ctrl.update(); renderer.render(sc3, cam); };
   loop();
 }
 const JW_CSS = `
