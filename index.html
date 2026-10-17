@@ -1858,6 +1858,7 @@ async function applySession(session) {
   await loadVotes();
   if (uid) {
     sb.rpc("atelier_log_visit").then(() => {}, () => {});
+    shareSyncHead();
     const { data } = await sb.rpc("atelier_is_admin");
     isOwner = !!data;
   }
@@ -1999,6 +2000,8 @@ async function loadShared() {
   // rendu choisi par la personne qui partage (sans toucher aux réglages du visiteur)
   if (sh.style && sh.style.preset && PRESETS[sh.style.preset]) S.preset = sh.style.preset;
   if (sh.style && sh.style.trame) Object.assign(S.trame, sh.style.trame, { custom: null }), stampCache.clear();
+  // logo en tête de la personne qui partage : appliqué pour cette page seulement (rien n'est gardé chez le visiteur)
+  if (sh.style && sh.style.head && sh.style.head.m) { HEADM = sh.style.head; HEADC = null; try { for (const w of RW.pool) w.postMessage({ op: "head", head: HEADM }); } catch {} }
   const { data: rows } = await sb.from("atelier_votes").select("id,user_id,v,stars,off,n,created_at")
     .eq("user_id", sh.user_id).eq("v", 1).order("created_at", { ascending: false }).limit(1000);
   renderFavs(scenesFromEntries((rows || []).map(r => [r.id, rowToVote(r)])));
@@ -2024,7 +2027,7 @@ async function saveShare() {
   const note = document.getElementById("share-note"), handle = cleanHandle(document.getElementById("share-handle").value);
   document.getElementById("share-handle").value = handle;
   if (handle.length < 2) { note.textContent = "Choisis un nom d'au moins 2 caractères (lettres, chiffres, . _ -)."; return; }
-  const style = { preset: S.preset, trame: Object.assign({}, S.trame, { custom: null }) };
+  const style = { preset: S.preset, trame: Object.assign({}, S.trame, { custom: null }), head: shareHeadOf() };   // le logo en tête suit aussi le partage
   const { error } = await sb.from("atelier_shares").upsert({ user_id: me, handle, enabled: true, style, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) { note.textContent = error.code === "23505" ? "Ce nom est déjà pris, choisis-en un autre." : "Enregistrement impossible : " + error.message; return; }
   setShareState(handle);
@@ -2047,6 +2050,18 @@ function setupShare() {
     const el = document.getElementById("share-url"), note = document.getElementById("share-note");
     navigator.clipboard.writeText(el.value).then(() => { note.textContent = "Lien copié."; }, () => { el.select(); note.textContent = "Sélectionné : copie-le avec Ctrl+C."; });
   };
+}
+
+/* Le partage garde le même rendu que ta page Favoris : si tu as un logo en tête, il est envoyé avec le lien */
+function shareHeadOf() { return HEADM && HEADM.m ? { n: HEADM.n, m: HEADM.m, k: HEADM.k || 1, keep: HEADM.keep || 0, on: true } : null; }
+async function shareSyncHead() {
+  if (!sb || !me || SHARED_VIEW) return;
+  try {
+    const { data } = await sb.from("atelier_shares").select("style,enabled").eq("user_id", me).maybeSingle(); if (!data) return;
+    const style = Object.assign({}, data.style || {}), head = shareHeadOf();
+    if (JSON.stringify(style.head || null) === JSON.stringify(head)) return;
+    style.head = head; await sb.from("atelier_shares").update({ style, updated_at: new Date().toISOString() }).eq("user_id", me);
+  } catch {}
 }
 /* =====================================================================
    Interface
@@ -8967,6 +8982,7 @@ function headApply(h) {
   try { localStorage.setItem("atelier-head", JSON.stringify(h)); } catch { wToast("Logo trop lourd pour être gardé dans ce navigateur"); }
   HEADM = h && h.on && h.m ? h : null; HEADC = null;
   for (const w of RW.pool) try { w.postMessage({ op: "head", head: HEADM }); } catch {}
+  if (typeof shareSyncHead === "function") shareSyncHead();
   const scenes = new Set([...(current || []), ...WORLD.nodes.map(n => n.scene).filter(Boolean)]);
   for (const sc of scenes) { delete sc.mask; delete sc.fmask; delete sc.fkey; delete sc.fT; }
   WORLD.thumbs.clear(); for (const n of WORLD.nodes) n.img = null;
