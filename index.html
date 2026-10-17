@@ -308,6 +308,15 @@ body.share-mode.idle .fade-ui { opacity: 1; }
 /* Lisibilité : texte net, titres en demi-gras */
 body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 :where(h1, h2, h3) { font-weight: 600; letter-spacing: -.02em; }
+
+/* Le monde (îlots, panneaux, bijoux, platines…) est dessiné en « verre clair » : on garde toujours l'encre foncée, même si l'appareil est en thème sombre */
+:root:has(body.world) { color-scheme: light; }
+body.world {
+  --page: #e8eaef; --page-2: #f7f8fb; --ink: #111216; --muted: #676c78;
+  --glass: rgba(255, 255, 255, .56); --glass-strong: rgba(255, 255, 255, .78); --glass-brd: rgba(255, 255, 255, .8);
+  --hair: rgba(17, 18, 22, .09); --shadow: 0 12px 40px rgba(24, 30, 52, .12), 0 1px 2px rgba(24, 30, 52, .06);
+  --press: rgba(17, 18, 22, .06); --yes: #1f9d63; --no: #e5484d; color-scheme: light; color: var(--ink);
+}
 </style>
 </head>
 <body>
@@ -1997,7 +2006,7 @@ async function loadShared() {
 async function openShare() {
   const note = document.getElementById("share-note"), input = document.getElementById("share-handle");
   note.textContent = "";
-  if (!sb || !me) { note.textContent = "Connecte-toi (tiroir de droite) pour partager tes favoris."; openM(document.getElementById("share")); return; }
+  if (!sb || !me) { note.textContent = "Connecte-toi d'abord (bouton 👤 en bas, ou tiroir de droite dans l'ancienne interface) pour partager tes favoris."; openM(document.getElementById("share")); return; }
   const { data } = await sb.from("atelier_shares").select("handle,enabled").eq("user_id", me).maybeSingle();
   input.value = data ? data.handle : cleanHandle(myName.split("@")[0]) || "mes-favoris";
   setShareState(data && data.enabled ? data.handle : null);
@@ -7913,7 +7922,8 @@ function wToggleSheet(id) {
 }
 function wFillColl(s) {
   const favs = wMyFavs(60);
-  s.innerHTML = `<div class="w-line"><b style="font-weight:400;font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.65">Ma collection · ${favs.length}</b><span style="opacity:.6">touche une forme pour la voir sur un vêtement</span></div><div class="w-scroll"></div>`;
+  s.innerHTML = `<div class="w-line"><b style="font-weight:400;font-size:11px;letter-spacing:.2em;text-transform:uppercase;opacity:.65">Ma collection · ${favs.length}</b><span style="opacity:.6">touche une forme pour la voir sur un vêtement</span><button class="w-pill dark" id="w-coll-share" style="margin-left:auto">🔗 Partager ma collection</button></div><div class="w-scroll"></div>`;
+  s.querySelector("#w-coll-share").onclick = () => { uisClick(); if (typeof openShare === "function") openShare(); else wToast("Le partage n'est pas disponible ici"); };
   if (!favs.length) { s.querySelector(".w-scroll").innerHTML = `<p style="opacity:.7">Rien encore. Vote « oui » sur les formes qui te plaisent : elles arrivent ici.</p>`; return; }
   wThumbs(s.querySelector(".w-scroll"), favs, sc => { wCloseSheets(); openMockup(sc); }, 140);
 }
