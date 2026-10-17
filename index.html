@@ -9633,7 +9633,7 @@ const VINYL_CSS = `
 /* ---------- Bijoux 3D : la forme devient un pendentif (chrome, or, acrylique…), aperçu sur chaîne, bague, zip, porte-clés ---------- */
 const JW = { open: false, opt: Object.assign({ mat: "chrome", sup: "chaine", fin: 0.6, inflate: 0.55, lis: 0.5, color: "#ff2fb3", rot: true }, store.get("atelier-jewel", {})) };
 if (JW.opt.fin == null) JW.opt.fin = 0.6; if (JW.opt.lis == null) JW.opt.lis = 0.5;
-const JW_MATS = [["chrome", "Chrome"], ["or", "Or"], ["argent", "Argent brossé"], ["acrylique", "Acrylique"], ["email", "Émail irisé"]];
+const JW_MATS = [["chrome", "Chrome"], ["or", "Or"], ["argent", "Argent brossé"], ["acrylique", "Acrylique"], ["email", "Émail irisé"], ["bois", "Bois sculpté"]];
 const JW_SUPS = [["chaine", "Chaîne"], ["bague", "Bague"], ["zip", "Tirette de zip"], ["cles", "Porte-clés"], ["seul", "Seul"]];
 // Géométrie en deux temps : (1) la topologie, calculée une fois par forme (maillage recalé sur le contour, distance au bord) ;
 // (2) les hauteurs, recalculées à chaque réglage → on peut interpoler en douceur d'un réglage à l'autre, sans reconstruire.
@@ -9662,7 +9662,8 @@ function jwTopo(mask, N) {
   // « marching triangles » : on découpe chaque triangle de la grille le long du contour exact (f = 0,5).
   // Les sommets du bord sont posés SUR les arêtes coupées → jamais de triangle retourné, silhouette lisse.
   const X = [], Y = [], rim = [], gmap = new Int32Array(V * V).fill(-1), cmap = new Map();
-  const gv = i => { if (gmap[i] < 0) { gmap[i] = X.length; X.push(i % V - 0.5); Y.push(Math.floor(i / V) - 0.5); rim.push(0); } return gmap[i]; };
+  const jit = N < 64 ? 0.34 : 0, hr = (i, k) => { const h = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return (h - Math.floor(h)) - 0.5; };   // petit maillage (bois) : sommets décalés → facettes irrégulières
+  const gv = i => { if (gmap[i] < 0) { gmap[i] = X.length; X.push(i % V - 0.5 + jit * hr(i, 1)); Y.push(Math.floor(i / V) - 0.5 + jit * hr(i, 2)); rim.push(0); } return gmap[i]; };
   const cv = (i, o) => {   // sommet de bord sur l'arête intérieur i → extérieur o
     const key = i < o ? i * V * V + o : o * V * V + i; let j = cmap.get(key); if (j !== undefined) return j;
     let t = (fv[i] - 0.5) / Math.max(1e-6, fv[i] - fv[o]); t = Math.max(0.02, Math.min(0.98, t));
@@ -9691,7 +9692,7 @@ function jwTopo(mask, N) {
   }
   // tranche raffinée : chaque arête bord→intérieur est découpée en K segments (espacés pour que la hauteur monte régulièrement)
   // → la courbure du bord est décrite par plusieurs rangées de sommets, plus de dents de scie dans les reflets
-  const K = 5, XX = Array.from(X), YY = Array.from(Y), DD = Array.from(dist), RR = Array.from(rim), split = new Map();
+  const K = N < 64 ? 2 : 5, XX = Array.from(X), YY = Array.from(Y), DD = Array.from(dist), RR = Array.from(rim), split = new Map();
   const chain = (r, i) => {   // sommets de r (bord) vers i (intérieur), r et i inclus
     const key = r + "_" + i; let c = split.get(key); if (c) return c; c = [r];
     for (let k = 1; k < K; k++) { const t = Math.pow(k / K, 2); XX.push(XX[r] + (XX[i] - XX[r]) * t); YY.push(YY[r] + (YY[i] - YY[r]) * t); DD.push(DD[i] * t); RR.push(0); c.push(XX.length - 1); }
@@ -9732,6 +9733,7 @@ function jwTopo(mask, N) {
 //  finesse   → rayon du profil arrondi (fin = fil délicat ; épais = galet) — identique sur chaque branche
 //  gonflement→ bombé supplémentaire là où la forme est large
 //  lissage   → diffusion du volume (membrane), pour des transitions continues entre branches fines et zones larges
+function jwDown(m, S, N) { const o = new Float32Array(N * N), k = S / N; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { let s = 0, c = 0; for (let v = Math.floor(y * k); v < Math.floor((y + 1) * k); v++) for (let u = Math.floor(x * k); u < Math.floor((x + 1) * k); u++) { s += m[v * S + u]; c++; } o[y * N + x] = c ? s / c : 0; } return o; }
 function jwHeights(T, o) {
   const { N, n, dist, rim, nbStart, nbList } = T, R = N * (0.012 + 0.1 * (1 - o.fin)), H = new Float32Array(n);
   for (let j = 0; j < n; j++) { if (rim[j]) continue; const d = dist[j], dd = Math.min(d, R), h = Math.sqrt(Math.max(0, 2 * R * dd - dd * dd)) + o.inflate * 0.38 * Math.pow(Math.max(0, d - R), 0.85); H[j] = h * h; }
@@ -9739,6 +9741,7 @@ function jwHeights(T, o) {
   for (let k = 0; k < it; k++) { for (let j = 0; j < n; j++) { if (rim[j]) { B[j] = 0; continue; } let s = 0, c = 0; for (let q = nbStart[j]; q < nbStart[j + 1]; q++) { s += H[nbList[q]]; c++; } B[j] = H[j] * 0.4 + (c ? s / c : H[j]) * 0.6; } H.set(B); }
   const k = 0.3 + 1.5 * Math.pow(1 - o.fin, 1.2);   // la finesse règle aussi l'épaisseur de tout le bijou, uniformément
   for (let j = 0; j < n; j++) H[j] = Math.sqrt(H[j]) / N * 2 * k;
+  if (o.mat === "bois") for (let j = 0; j < n; j++) if (!rim[j]) { const h = Math.sin(j * 12.9898) * 43758.5453; H[j] *= 0.75 + 0.5 * (h - Math.floor(h)); }   // copeaux irréguliers
   return H;
 }
 function jwApplyH(T, H) {
@@ -9774,13 +9777,23 @@ function jwMaterial(kind, color) {
   if (kind === "or") return new THREE.MeshStandardMaterial({ color: 0xffc865, metalness: 1, roughness: 0.14 });
   if (kind === "argent") return new THREE.MeshStandardMaterial({ color: 0xd9dce3, metalness: 1, roughness: 0.34 });
   if (kind === "acrylique") return new THREE.MeshPhysicalMaterial({ color: new THREE.Color(color), metalness: 0, roughness: 0.03, transmission: 0.62, thickness: 2, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.92, envMapIntensity: 1.4, side: THREE.DoubleSide });
+  if (kind === "bois") {   // tilleul (basswood) : veines longues, pores, teinte miel pâle ; facettes planes (flatShading)
+    if (!JW.wood) {
+    const S = 1024, cv = document.createElement("canvas"); cv.width = cv.height = S; const x = cv.getContext("2d"), id = x.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let xx = 0; xx < S; xx++) {
+      const u = xx / S, v = y / S, w = vnoise(u * 6, v * 1.2) * 0.9 + vnoise(u * 23, v * 3) * 0.25, ring = 0.5 + 0.5 * Math.sin((u * 38 + w * 5) * Math.PI), pore = vnoise(u * 300, v * 40) > 0.55 ? 0.93 : 1, t = (0.82 + 0.18 * Math.pow(ring, 3)) * pore, i = (y * S + xx) * 4;
+      id.data[i] = 236 * t; id.data[i + 1] = 206 * t; id.data[i + 2] = 158 * t; id.data[i + 3] = 255;
+    }
+    x.putImageData(id, 0, 0); JW.wood = new THREE.CanvasTexture(cv); JW.wood.encoding = THREE.sRGBEncoding; JW.wood.anisotropy = 4; }
+    return new THREE.MeshStandardMaterial({ map: JW.wood, roughness: 0.78, metalness: 0, flatShading: true, envMapIntensity: 0.6 });
+  }
   if (kind === "email") { const S = 512, cv = document.createElement("canvas"); cv.width = cv.height = S; const id = cv.getContext("2d").createImageData(S, S); irisRender(Object.assign({}, IRIS, { grain: (IRIS.grain || 0) * 0.6 }), S, S, id.data, null, null); cv.getContext("2d").putImageData(id, 0, 0); const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; return new THREE.MeshPhysicalMaterial({ map: tx, metalness: 0.35, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 }); }
   return new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.05 });
 }
 const jwMetal = kind => kind === "or" ? jwMaterial("or") : kind === "argent" ? jwMaterial("argent") : jwMaterial("chrome");
 // Les supports
 function jwSupport(sup, matKind, bbox, fin = 0.6) {
-  const G = new THREE.Group(), metal = jwMetal(matKind === "acrylique" || matKind === "email" ? "argent" : matKind), top = bbox.max.y, sk = 0.55 + 0.9 * (1 - fin);   // la finesse vaut aussi pour la chaîne, l'anneau, la bague
+  const G = new THREE.Group(), metal = jwMetal(matKind === "acrylique" || matKind === "email" || matKind === "bois" ? "argent" : matKind), top = bbox.max.y, sk = 0.55 + 0.9 * (1 - fin);   // la finesse vaut aussi pour la chaîne, l'anneau, la bague
   const link = (r, t) => new THREE.TorusGeometry(r, t * sk, 12, 28);
   if (sup === "chaine") {
     const bail = new THREE.Mesh(link(0.09, 0.022), metal); bail.position.set(0, top + 0.06, 0); bail.rotation.y = Math.PI / 2; G.add(bail);
@@ -9839,7 +9852,9 @@ async function jwOpen(scene) {
   const retarget = () => { if (topo) Htgt = jwHeights(topo, JW.opt); };   // nouvelle cible : le volume y glisse image après image
   const build = () => {
     root.children.slice().forEach(o => { root.remove(o); o.traverse && o.traverse(m => { m.geometry && m.geometry !== (topo && topo.geo) && m.geometry.dispose(); }); });
-    if (!mask) { mask = renderSceneMask(cur, 240).mask; if (topo) topo.geo.dispose(); topo = jwTopo(mask, 240); Htgt = jwHeights(topo, JW.opt); Hcur = Htgt.map(v => v * 0.15); pop = 0; }
+    const wantN = JW.opt.mat === "bois" ? 40 : 240;   // bois sculpté : maillage grossier + facettes planes = coups de couteau
+    if (!mask) { mask = renderSceneMask(cur, 240).mask; if (topo) topo.geo.dispose(); topo = null; pop = 0; }
+    if (!topo || topo.N !== wantN) { if (topo) topo.geo.dispose(); topo = jwTopo(wantN === 240 ? mask : jwDown(mask, 240, wantN), wantN); Htgt = jwHeights(topo, JW.opt); Hcur = Htgt.map(v => v * (pop < 1 ? 0.15 : 0.7)); }
     jwApplyH(topo, Hcur); pend = new THREE.Mesh(topo.geo, jwMaterial(JW.opt.mat, JW.opt.color)); root.add(pend); sup = null; placeSup();
     const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()); root.position.sub(c).add(new THREE.Vector3(0, 0, 0));
     ctrl.target.set(0, 0, 0); cam.position.setLength(Math.max(3.2, Math.max(s.x, s.y) * 2.3)); ctrl.update();
