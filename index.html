@@ -4398,6 +4398,7 @@ const W_ISLANDS = [
   { k: "diffusion", lab: "Diffusion", r: 260, note: 60, a: [0.62, 0.95], p: [0.62, 1.05] },
   { k: "dj", lab: "Platines", r: 260, note: 55, a: [-1.3, 0.9], p: [-0.62, 1.95] },
   { k: "learn", lab: "Apprendre", r: 250, note: 62, a: [1.3, 0.9], p: [0.62, 1.95] },
+  { k: "iris", lab: "Couleurs", r: 240, note: 64, a: [0, 1.25], p: [0, 1.5] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4616,7 +4617,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".ir, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5000,6 +5001,9 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "iris") {                        // écailles irisées
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) { const ox = (i - 1) * 0.36 + (j % 2) * 0.18 - 0.09, oy = (j - 1) * 0.3; x.moveTo(cx + (ox + 0.17) * s, cy + oy * s); x.arc(cx + ox * s, cy + oy * s, 0.17 * s, 0, Math.PI); }
+    x.stroke();
   } else if (k === "learn") {                       // deux cartes, l'une retournée
     x.save(); x.translate(cx - 0.12 * s, cy); x.rotate(-0.22); x.rect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s); x.restore(); x.stroke();
     x.beginPath(); x.save(); x.translate(cx + 0.16 * s, cy + 0.04 * s); x.rotate(0.12); x.fillStyle = "rgba(255,255,255,.85)"; x.fillRect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s); x.strokeRect(-0.42 * s, -0.55 * s, 0.84 * s, 1.1 * s);
@@ -5103,7 +5107,7 @@ function wPanel(k) {
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5186,8 +5190,10 @@ const wMyFavs = (n = 24) => favScenes().slice(0, n);
 function wPProduction(p) {
   p.innerHTML = wHead("Production · du dessin au vêtement") + `<div class="w-center"><div class="w-box w-glass-ui w-live">
   <h3>Choisis une forme</h3><p>Elle s'ouvre dans le studio : plan à gauche, vêtement en 3D à droite. Longsleeve ou bonnet, couleur, technique d'impression, placement.</p>
-  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button></div><div id="w-p-list"></div></div></div>`;
+  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button><button class="w-pill w-glass-ui" id="w-p-jw">💎 En bijou 3D</button></div>
+  <p class="sp-hint">Bijou 3D : la forme devient un pendentif (chrome, or, argent, acrylique, émail irisé), porté sur une chaîne, une bague, une tirette de zip ou un porte-clés.</p><div id="w-p-list"></div></div></div>`;
   p.querySelector("#w-p-cur").onclick = () => { uisClick(); openMockup(current.find(s => votes[s.id]?.v > 0) || current[0]); };
+  p.querySelector("#w-p-jw").onclick = () => { uisClick(); jwOpen(current.find(s => votes[s.id]?.v > 0) || current[0] || (wMyFavs(1)[0])); };
   const favs = wMyFavs(18), host = p.querySelector("#w-p-list");
   if (favs.length) { const l = document.createElement("p"); l.textContent = "Ou une de tes favorites :"; host.append(l); wThumbs(host, favs, sc => openMockup(sc)); }
   else { const l = document.createElement("p"); l.textContent = "Tes favorites apparaîtront ici dès que tu auras voté « oui »."; host.append(l); }
@@ -6637,7 +6643,7 @@ function djRec() {
 
 /* Interface des platines */
 function wPDJ(p) {
-  if (!document.getElementById("dj-css")) { const css = document.createElement("style"); css.id = "dj-css"; css.textContent = DJ_CSS + (typeof SY_CSS !== "undefined" ? SY_CSS : ""); document.head.append(css); }
+  if (!document.getElementById("dj-css")) { const css = document.createElement("style"); css.id = "dj-css"; css.textContent = DJ_CSS + VINYL_CSS + (typeof SY_CSS !== "undefined" ? SY_CSS : ""); document.head.append(css); }
   p.innerHTML = wHead("Platines · mixe les prods", lnTogBtn() + `<button class="w-pill w-glass-ui w-live" id="dj-rec" aria-pressed="${!!DJ.rec}">${DJ.rec ? "■ Arrêter et garder" : "● Enregistrer le mix"}</button>`)
     + `<div class="w-scroll w-live"><div class="dj">
       <section class="dj-deck sp-card" data-d="0"></section>
@@ -6679,6 +6685,7 @@ function djRenderDeck(d) {
   const up = () => { if (!drag) return; djSetRate(d, drag.r); drag = null; }; plat.addEventListener("pointerup", up); plat.addEventListener("pointercancel", up);
   // cliquer dans l'onde = aller à cette mesure
   q(".dj-wave").onclick = e => { if (!d.buf) return; const r = e.currentTarget.getBoundingClientRect(), bar = Math.floor((e.clientX - r.left) / r.width * d.bars), off = bar * d.barLen; uisClick(); if (d.playing) djStart(d, Math.max(d.loopA, Math.min(off, d.loopB - d.barLen))); else d.off = off; };
+  try { vinylMount(d); } catch (e) { console.warn(e); }
 }
 function djPicker(d, el) {
   const pk = el.querySelector(".dj-pick"); if (!pk.hidden) { pk.hidden = true; return; }
@@ -9372,6 +9379,331 @@ function fglMotion(M, energy, hits, dt, playing, t) {
   M.sx = M.s * (1 + st + vel * 0.15); M.sy = M.s * (1 - st * 0.8); M.wob = Math.min(1.4, Math.abs(M.sv) * 0.12 + Math.abs(M.rv) * 0.08 + vel * 1.2);
   return M;
 }
+/* ---------- Couleurs irisées : dégradés de teintes avec grain, comme les couleurs structurelles des insectes ---------- */
+// Les ailes de morpho, les élytres de scarabée ou les guêpes-coucous ne sont pas pigmentés : leur couleur vient de couches
+// très fines qui font interférer la lumière. Le moteur imite ça : une « épaisseur » qui varie (film, écailles, onde…)
+// est traduite en teinte par une palette cyclique, puis on ajoute le grain.
+const IRIS_PRESETS = {
+  "Scarabée":     { stops: [[0, "#0b3d2e"], [0.25, "#1fae6a"], [0.5, "#c9e265"], [0.72, "#e6a33e"], [0.88, "#8a3b12"]], mode: "film", bands: 2.2, scale: 2.4, warp: 0.6, grain: 0.25, gsize: 1, angle: 30 },
+  "Morpho":       { stops: [[0, "#070b2e"], [0.3, "#1d3fd1"], [0.55, "#36a3ff"], [0.78, "#9b5cff"]], mode: "film", bands: 1.6, scale: 1.8, warp: 0.5, grain: 0.18, gsize: 1, angle: 60 },
+  "Guêpe-coucou": { stops: [[0, "#13c4b6"], [0.22, "#2f6bff"], [0.45, "#b23cff"], [0.68, "#ff3d7f"], [0.86, "#ffb238"]], mode: "ecailles", bands: 2.6, scale: 7, warp: 0.35, grain: 0.32, gsize: 1, angle: 0 },
+  "Bupreste":     { stops: [[0, "#0f5a3a"], [0.35, "#25d07d"], [0.65, "#ff4d2e"], [0.85, "#ffcb3a"]], mode: "film", bands: 2, scale: 3, warp: 0.8, grain: 0.22, gsize: 1, angle: 90 },
+  "Nacre":        { stops: [[0, "#f6efe6"], [0.25, "#d7e7ff"], [0.5, "#ffd7ef"], [0.75, "#e6ffe9"]], mode: "radial", bands: 3, scale: 2, warp: 0.4, grain: 0.12, gsize: 1, angle: 0 },
+  "Plastique néon": { stops: [[0, "#ff2fb3"], [0.33, "#ffd400"], [0.66, "#00e5ff"]], mode: "conique", bands: 1, scale: 1, warp: 0.15, grain: 0.1, gsize: 2, angle: 0 },
+  "Huile":        { stops: [[0, "#1b1030"], [0.2, "#ff7a2f"], [0.4, "#ffe14d"], [0.6, "#29e3a6"], [0.8, "#6a5cff"]], mode: "onde", bands: 3.2, scale: 2.2, warp: 0.9, grain: 0.15, gsize: 1, angle: 20 },
+};
+const IRIS_MODES = [["film", "Film (insecte)"], ["ecailles", "Écailles"], ["onde", "Onde d'huile"], ["lin", "Linéaire"], ["radial", "Radial"], ["conique", "Conique"]];
+let IRIS = Object.assign({}, IRIS_PRESETS["Guêpe-coucou"], store.get("atelier-iris", {}), { phase: 0 });
+const irisHex = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+function irisLUT(P) {                                           // palette cyclique lissée, 512 teintes
+  const st = P.stops.slice().sort((a, b) => a[0] - b[0]).map(([p, c]) => [p, irisHex(c)]), L = new Uint8ClampedArray(512 * 3);
+  for (let i = 0; i < 512; i++) {
+    const t = i / 512; let k = st.length - 1; while (k > 0 && st[k][0] > t) k--;
+    const a = st[k], b = st[(k + 1) % st.length], pa = a[0], pb = k + 1 < st.length ? b[0] : b[0] + 1, tt = t < pa ? t + 1 : t;
+    let f = (tt - pa) / Math.max(1e-6, pb - pa); f = f * f * (3 - 2 * f);
+    for (let c = 0; c < 3; c++) L[i * 3 + c] = a[1][c] + (b[1][c] - a[1][c]) * f;
+  }
+  return L;
+}
+// « Épaisseur » du film en (u, v) ∈ [0,1]² selon le mode
+function irisT(P, u, v, cell) {
+  const s = P.scale, an = (P.angle || 0) * Math.PI / 180, ca = Math.cos(an), sa = Math.sin(an), x = u - 0.5, y = v - 0.5;
+  let t;
+  switch (P.mode) {
+    case "lin": t = (x * ca + y * sa) + 0.5; break;
+    case "radial": t = Math.hypot(x, y) * 2; break;
+    case "conique": t = (Math.atan2(y, x) + an) / (Math.PI * 2) + 0.5; break;
+    case "onde": t = fbm(u * s + 3.1, v * s) * 0.6 + Math.sin((x * ca + y * sa) * s * 3) * 0.2; break;
+    case "ecailles": {                                           // cellules (écailles) : chaque écaille a sa teinte et un petit dégradé
+      const gx = u * s, gy = v * s * 1.15, ix = Math.floor(gx), iy = Math.floor(gy); let best = 9, id = 0, dx2 = 0, dy2 = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const cx = ix + i, cy = iy + j, px = cx + 0.5 + hash2(cx, cy) * 0.35, py = cy + 0.5 + hash2(cy, cx + 7) * 0.35, d = (gx - px) ** 2 + (gy - py) ** 2; if (d < best) { best = d; id = hash2(cx * 3 + 1, cy * 5 + 2); dx2 = gx - px; dy2 = gy - py; } }
+      if (cell) cell.d = Math.sqrt(best);
+      t = id * 0.35 + (dy2 * 0.6 - dx2 * 0.2) + 0.5; break; }
+    default: t = fbm(u * s, v * s) * 0.9 + (x * ca + y * sa) * 0.35;  // film
+  }
+  if (P.warp > 0.01) t += (fbm(u * s * 2.1 + 9.7, v * s * 2.1 - 3.3)) * 0.35 * P.warp;
+  return t * P.bands + (P.phase || 0);
+}
+// Rendu : remplit out (RGBA) ; mask optionnel (0..1) pour ne colorer que la forme, avec un relief (film sur volume)
+function irisRender(P, W, H, out, mask, bg) {
+  const L = irisLUT(P), gs = Math.max(1, P.gsize || 1), g = P.grain || 0, cell = {};
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, o = i * 4; let shade = 1, tilt = 0, a = 1;
+    if (mask) {
+      a = Math.max(0, Math.min(1, (mask[i] - 0.4) / 0.2)); if (a <= 0) { if (bg) { out[o] = bg[0]; out[o + 1] = bg[1]; out[o + 2] = bg[2]; out[o + 3] = 255; } else out[o + 3] = 0; continue; }
+      const gx = (mask[y * W + Math.min(W - 1, x + 1)] - mask[y * W + Math.max(0, x - 1)]), gy = (mask[Math.min(H - 1, y + 1) * W + x] - mask[Math.max(0, y - 1) * W + x]);
+      tilt = (gx * 0.8 - gy * 0.6) * 2.2; shade = 0.82 + 0.18 * Math.max(0, 1 - Math.hypot(gx, gy) * 3) - Math.max(0, gy) * 0.4;   // film sur volume : la teinte tourne avec la pente
+    }
+    const t = irisT(P, x / W, y / H, cell) + tilt;
+    let k = Math.floor(((t % 1) + 1) % 1 * 512) * 3;
+    let r = L[k], gg = L[k + 1], b = L[k + 2];
+    if (P.mode === "ecailles" && cell.d !== undefined) { const e = Math.max(0, cell.d - 0.42) * 2.4; r *= 1 - e; gg *= 1 - e; b *= 1 - e; }   // joints entre écailles
+    if (g > 0) { const n = (hash2(Math.floor(x / gs) * 7 + 3, Math.floor(y / gs) * 13 + 1) * 0.5 + 0.5) - 0.5, nc = hash2(Math.floor(x / gs) + 99, Math.floor(y / gs) - 41) * 0.5; r += (n * 110 + nc * 30) * g; gg += (n * 110 - nc * 20) * g; b += (n * 110 + nc * 10) * g; }
+    if (mask && bg) { out[o] = r * shade * a + bg[0] * (1 - a); out[o + 1] = gg * shade * a + bg[1] * (1 - a); out[o + 2] = b * shade * a + bg[2] * (1 - a); out[o + 3] = 255; }
+    else { out[o] = r * shade; out[o + 1] = gg * shade; out[o + 2] = b * shade; out[o + 3] = 255 * a; }
+  }
+  return out;
+}
+// Nouveau rendu de formes « Irisé » (utilisable dans le Labo, la grille, les mockups…)
+PRESETS.irise = { lab: "Irisé", desc: "Couleurs structurelles d'insecte, avec grain (réglages dans l'îlot Couleurs)", fn(m, T, r, out) { irisRender(IRIS, T, T, out, m, [242, 241, 245]); } };
+function irisSave() { const { phase, ...keep } = IRIS; store.set("atelier-iris", keep); }
+
+/* L'îlot « Couleurs » */
+function wPIris(p) {
+  if (!document.getElementById("iris-css")) { const c = document.createElement("style"); c.id = "iris-css"; c.textContent = IRIS_CSS; document.head.append(c); }
+  p.innerHTML = wHead("Couleurs · dégradés irisés", `<button class="w-pill w-glass-ui w-live" id="ir-anim" aria-pressed="false">✦ Scintille</button><button class="w-pill w-glass-ui w-live" id="ir-rand">↻ Au hasard</button><button class="w-pill w-glass-ui w-live" id="ir-png">Télécharger</button><button class="w-pill dark w-live" id="ir-apply">Appliquer aux formes</button>`)
+    + `<div class="w-scroll w-live"><div class="ir">
+      <div class="ir-stage"><canvas id="ir-cv" width="360" height="360"></canvas><div class="ir-tog"><button class="w-chip" data-v="plat" aria-pressed="true">À plat</button><button class="w-chip" data-v="forme" aria-pressed="false">Sur une forme</button></div></div>
+      <div class="ir-ctl sp-card">
+        <div class="w-sec">Insectes et matières</div><div class="ir-chips" id="ir-pre"></div>
+        <div class="w-sec">Structure</div><div class="ir-chips" id="ir-mode"></div>
+        <div class="w-sec">Palette <span>clique sur la barre pour ajouter une couleur · double-clic sur un repère pour le retirer</span></div>
+        <div class="ir-bar" id="ir-bar"></div>
+        <div class="ir-sl" id="ir-sl"></div>
+        <p class="sp-hint">Pourquoi ça brille comme un insecte : les couleurs des scarabées, des morphos ou des guêpes-coucous ne sont pas des pigments mais des interférences dans des couches très fines. Ici, une « épaisseur » qui varie (film, écailles, onde) est traduite en teinte par ta palette, en boucle, puis le grain casse le numérique.</p>
+      </div></div></div>`;
+  const cv = p.querySelector("#ir-cv"), x = cv.getContext("2d"); let view = "plat", anim = false, raf = 0, shape = null;
+  const draw = () => {
+    const S = view === "forme" ? 300 : 300, id = x.createImageData(S, S);
+    if (view === "forme") { if (!shape) { const sc = current && current[0] ? current[0] : null; shape = sc ? renderSceneMask(sc, S).mask : renderStar(GENES.map(g => g.mu0), 7, S).mask; shape = boxBlur(shape, S, 2); } irisRender(IRIS, S, S, id.data, shape, [242, 241, 245]); }
+    else irisRender(IRIS, S, S, id.data, null, null);
+    cv.width = cv.height = S; x.putImageData(id, 0, 0);
+  };
+  let tmr = 0; const redraw = () => { clearTimeout(tmr); tmr = setTimeout(draw, 40); };
+  const pre = p.querySelector("#ir-pre"); for (const k of Object.keys(IRIS_PRESETS)) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = k; b.onclick = () => { IRIS = Object.assign({}, JSON.parse(JSON.stringify(IRIS_PRESETS[k])), { phase: IRIS.phase }); irisSave(); uisChime(Object.keys(IRIS_PRESETS).indexOf(k) * 2, 0.4); sync(); }; pre.append(b); }
+  const mode = p.querySelector("#ir-mode"); for (const [k, l] of IRIS_MODES) { const b = document.createElement("button"); b.className = "w-chip"; b.dataset.m = k; b.textContent = l; b.onclick = () => { IRIS.mode = k; irisSave(); uisClick(); sync(); }; mode.append(b); }
+  const SL = [["bands", "Bandes de couleur", 0.3, 6, 0.05, v => v.toFixed(1)], ["scale", "Échelle", 0.5, 14, 0.1, v => v.toFixed(1)], ["warp", "Turbulence", 0, 1.5, 0.01, v => Math.round(v * 100) + " %"], ["grain", "Grain", 0, 1, 0.01, v => Math.round(v * 100) + " %"], ["gsize", "Taille du grain", 1, 6, 1, v => v + " px"], ["angle", "Angle", 0, 360, 1, v => v + "°"]];
+  const sl = p.querySelector("#ir-sl");
+  for (const [k, l, mn, mx, st, f] of SL) { const w = document.createElement("label"); w.className = "w-fx-tr"; w.innerHTML = `<small>${l}</small><output></output><input class="w-range" type="range" min="${mn}" max="${mx}" step="${st}">`; const r = w.querySelector("input"), o = w.querySelector("output"); r.dataset.k = k; r.oninput = () => { IRIS[k] = +r.value; o.textContent = f(+r.value); irisSave(); redraw(); }; w.sync = () => { r.value = IRIS[k]; o.textContent = f(IRIS[k]); }; sl.append(w); }
+  const bar = p.querySelector("#ir-bar");
+  const drawBar = () => {
+    const L = irisLUT(IRIS); bar.style.background = `linear-gradient(90deg, ${Array.from({ length: 24 }, (_, i) => { const k = Math.floor(i / 23 * 511) * 3; return `rgb(${L[k]},${L[k + 1]},${L[k + 2]})`; }).join(",")})`;
+    bar.querySelectorAll(".ir-stop").forEach(e => e.remove());
+    IRIS.stops.forEach((s, j) => {
+      const h = document.createElement("label"); h.className = "ir-stop"; h.style.left = (s[0] * 100) + "%"; h.style.background = s[1]; h.innerHTML = `<input type="color" value="${s[1]}">`;
+      const inp = h.querySelector("input"); inp.oninput = () => { s[1] = inp.value; h.style.background = inp.value; irisSave(); drawBar(); redraw(); };
+      let dr = null; h.addEventListener("pointerdown", e => { e.stopPropagation(); dr = { x: e.clientX, moved: false }; try { h.setPointerCapture(e.pointerId); } catch {} });
+      h.addEventListener("pointermove", e => { if (!dr) return; if (Math.abs(e.clientX - dr.x) > 3) dr.moved = true; if (!dr.moved) return; const R = bar.getBoundingClientRect(); s[0] = Math.max(0, Math.min(0.999, (e.clientX - R.left) / R.width)); h.style.left = (s[0] * 100) + "%"; redraw(); });
+      h.addEventListener("pointerup", e => { if (dr && dr.moved) { e.preventDefault(); irisSave(); drawBar(); } dr = null; });
+      h.addEventListener("click", e => { if (h.dataset.noclick) { e.preventDefault(); } });
+      h.addEventListener("dblclick", e => { e.preventDefault(); if (IRIS.stops.length > 2) { IRIS.stops.splice(j, 1); irisSave(); uisNo(); drawBar(); redraw(); } });
+      bar.append(h);
+    });
+  };
+  bar.addEventListener("click", e => { if (e.target !== bar) return; const R = bar.getBoundingClientRect(), pos = (e.clientX - R.left) / R.width, L = irisLUT(IRIS), k = Math.floor(pos * 511) * 3; IRIS.stops.push([pos, "#" + [L[k], L[k + 1], L[k + 2]].map(v => v.toString(16).padStart(2, "0")).join("")]); irisSave(); uisPlop(); drawBar(); redraw(); });
+  const sync = () => { mode.querySelectorAll("[data-m]").forEach(b => b.setAttribute("aria-pressed", b.dataset.m === IRIS.mode)); sl.childNodes.forEach(w => w.sync && w.sync()); drawBar(); redraw(); };
+  p.querySelectorAll(".ir-tog [data-v]").forEach(b => b.onclick = () => { view = b.dataset.v; p.querySelectorAll(".ir-tog [data-v]").forEach(x => x.setAttribute("aria-pressed", x === b)); uisSwitch(view === "forme"); redraw(); });
+  p.querySelector("#ir-anim").onclick = e => { anim = !anim; e.currentTarget.setAttribute("aria-pressed", anim); uisSwitch(anim); const loop = () => { if (!anim || !cv.isConnected) return; IRIS.phase = (IRIS.phase + 0.012) % 1; draw(); raf = setTimeout(loop, 70); }; if (anim) loop(); };
+  p.querySelector("#ir-rand").onclick = () => {
+    const n = 3 + Math.floor(Math.random() * 3), h0 = Math.random() * 360; IRIS.stops = Array.from({ length: n }, (_, i) => { const h = (h0 + i * (360 / n) * (0.6 + Math.random() * 0.8)) % 360, l = 35 + Math.random() * 35; return [i / n, hslHex(h, 70 + Math.random() * 30, l)]; });
+    IRIS.mode = IRIS_MODES[Math.floor(Math.random() * 3)][0]; IRIS.bands = 1 + Math.random() * 3; IRIS.warp = Math.random(); uisChime(4, 0.5); irisSave(); sync();
+  };
+  p.querySelector("#ir-png").onclick = () => { const S = 1600, c = document.createElement("canvas"); c.width = c.height = S; const id = c.getContext("2d").createImageData(S, S); irisRender(Object.assign({}, IRIS, { gsize: (IRIS.gsize || 1) * 2 }), S, S, id.data, null, null); c.getContext("2d").putImageData(id, 0, 0); c.toBlob(b => offerBlob(b, `tnb_irise_${IRIS.mode}.png`)); uisYes(); };
+  p.querySelector("#ir-apply").onclick = () => { S.preset = "irise"; uisYes(); wFxApply(); wToast("Rendu « Irisé » appliqué à toutes les formes"); };
+  sync();
+}
+function hslHex(h, s, l) { s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return "#" + [f(0), f(8), f(4)].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join(""); }
+const IRIS_CSS = `
+.ir { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 460px); gap: 22px; max-width: 1180px; margin: 0 auto; padding: 84px 22px 150px; align-items: start; }
+.ir-stage { position: sticky; top: 84px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#ir-cv { width: min(100%, 560px); aspect-ratio: 1; border-radius: 28px; box-shadow: 0 30px 80px rgba(40,40,90,.22); image-rendering: auto; }
+.ir-tog { display: flex; gap: 6px; }
+.ir-ctl { border-radius: 26px; padding: 16px 18px; background: rgba(250,250,253,.9); display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.ir-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ir-bar { position: relative; height: 34px; border-radius: 10px; cursor: copy; margin: 10px 8px 14px; box-shadow: inset 0 0 0 1px rgba(27,29,34,.1); }
+.ir-stop { position: absolute; top: -6px; width: 18px; height: 46px; margin-left: -9px; border-radius: 9px; border: 3px solid #fff; box-shadow: 0 2px 10px rgba(0,0,0,.25); cursor: ew-resize; overflow: hidden; }
+.ir-stop input { opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.ir-sl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+@media (max-width: 900px) { .ir { grid-template-columns: 1fr; padding: 72px 12px 150px; } .ir-stage { position: relative; top: 0; } }
+`;
+
+/* ---------- Platines : disques en plastique translucide (comme du verre coloré) + pochette générée au centre ---------- */
+const VINYL = { cache: new Map() };
+function vinylHash(s) { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
+// La pochette : un fond irisé (palette tirée du titre), une à trois de tes formes en silhouette, le titre en petit
+function vinylCover(title, S) {
+  const h = vinylHash(title), keys = Object.keys(IRIS_PRESETS), base = JSON.parse(JSON.stringify(IRIS_PRESETS[keys[h % keys.length]]));
+  base.phase = (h % 1000) / 1000; base.angle = h % 360; base.grain = Math.max(0.18, base.grain);
+  const c = document.createElement("canvas"); c.width = c.height = S; const x = c.getContext("2d"), id = x.createImageData(S, S); irisRender(base, S, S, id.data, null, null); x.putImageData(id, 0, 0);
+  let pool = []; try { pool = [...wMyFavs(24)]; } catch {} if (pool.length < 3) pool = pool.concat((current || []).slice(0, 12));
+  const n = 1 + (h >> 3) % 3, light = ((h >> 5) % 2) === 0;
+  for (let k = 0; k < n && pool.length; k++) {
+    const sc = pool[(h >> (k * 4 + 2)) % pool.length], T = Math.round(S * (n === 1 ? 0.62 : 0.42)), m = renderSceneMask(sc, T).mask, sh = document.createElement("canvas"); sh.width = sh.height = T;
+    const sx = sh.getContext("2d"), sid = sx.createImageData(T, T), col = light ? [250, 248, 244] : [14, 14, 20];
+    for (let i = 0; i < T * T; i++) { const a = Math.max(0, Math.min(1, (m[i] - 0.4) / 0.2)); sid.data[i * 4] = col[0]; sid.data[i * 4 + 1] = col[1]; sid.data[i * 4 + 2] = col[2]; sid.data[i * 4 + 3] = a * 255; }
+    sx.putImageData(sid, 0, 0);
+    const px = n === 1 ? (S - T) / 2 : S * (0.08 + 0.42 * ((h >> (k * 3)) % 7) / 6), py = n === 1 ? (S - T) / 2 : S * (0.1 + 0.4 * ((h >> (k * 5 + 1)) % 5) / 4);
+    x.save(); x.translate(px + T / 2, py + T / 2); x.rotate(((h >> (k * 2)) % 360) * Math.PI / 180); x.drawImage(sh, -T / 2, -T / 2); x.restore();
+  }
+  x.fillStyle = light ? "rgba(250,248,244,.92)" : "rgba(14,14,20,.85)"; x.font = `600 ${Math.round(S * 0.045)}px ${getComputedStyle(document.body).getPropertyValue("--f-accent") || "monospace"}`; x.textAlign = "center";
+  x.fillText(String(title || "").toUpperCase().slice(0, 22), S / 2, S * 0.9); x.font = `${Math.round(S * 0.032)}px monospace`; x.fillText("TNB · FACE A", S / 2, S * 0.14);
+  return c;
+}
+// Le disque : plastique coloré translucide, sillons fins, étiquette = pochette
+function vinylPaint(title, hue, S) {
+  const key = title + "|" + hue + "|" + S; if (VINYL.cache.has(key)) return VINYL.cache.get(key);
+  const c = document.createElement("canvas"); c.width = c.height = S; const x = c.getContext("2d"), R = S / 2;
+  const g = x.createRadialGradient(R * 0.8, R * 0.7, R * 0.1, R, R, R); g.addColorStop(0, `hsla(${hue}, 95%, 70%, .55)`); g.addColorStop(0.6, `hsla(${hue}, 90%, 52%, .5)`); g.addColorStop(1, `hsla(${(hue + 30) % 360}, 85%, 40%, .62)`);
+  x.fillStyle = g; x.beginPath(); x.arc(R, R, R - 1, 0, TAU); x.fill();
+  for (let r = R * 0.4; r < R - 3; r += 1.6) { x.strokeStyle = (Math.round(r) % 2) ? `rgba(255,255,255,${0.05 + 0.04 * Math.random()})` : `rgba(0,0,0,${0.05 + 0.05 * Math.random()})`; x.lineWidth = 0.7; x.beginPath(); x.arc(R, R, r, 0, TAU); x.stroke(); }
+  for (const rr of [0.62, 0.8]) { x.strokeStyle = "rgba(255,255,255,.12)"; x.lineWidth = 2.5; x.beginPath(); x.arc(R, R, R * rr, 0, TAU); x.stroke(); }   // plages entre les morceaux
+  x.strokeStyle = `hsla(${hue}, 90%, 85%, .7)`; x.lineWidth = 2; x.beginPath(); x.arc(R, R, R - 2, 0, TAU); x.stroke();                   // tranche brillante
+  const cover = vinylCover(title, Math.round(S * 0.4)), L = S * 0.36;
+  x.save(); x.beginPath(); x.arc(R, R, L / 2, 0, TAU); x.clip(); x.drawImage(cover, R - L / 2, R - L / 2, L, L); x.restore();
+  x.strokeStyle = "rgba(255,255,255,.35)"; x.lineWidth = 1.5; x.beginPath(); x.arc(R, R, L / 2, 0, TAU); x.stroke();
+  x.globalCompositeOperation = "destination-out"; x.beginPath(); x.arc(R, R, S * 0.018, 0, TAU); x.fill(); x.globalCompositeOperation = "source-over";
+  VINYL.cache.set(key, c); if (VINYL.cache.size > 12) VINYL.cache.delete(VINYL.cache.keys().next().value);
+  return c;
+}
+function vinylMount(d) {
+  const el = document.querySelector(`.dj-deck[data-d="${d.i}"] .dj-vinyl`); if (!el) return;
+  let cv = el.querySelector("canvas"); if (!cv) { el.innerHTML = ""; cv = document.createElement("canvas"); el.append(cv); }
+  const S = Math.round(Math.min(640, (el.getBoundingClientRect().width || 200) * Math.min(2, devicePixelRatio || 1)));
+  const src = vinylPaint(d.title || "TNB", d.hue ?? (d.i ? 190 : 300), S); cv.width = cv.height = S; cv.getContext("2d").drawImage(src, 0, 0);
+  const plat = el.parentElement; if (plat && !plat.querySelector(".dj-glare")) { const gl = document.createElement("b"); gl.className = "dj-glare"; plat.append(gl); }
+}
+const VINYL_CSS = `
+.dj-plat { position: relative; background: repeating-conic-gradient(from 0deg, #d9dadf 0deg 1deg, #c9cad0 1deg 2deg), radial-gradient(circle, #e8e9ed, #b9bbc2) !important; box-shadow: inset 0 0 0 1px rgba(27,29,34,.12), 0 14px 34px rgba(40,40,90,.18) !important; }
+.dj-vinyl { background: none !important; width: 92% !important; height: 92% !important; filter: drop-shadow(0 6px 14px rgba(20,20,40,.25)); }
+.dj-vinyl canvas { width: 100%; height: 100%; display: block; }
+.dj-vinyl > i { display: none; }
+.dj-glare { position: absolute; inset: 4%; border-radius: 50%; pointer-events: none; background: conic-gradient(from 210deg, transparent 0deg, rgba(255,255,255,.28) 18deg, transparent 40deg, transparent 180deg, rgba(255,255,255,.18) 200deg, transparent 222deg), radial-gradient(circle at 32% 28%, rgba(255,255,255,.35), transparent 38%); mix-blend-mode: screen; }
+`;
+
+/* ---------- Bijoux 3D : la forme devient un pendentif (chrome, or, acrylique…), aperçu sur chaîne, bague, zip, porte-clés ---------- */
+const JW = { open: false, opt: Object.assign({ mat: "chrome", sup: "chaine", thick: 0.35, inflate: 0.55, color: "#ff2fb3", rot: true }, store.get("atelier-jewel", {})) };
+const JW_MATS = [["chrome", "Chrome"], ["or", "Or"], ["argent", "Argent brossé"], ["acrylique", "Acrylique"], ["email", "Émail irisé"]];
+const JW_SUPS = [["chaine", "Chaîne"], ["bague", "Bague"], ["zip", "Tirette de zip"], ["cles", "Porte-clés"], ["seul", "Seul"]];
+// Géométrie : un relief gonflé des deux côtés, bord arrondi, silhouette recalée sur le contour exact
+function jwGeometry(mask, N, thick, inflate) {
+  // champ lissé ; chaque sommet du bord est recalé exactement sur le contour (ligne 0,5) → silhouette lisse, sans escaliers
+  const F = boxBlur(mask, N, 2), D = boxBlur(mask, N, Math.max(3, Math.round(N / 14))), V = N + 1;
+  const at = (A, x, y) => A[Math.max(0, Math.min(N - 1, y)) * N + Math.max(0, Math.min(N - 1, x))];
+  const fAt = (x, y) => { const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0; return (at(F, x0, y0) * (1 - fx) + at(F, x0 + 1, y0) * fx) * (1 - fy) + (at(F, x0, y0 + 1) * (1 - fx) + at(F, x0 + 1, y0 + 1) * fx) * fy; };
+  const inside = new Uint8Array(V * V), used = new Uint8Array(V * V), px = new Float32Array(V * V), py = new Float32Array(V * V), hh = new Float32Array(V * V);
+  for (let y = 0; y < V; y++) for (let x = 0; x < V; x++) { const i = y * V + x; px[i] = x - 0.5; py[i] = y - 0.5; inside[i] = fAt(px[i], py[i]) >= 0.5 ? 1 : 0; }
+  const tris = [];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const a0 = y * V + x, b0 = a0 + 1, c0 = a0 + V, d0 = c0 + 1;
+    for (const t of [[a0, c0, b0], [b0, c0, d0]]) { const k = inside[t[0]] + inside[t[1]] + inside[t[2]]; if (k >= 2 || (k === 1 && Math.random() < 0)) { tris.push(t); t.forEach(j => used[j] = 1); } }
+  }
+  for (let i = 0; i < V * V; i++) {
+    if (!used[i]) continue; let X = px[i], Y = py[i], f = fAt(X, Y);
+    if (f < 0.62) for (let k = 0; k < 4; k++) { const gx = (fAt(X + 0.7, Y) - fAt(X - 0.7, Y)) / 1.4, gy = (fAt(X, Y + 0.7) - fAt(X, Y - 0.7)) / 1.4, g2 = gx * gx + gy * gy; if (g2 < 1e-6) break; const st = (0.5 - f) / g2; X += Math.max(-1.2, Math.min(1.2, st * gx)); Y += Math.max(-1.2, Math.min(1.2, st * gy)); f = fAt(X, Y); }
+    px[i] = X; py[i] = Y;
+    const edge = Math.max(0, Math.min(1, (f - 0.5) / 0.25)), dome = Math.max(0, at(D, Math.round(X), Math.round(Y)) - 0.35) / 0.65;
+    hh[i] = (thick * 0.11 * Math.sqrt(edge) + inflate * 0.16 * Math.pow(dome, 0.7) * Math.sqrt(edge)) * N / 2;
+  }
+  const map = new Int32Array(V * V).fill(-1), pos = [], uv = [], idx = []; let n = 0;
+  for (let i = 0; i < V * V; i++) if (used[i]) map[i] = n++;
+  for (const side of [1, -1]) for (let i = 0; i < V * V; i++) if (used[i]) { pos.push((px[i] / N - 0.5) * 2, -(py[i] / N - 0.5) * 2, side * hh[i] / N * 2); uv.push(px[i] / N, 1 - py[i] / N); }
+  for (const [p, q, r] of tris) { idx.push(map[p], map[q], map[r]); idx.push(map[p] + n, map[r] + n, map[q] + n); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingBox();
+  return g;
+}
+// Studio : environnement fait maison (bandes de lumière + touches de couleur vives), pour des reflets nets
+function jwEnv(renderer) {
+  const c = document.createElement("canvas"); c.width = 1024; c.height = 512; const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 512); g.addColorStop(0, "#f4f4f8"); g.addColorStop(0.45, "#c9cad3"); g.addColorStop(0.55, "#2a2b33"); g.addColorStop(1, "#111217"); x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
+  for (const [cx, w, col] of [[120, 70, "#ffffff"], [430, 40, "#ffffff"], [700, 110, "#ffffff"], [880, 30, "#ff2fb3"], [300, 26, "#00e5ff"], [560, 20, "#ffd400"]]) { x.fillStyle = col; x.globalAlpha = 0.9; x.fillRect(cx, 60, w, 220); }
+  x.globalAlpha = 1; const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding;
+  const pm = new THREE.PMREMGenerator(renderer); const env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); return env;
+}
+function jwMaterial(kind, color) {
+  if (kind === "or") return new THREE.MeshStandardMaterial({ color: 0xffc865, metalness: 1, roughness: 0.14 });
+  if (kind === "argent") return new THREE.MeshStandardMaterial({ color: 0xd9dce3, metalness: 1, roughness: 0.34 });
+  if (kind === "acrylique") return new THREE.MeshPhysicalMaterial({ color: new THREE.Color(color), metalness: 0, roughness: 0.03, transmission: 0.62, thickness: 2, clearcoat: 1, clearcoatRoughness: 0.02, transparent: true, opacity: 0.92, envMapIntensity: 1.4, side: THREE.DoubleSide });
+  if (kind === "email") { const S = 512, cv = document.createElement("canvas"); cv.width = cv.height = S; const id = cv.getContext("2d").createImageData(S, S); irisRender(Object.assign({}, IRIS, { grain: (IRIS.grain || 0) * 0.6 }), S, S, id.data, null, null); cv.getContext("2d").putImageData(id, 0, 0); const tx = new THREE.CanvasTexture(cv); tx.encoding = THREE.sRGBEncoding; return new THREE.MeshPhysicalMaterial({ map: tx, metalness: 0.35, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 }); }
+  return new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.05 });
+}
+const jwMetal = kind => kind === "or" ? jwMaterial("or") : kind === "argent" ? jwMaterial("argent") : jwMaterial("chrome");
+// Les supports
+function jwSupport(sup, matKind, bbox) {
+  const G = new THREE.Group(), metal = jwMetal(matKind === "acrylique" || matKind === "email" ? "argent" : matKind), top = bbox.max.y;
+  const link = (r, t) => new THREE.TorusGeometry(r, t, 12, 28);
+  if (sup === "chaine") {
+    const bail = new THREE.Mesh(link(0.09, 0.022), metal); bail.position.set(0, top + 0.06, 0); bail.rotation.y = Math.PI / 2; G.add(bail);
+    const pts = []; for (let i = 0; i <= 80; i++) { const s = i / 80 * 2 - 1; pts.push(new THREE.Vector3(s * 1.6, top + 0.16 + (Math.cosh(s * 1.35) - 1) * 0.9, -Math.abs(s) * 0.25)); }
+    const curve = new THREE.CatmullRomCurve3(pts), L = curve.getLength(), n = Math.floor(L / 0.07), geo = link(0.045, 0.012);
+    const inst = new THREE.InstancedMesh(geo, metal, n), m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(1, 0, 0);
+    for (let i = 0; i < n; i++) { const t = i / n, p = curve.getPointAt(t), tg = curve.getTangentAt(t); q.setFromUnitVectors(up, tg); const tw = new THREE.Quaternion().setFromAxisAngle(tg, i % 2 ? Math.PI / 2 : 0); q.premultiply(tw); m.compose(p, q, new THREE.Vector3(1, 1, 1)); inst.setMatrixAt(i, m); }
+    G.add(inst);
+  } else if (sup === "bague") {
+    const R = 0.6, band = new THREE.Mesh(new THREE.TorusGeometry(R, 0.085, 28, 120), metal); band.position.set(0, bbox.min.y + 0.12 - R, -0.05); band.rotation.x = 0.22; G.add(band);   // l'anneau, debout sous le bijou
+    const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.16, 32), metal); seat.position.set(0, bbox.min.y + 0.06, -0.05); G.add(seat);
+  } else if (sup === "zip") {
+    const tape = new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.9 }), tooth = metal;
+    for (const sx of [-0.2, 0.2]) { const tp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 3, 0.02), tape); tp.position.set(sx, top + 0.62 + 1.5, -0.06); G.add(tp); }
+    const tg = new THREE.BoxGeometry(0.1, 0.045, 0.05), n = 44, inst = new THREE.InstancedMesh(tg, tooth, n), m = new THREE.Matrix4();
+    for (let i = 0; i < n; i++) { m.makeTranslation((i % 2 ? 0.035 : -0.035), top + 0.95 + i * 0.06, 0); inst.setMatrixAt(i, m); } G.add(inst);
+    const slider = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.16), metal); slider.position.set(0, top + 0.72, 0.04); G.add(slider);
+    const ring = new THREE.Mesh(link(0.07, 0.018), metal); ring.position.set(0, top + 0.47, 0.06); ring.rotation.y = Math.PI / 2; G.add(ring);
+    const bail = new THREE.Mesh(link(0.06, 0.016), metal); bail.position.set(0, top + 0.1, 0); G.add(bail);
+  } else if (sup === "cles") {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.03, 16, 80), metal); ring.position.set(0.15, top + 0.62, 0); ring.rotation.y = 0.3; G.add(ring);
+    for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(link(0.06, 0.016), metal); l.position.set(0.02 * i, top + 0.08 + i * 0.09, 0); l.rotation.y = i % 2 ? Math.PI / 2 : 0; G.add(l); }
+  }
+  return G;
+}
+async function jwOpen(scene) {
+  if (!scene) { wToast("Choisis d'abord une forme"); return; }
+  if (!(await ensureThree())) { wToast("La 3D n'a pas pu se charger"); return; }
+  if (!document.getElementById("jw-css")) { const c = document.createElement("style"); c.id = "jw-css"; c.textContent = JW_CSS; document.head.append(c); }
+  document.getElementById("jw")?.remove();
+  const el = document.createElement("div"); el.id = "jw";
+  el.innerHTML = `<div class="jw-stage"><canvas></canvas><div class="jw-hint">Glisse pour tourner · molette pour zoomer</div></div>
+    <aside class="jw-side"><div class="jw-top"><b>Bijou 3D</b><button class="w-pill w-glass-ui" data-a="close">✕ Fermer</button></div>
+      <div class="w-sec">Matière</div><div class="ir-chips" data-g="mat"></div>
+      <label class="jw-col" data-show="acrylique"><span>Couleur de l'acrylique</span><input type="color"></label>
+      <div class="w-sec">Porté sur</div><div class="ir-chips" data-g="sup"></div>
+      <div class="w-sec">Volume</div>
+      <label class="w-fx-tr"><small>Épaisseur</small><output></output><input class="w-range" type="range" min="0.05" max="1" step="0.01" data-k="thick"></label>
+      <label class="w-fx-tr"><small>Gonflement</small><output></output><input class="w-range" type="range" min="0" max="1.2" step="0.01" data-k="inflate"></label>
+      <div class="ir-chips" style="margin-top:6px"><button class="w-chip" data-a="rot" aria-pressed="${JW.opt.rot}">⟳ Rotation</button><button class="w-chip" data-a="png">Télécharger l'image</button></div>
+      <div class="w-sec">Autre forme</div><div class="jw-thumbs"></div>
+      <p class="sp-hint">L'émail irisé utilise ta palette de l'îlot Couleurs. L'acrylique est un plastique translucide : il laisse passer et colore la lumière.</p></aside>`;
+  document.body.append(el); JW.open = true; uisSwoosh(true);
+  const cv = el.querySelector("canvas"), renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1)); renderer.outputEncoding = THREE.sRGBEncoding; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05; renderer.physicallyCorrectLights = true;
+  const sc3 = new THREE.Scene(), cam = new THREE.PerspectiveCamera(32, 1, 0.01, 100); cam.position.set(0, 0.25, 4.6);
+  sc3.environment = jwEnv(renderer); const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 3, 4); sc3.add(key, new THREE.AmbientLight(0xffffff, 0.25));
+  const ctrl = new THREE.OrbitControls(cam, cv); ctrl.enableDamping = true; ctrl.autoRotate = JW.opt.rot; ctrl.autoRotateSpeed = 1.6; ctrl.minDistance = 1.6; ctrl.maxDistance = 9;
+  const root = new THREE.Group(); sc3.add(root); let cur = scene, mask = null;
+  const build = () => {
+    root.children.slice().forEach(o => { root.remove(o); o.traverse && o.traverse(m => { m.geometry && m.geometry.dispose(); }); });
+    if (!mask) mask = renderSceneMask(cur, 200).mask;
+    const geo = jwGeometry(mask, 200, JW.opt.thick, JW.opt.inflate), pend = new THREE.Mesh(geo, jwMaterial(JW.opt.mat, JW.opt.color)); root.add(pend);
+    if (JW.opt.sup !== "seul") root.add(jwSupport(JW.opt.sup, JW.opt.mat, geo.boundingBox));
+    const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()); root.position.sub(c).add(new THREE.Vector3(0, 0, 0));
+    ctrl.target.set(0, 0, 0); cam.position.setLength(Math.max(3.2, Math.max(s.x, s.y) * 2.3)); ctrl.update();
+  };
+  const resize = () => { const r = el.querySelector(".jw-stage").getBoundingClientRect(); renderer.setSize(r.width, r.height, false); cam.aspect = r.width / r.height; cam.updateProjectionMatrix(); };
+  const chips = (g, list, key) => { const box = el.querySelector(`[data-g="${g}"]`); for (const [k, l] of list) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", JW.opt[key] === k); b.onclick = () => { JW.opt[key] = k; box.querySelectorAll(".w-chip").forEach(x => x.setAttribute("aria-pressed", x === b)); store.set("atelier-jewel", JW.opt); uisClick(); showCol(); build(); }; box.append(b); } };
+  const showCol = () => { el.querySelector('[data-show="acrylique"]').hidden = JW.opt.mat !== "acrylique"; };
+  chips("mat", JW_MATS, "mat"); chips("sup", JW_SUPS, "sup"); showCol();
+  const ci = el.querySelector('.jw-col input'); ci.value = JW.opt.color; ci.oninput = () => { JW.opt.color = ci.value; store.set("atelier-jewel", JW.opt); clearTimeout(ci.t); ci.t = setTimeout(build, 120); };
+  el.querySelectorAll("input[data-k]").forEach(r => { const o = r.parentElement.querySelector("output"), k = r.dataset.k; r.value = JW.opt[k]; o.textContent = Math.round(JW.opt[k] * 100) + " %"; r.oninput = () => { JW.opt[k] = +r.value; o.textContent = Math.round(+r.value * 100) + " %"; store.set("atelier-jewel", JW.opt); clearTimeout(r.t); r.t = setTimeout(build, 90); }; });
+  el.querySelector('[data-a="rot"]').onclick = e => { JW.opt.rot = !JW.opt.rot; ctrl.autoRotate = JW.opt.rot; e.currentTarget.setAttribute("aria-pressed", JW.opt.rot); store.set("atelier-jewel", JW.opt); uisSwitch(JW.opt.rot); };
+  el.querySelector('[data-a="png"]').onclick = () => { renderer.render(sc3, cam); cv.toBlob(b => offerBlob(b, `tnb_bijou_${JW.opt.mat}_${JW.opt.sup}.png`)); uisYes(); };
+  let alive = true; const close = () => { alive = false; JW.open = false; renderer.dispose(); el.remove(); uisSwoosh(false); removeEventListener("resize", resize); };
+  el.querySelector('[data-a="close"]').onclick = close; addEventListener("resize", resize);
+  let favs = []; try { favs = wMyFavs(18); } catch {} const pool = [...new Set([scene, ...favs, ...(current || []).slice(0, 12)])].filter(Boolean).slice(0, 18);
+  try { wThumbs(el.querySelector(".jw-thumbs"), pool, s => { cur = s; mask = null; uisPlop(); build(); }); } catch {}
+  resize(); build();
+  const clock = new THREE.Clock(); const loop = () => { if (!alive) return; requestAnimationFrame(loop); const t = clock.getElapsedTime(); if (JW.opt.sup === "chaine" || JW.opt.sup === "zip" || JW.opt.sup === "cles") root.rotation.z = Math.sin(t * 1.3) * 0.03; ctrl.update(); renderer.render(sc3, cam); };
+  loop();
+}
+const JW_CSS = `
+#jw { position: fixed; inset: 0; z-index: 100; display: grid; grid-template-columns: minmax(0, 1fr) 360px; background: radial-gradient(circle at 40% 40%, #ffffff, #e6e7ee 60%, #d4d6df); }
+.jw-stage { position: relative; } .jw-stage canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.jw-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .45; }
+.jw-side { overflow-y: auto; padding: 18px; background: rgba(250,250,253,.92); border-left: 1px solid rgba(27,29,34,.06); display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.jw-top { display: flex; justify-content: space-between; align-items: center; } .jw-top b { font-size: 15px; }
+.jw-col { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .jw-col[hidden] { display: none; } .jw-col input { width: 40px; height: 30px; border: 0; background: none; }
+.jw-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+@media (max-width: 900px) { #jw { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } .jw-side { border-left: 0; } }
+`;
+
 
 </script>
 
