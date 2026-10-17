@@ -1879,7 +1879,7 @@ async function loadVotes() {
 
 /* Votes faits avant de se connecter : rattachés au compte à la connexion */
 async function uploadLocalVotes() {
-  const rows = Object.entries(localVotes).map(([id, vt]) => ({ id, user_id: me, v: vt.v, stars: vt.stars, off: vt.off || [], n: vt.n || vt.stars.length }));
+  const rows = Object.entries(localVotes).map(([id, vt]) => ({ id, user_id: me, v: vt.v, stars: vt.stars, off: vt.off || [], n: vt.n || vt.stars.length, created_at: new Date(vt.t || Date.now()).toISOString() }));
   if (!rows.length) return;
   const { error } = await sb.from("atelier_votes").upsert(rows, { onConflict: "id,user_id" });
   if (!error) { localVotes = {}; store.set(LOCAL_VOTES, localVotes); }
@@ -1932,7 +1932,7 @@ async function castVote(scene, v) {
   mergeVotes();
   const q = remove
     ? sb.from("atelier_votes").delete().eq("id", id).eq("user_id", me)
-    : sb.from("atelier_votes").upsert({ id, user_id: me, v, stars: rec.stars, off: rec.off, n: rec.n }, { onConflict: "id,user_id" });
+    : sb.from("atelier_votes").upsert({ id, user_id: me, v, stars: rec.stars, off: rec.off, n: rec.n, created_at: new Date().toISOString() }, { onConflict: "id,user_id" });   // date = dernier vote → les favoris récents passent devant (aussi dans le partage)
   const { error } = await q;
   if (error) document.getElementById("status").textContent = "Vote non enregistré (connexion). Réessaie dans un instant.";
 }
