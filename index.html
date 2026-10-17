@@ -8659,7 +8659,7 @@ async function pfClip() {
     }
     ev.sort((a, b) => a.t - b.t);
     const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const cbox = {};
-    PF.seed = pfSeed(r); const st = { sp: 0, spv: 0, ph: 0, box: {}, impact: 0, shake: 0, ring: 0, flash: 0 }, imp = new Float32Array(GENES.length), dt = 1 / fps, TT = 300, nS = ferroCount(r), fx = fglFx(r); let k = 0, env = 0, lastLi = -1;
+    PF.seed = pfSeed(r); const st = { sp: 0, spv: 0, ph: 0, box: {}, impact: 0, shake: 0, ring: 0, flash: 0 }, imp = new Float32Array(GENES.length), dt = 1 / fps, TT = 420, nS = ferroCount(r), fx = fglFx(r); let k = 0, env = 0, lastLi = -1;
     const glc = document.createElement("canvas"); glc.width = W; glc.height = H; glc.dataset.keep = "1"; let G = null; try { G = fglInit(glc); } catch { G = null; } let gbox = null;
     const prev = (() => { const c = document.getElementById("pf-cv"); return c && !(FG.G && FG.G.gl.canvas === c) ? c : null; })(), px = new Uint8ClampedArray(TT * TT * 4);
     for (let f = 0; f < N && !err; f++) {
@@ -8667,12 +8667,12 @@ async function pfClip() {
       let kick = 0; const hits = []; while (k < ev.length && ev[k].t <= t) { const e = ev[k++]; pfHit(imp, e.inst, e.deg, e.i, e.v * 0.6); env = Math.min(1, env + 0.12 * e.v); const kd = fglKind(e.inst); if (kd) hits.push({ kind: kd, v: e.v }); if (["kick", "akick", "k808", "sub", "snare", "asnare", "clap", "crash"].includes(e.inst)) kick += e.v * (e.inst.includes("kick") || e.inst === "k808" ? 1 : 0.6); }
       env *= Math.exp(-dt / 0.6);
       const g = ferroSpring(st, pfTarget(r, Math.min(li, loopsN - 1)), dt, imp);
-      const m = renderStar(g, PF.seed, TT).mask, { F, W } = ferroFields(m, TT);
-      ferroSpikes(st, 0.1 + env * 0.7, dt, Math.min(1.2, kick)); const b = {};
+      const m = renderSceneMask({ stars: [{ g, seed: PF.seed, x: 0, y: 0, s: 0.6 }] }, TT).mask, { F, W } = ferroFields(m, TT);
+      st.M = fglMotion(st.M || {}, Math.min(1, env * 1.3), hits, dt, true, t); const b = {};
       if (G) {
         const section = songOn && lastLi >= 0 && li !== lastLi; lastLi = li; fglImpacts(st, hits, dt, t, section);
-        fglUpload(G, F, F, W, W, TT); const bb = fglBodyBox(F, TT); if (!gbox) gbox = { ...bb }; else { gbox.cx += (bb.cx - gbox.cx) * 0.12; gbox.cy += (bb.cy - gbox.cy) * 0.12; gbox.sz += (bb.sz - gbox.sz) * 0.08; }
-        fglDraw(G, glc, { cx: bb.mx, cy: bb.my, bx: gbox.cx, by: gbox.cy, bz: gbox.sz, blend: 0, sp: st.sp, ph: st.ph, n: nS, time: t, impact: st.impact, flash: st.flash, shake: st.shake, ring: st.ring, fx, bg: [0.933, 0.941, 0.957, 1] });
+        fglUpload(G, F, F, W, W, TT); const bb = fglBodyBox(F, TT); if (!gbox) gbox = { ...bb }; else { gbox.cx += (bb.cx - gbox.cx) * 0.12; gbox.cy += (bb.cy - gbox.cy) * 0.12; gbox.sz += (bb.sz - gbox.sz) * (bb.sz > gbox.sz ? 0.6 : 0.06); }
+        fglDraw(G, glc, { cx: bb.mx, cy: bb.my, bx: gbox.cx, by: gbox.cy, bz: gbox.sz, blend: 0, sp: 0, ph: 0, n: 1, time: t, impact: 0, flash: st.flash, shake: st.shake, ring: st.ring, fx, bg: [0.933, 0.941, 0.957, 1], m: st.M });
       } else { ferroShade(F, W, TT, st.sp, st.ph, nS, px, b); ferroBox(st.box, b, TT, f ? 0.12 : 1); ferroDraw(cv, TT, ferroPost(px, TT, r), st.box, "#eef0f4"); }
       if (prev && f % 6 === 0) { const pc = prev.getContext("2d"); pc.clearRect(0, 0, prev.width, prev.height); pc.drawImage(cv, 0, 0, prev.width, prev.height); }
       const vf = new VideoFrame(G ? glc : cv, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % (fps * 2) === 0 }); vf.close();
@@ -8701,7 +8701,7 @@ const PF_CSS = `
 .sy-wrap { display: grid; grid-template-columns: minmax(260px, 1fr) 14px minmax(600px, 1060px); gap: 0; padding: 80px 24px 150px 0; align-items: start; }
 .sy-wrap > .sy { padding: 0; max-width: none; margin: 0; min-width: 0; }
 .pf { position: sticky; top: 0; margin-top: -80px; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 70px 8px 10px; box-sizing: border-box; min-width: 0; }
-.pf-cv { width: min(58%, calc(100vh - 220px)); min-width: 160px; aspect-ratio: 1; display: block; background: none; }
+.pf-cv { width: min(100%, calc(100vh - 140px)); min-width: 160px; aspect-ratio: 1; display: block; background: none; }
 .pf-split { position: sticky; top: 0; margin-top: -80px; height: 100vh; cursor: col-resize; display: flex; align-items: center; justify-content: center; touch-action: none; z-index: 3; }
 .pf-split i { width: 2px; height: 100%; background: transparent; transition: background .15s; border-radius: 2px; }
 .pf-split::after { content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 44px; margin: -22px 0 0 -3px; border-radius: 6px; background: rgb(124,92,230); opacity: 0; transition: opacity .15s; }
@@ -9157,9 +9157,10 @@ uniform vec4 uFxA; // grain, aberration, usure, lignes
 uniform vec4 uFxB; // vignette, inversion, pixel, délavé
 uniform vec4 uFxC; // rugosité, contour, échos, lissage
 uniform vec4 uBg;  // fond (clip) ; a = 0 → transparent
+uniform vec2 uScale, uOff; uniform float uRot, uWob;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2(1,0)), f.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y); }
-vec2 FW(vec2 p){ vec4 s = texture2D(uTex, p); return vec2(mix(s.r, s.g, uBlend), mix(s.b, s.a, uBlend)); }
+vec2 FW(vec2 p){ if (p.x < 0.002 || p.y < 0.002 || p.x > 0.998 || p.y > 0.998) return vec2(0.0); vec4 s = texture2D(uTex, p); return vec2(mix(s.r, s.g, uBlend), mix(s.b, s.a, uBlend)); }
 float field(vec2 p){
   vec2 fw = FW(p); float f = fw.x, W = fw.y;
   if (uSp > 0.01 && f < 0.6 && W > 0.004) {
@@ -9183,12 +9184,13 @@ vec3 shade(vec2 p, out float alpha){
   return c;
 }
 void main(){
-  vec2 uv = v;
-  uv = 0.5 + (uv - 0.5) / (1.0 + 0.07 * uImpact);                                                  // pop d'impact
+  vec2 uv = v - 0.5 - uOff;                                                                         // physique : position, rotation, étirement
+  float cr = cos(uRot), sr = sin(uRot); uv = vec2(cr * uv.x + sr * uv.y, -sr * uv.x + cr * uv.y); uv = uv / uScale + 0.5;
   uv += uShake * 0.012 * vec2(sin(uTime * 91.0), cos(uTime * 77.0));                               // secousse
   if (uFxB.z > 0.01) { float px = 2.0 + uFxB.z * 7.0; uv = (floor(uv * uRes / px) + 0.5) * px / uRes; }
   vec2 p = uBox.xy + (uv - 0.5) * uBox.z;
-  p += vec2(sin(p.y * 17.0 + uTime * 2.1), cos(p.x * 15.0 + uTime * 1.7)) * 0.0022 * (0.4 + uSp);   // liquide : ondulation permanente
+  p += vec2(sin(p.y * 13.0 + uTime * 2.3), cos(p.x * 11.0 + uTime * 1.9)) * (0.0018 + uWob * 0.012);   // liquide : ondulation, plus forte quand ça bouge vite
+  p += vec2(sin(p.y * 31.0 - uTime * 4.1), cos(p.x * 27.0 + uTime * 3.7)) * uWob * 0.004;
   if (uFxC.x > 0.01) p += (vec2(noise(p * 45.0 + uTime), noise(p * 45.0 - uTime)) - 0.5) * 0.006 * uFxC.x;
   float a; vec3 c = shade(p, a);
   if (uFxA.y > 0.01) { float ar, ab; vec3 cr = shade(p + vec2(uTexel * 2.5 * uFxA.y, 0.0), ar), cb = shade(p - vec2(uTexel * 2.5 * uFxA.y, 0.0), ab); c = vec3(cr.r, c.g, cb.b); c.r += (ar - a) * 0.8; c.b += (ab - a) * 0.9; a = max(a, max(ar, ab) * 0.9); }
@@ -9211,7 +9213,7 @@ function fglInit(cv) {
   gl.useProgram(pr); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(pr, "a"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-  const U = {}; for (const n of ["uTex", "uC", "uBox", "uBlend", "uSp", "uPh", "uN", "uTime", "uImpact", "uFlash", "uShake", "uRing", "uRes", "uTexel", "uFxA", "uFxB", "uFxC", "uBg"]) U[n] = gl.getUniformLocation(pr, n);
+  const U = {}; for (const n of ["uTex", "uC", "uBox", "uBlend", "uSp", "uPh", "uN", "uTime", "uImpact", "uFlash", "uShake", "uRing", "uRes", "uTexel", "uFxA", "uFxB", "uFxC", "uBg", "uScale", "uOff", "uRot", "uWob"]) U[n] = gl.getUniformLocation(pr, n);
   gl.uniform1i(U.uTex, 0); gl.clearColor(0, 0, 0, 0);
   return { gl, U, T: 0, buf: null };
 }
@@ -9231,6 +9233,7 @@ function fglDraw(G, cv, s) {
   gl.uniform2f(U.uC, s.cx, s.cy); gl.uniform3f(U.uBox, s.bx, s.by, s.bz); gl.uniform1f(U.uBlend, s.blend); gl.uniform1f(U.uSp, s.sp); gl.uniform1f(U.uPh, s.ph); gl.uniform1f(U.uN, s.n);
   gl.uniform1f(U.uTime, s.time); gl.uniform1f(U.uImpact, s.impact); gl.uniform1f(U.uFlash, s.flash); gl.uniform1f(U.uShake, s.shake); gl.uniform1f(U.uRing, s.ring); gl.uniform1f(U.uRes, W); gl.uniform1f(U.uTexel, 1 / G.T);
   gl.uniform4fv(U.uFxA, s.fx[0]); gl.uniform4fv(U.uFxB, s.fx[1]); gl.uniform4fv(U.uFxC, s.fx[2]); gl.uniform4fv(U.uBg, s.bg || [0, 0, 0, 0]);
+  const M = s.m || { sx: 1, sy: 1, ox: 0, oy: 0, rot: 0, wob: 0 }; gl.uniform2f(U.uScale, M.sx, M.sy); gl.uniform2f(U.uOff, M.ox, M.oy); gl.uniform1f(U.uRot, M.rot); gl.uniform1f(U.uWob, M.wob);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 // Impacts : pop + onde de choc sur les kicks, secousse sur les caisses claires, flash inversé (rare) sur crash et changement de section
@@ -9244,12 +9247,12 @@ function fglImpacts(st, hits, dt, now, section) {
   st.impact *= Math.exp(-dt / 0.09); st.shake *= Math.exp(-dt / 0.07); st.ring *= Math.exp(-dt / 0.22); st.flash = st.flash > 0.5 ? st.flash - dt / 0.035 : Math.max(0, st.flash - dt / 0.02);
   if (st.flash < 0.02) st.flash = 0;
 }
-const fglKind = inst => ["kick", "akick", "k808"].includes(inst) ? "kick" : ["snare", "asnare", "clap"].includes(inst) ? "snare" : inst === "crash" ? "crash" : null;
+const fglKind = inst => ["kick", "akick"].includes(inst) ? "kick" : ["snare", "asnare", "clap"].includes(inst) ? "snare" : inst === "crash" ? "crash" : null;
 function fglBodyBox(F, T) {
   let sx = 0, sy = 0, n = 0, x0 = T, y0 = T, x1 = 0, y1 = 0;
   for (let y = 0; y < T; y += 2) for (let x = 0; x < T; x += 2) if (F[y * T + x] > 0.5) { sx += x; sy += y; n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   if (!n) return { cx: 0.5, cy: 0.5, sz: 1 };
-  return { cx: (x0 + x1) / 2 / T, cy: (y0 + y1) / 2 / T, mx: sx / n / T, my: sy / n / T, sz: (Math.max(x1 - x0, y1 - y0) * 1.5 + T * 0.05) / T };
+  return { cx: (x0 + x1) / 2 / T, cy: (y0 + y1) / 2 / T, mx: sx / n / T, my: sy / n / T, sz: (Math.max(x1 - x0, y1 - y0) * 1.9 + T * 0.03) / T };
 }
 // Boucle directe (appelée à chaque image par le Synthé)
 const FG = { G: null, failed: false, box: null, impact: 0, shake: 0, ring: 0, flash: 0, sp: 0, spv: 0, ph: 0, last: 0, lastSection: -1, F0: null, F1: null, W0: null, W1: null, T: 0, t1: 0, iv: 120, pending: false, lastGene: 0, g: null, gv: null, cxy: [0.5, 0.5] };
@@ -9265,8 +9268,8 @@ function pfFrameGL() {
   if (!FG.pending && now - FG.t1 > FG.iv) {
     const dt = Math.min(0.3, (now - (FG.lastGene || now)) / 1000) || 0.1; FG.lastGene = now;
     syStore(); const target = pfTarget(r, SY.playing ? (SY.pl ?? SY.cur) : SY.cur), g = ferroSpring(FG, target, dt, PF.imp); PF.seed = pfSeed(r);
-    const T = mobile ? 160 : 192; FG.pending = true; const t0 = performance.now();
-    workerCall({ op: "fast", scene: { stars: [{ g, seed: PF.seed, x: 0, y: 0, s: 1 }] }, T }).then(res => res ? res.mask : renderStar(g, PF.seed, T).mask).then(m => {
+    const T = mobile ? 200 : 256; FG.pending = true; const t0 = performance.now(), sc = { stars: [{ g, seed: PF.seed, x: 0, y: 0, s: 0.6 }] };
+    workerCall({ op: "fast", scene: sc, T }).then(res => res ? res.mask : renderSceneMask(sc, T).mask).then(m => {
       const { F, W } = ferroFields(m, T), tn = performance.now(), a = Math.min(1, (tn - FG.t1) / FG.iv), s = a * a * (3 - 2 * a);
       if (FG.F1 && FG.F1.length === F.length) { FG.F0 = FG.F0.map((v, i) => v + (FG.F1[i] - v) * s); FG.W0 = FG.W0.map((v, i) => v + (FG.W1[i] - v) * s); } else { FG.F0 = F; FG.W0 = W; }
       FG.F1 = F; FG.W1 = W; FG.T = T; fglUpload(FG.G, FG.F0, FG.F1, FG.W0, FG.W1, T);
@@ -9277,13 +9280,13 @@ function pfFrameGL() {
   if (!FG.F1) return true;
   const dt = Math.min(0.05, (now - (FG.last || now)) / 1000); FG.last = now;
   let energy = 0; if (SY.playing && SP.an) { SP.an.getByteFrequencyData(SP.fbins); let s = 0; for (let i = 1; i < 24; i++) s += SP.fbins[i]; energy = Math.min(1, s / (23 * 255) * 1.6); }
-  ferroSpikes(FG, SY.playing ? 0.1 + energy * 0.7 : 0, dt, Math.min(1.2, kick));
+  FG.M = fglMotion(FG.M || {}, energy, SY.playing ? hits : [], dt, !!SY.playing, now / 1000); FG.sp = 0;
   const section = SY.playing && SY.song && SY.pos !== FG.lastSection && FG.lastSection >= 0 && SY.chain && SY.chain[SY.pos] !== SY.chain[FG.lastSection]; FG.lastSection = SY.playing && SY.song ? SY.pos : -1;
   fglImpacts(FG, SY.playing ? hits : [], dt, now / 1000, section);
-  const tb = FG.target, B = FG.box, kb = Math.min(1, dt * 3); B.cx += (tb.cx - B.cx) * kb; B.cy += (tb.cy - B.cy) * kb; B.sz += (tb.sz - B.sz) * kb * 0.7; B.mx = tb.mx; B.my = tb.my;
+  const tb = FG.target, B = FG.box, kb = Math.min(1, dt * 3); B.cx += (tb.cx - B.cx) * kb; B.cy += (tb.cy - B.cy) * kb; B.sz += (tb.sz - B.sz) * (tb.sz > B.sz ? Math.min(1, dt * 14) : kb * 0.5); B.mx = tb.mx; B.my = tb.my;
   const disp = Math.round(cv.getBoundingClientRect().width * Math.min(2, devicePixelRatio || 1)), back = Math.max(160, Math.min(1000, disp)); if (cv.width !== back) cv.width = cv.height = back;
   const a0 = Math.min(1, (now - FG.t1) / FG.iv);
-  fglDraw(FG.G, cv, { cx: B.mx, cy: B.my, bx: B.cx, by: B.cy, bz: B.sz, blend: a0 * a0 * (3 - 2 * a0), sp: FG.sp, ph: FG.ph, n: ferroCount(r), time: now / 1000, impact: FG.impact, flash: FG.flash, shake: FG.shake, ring: FG.ring, fx: fglFx(r) });
+  fglDraw(FG.G, cv, { cx: B.mx, cy: B.my, bx: B.cx, by: B.cy, bz: B.sz, blend: a0 * a0 * (3 - 2 * a0), sp: 0, ph: 0, n: 1, time: now / 1000, impact: 0, flash: FG.flash, shake: FG.shake, ring: FG.ring, fx: fglFx(r), m: FG.M });
   pfLegend(r);
   return true;
 }
@@ -9306,8 +9309,9 @@ function pfStats() {
     <div class="ps-sec">Réglages globaux</div>
     ${glob.map(([a, v, d, k]) => `<div class="ps-r"><span class="ps-n">${a} <small>${v}</small></span><span class="ps-d">${d}</span>${bar(k)}</div>`).join("")}
     <div class="ps-sec">Matière</div>
-    <div class="ps-r"><span class="ps-n">Pointes</span><span class="ps-d">énergie du son + coups</span>${bar((FG.sp || 0) / 1.2)}</div>
-    <div class="ps-r"><span class="ps-n">Impacts</span><span class="ps-d">kick = pop + onde · caisse claire = secousse · crash = flash</span>${bar(FG.impact || 0)}</div>
+    <div class="ps-r"><span class="ps-n">Taille</span><span class="ps-d">énergie du son, chaque kick la propulse</span>${bar(FG.M ? (FG.M.s - 0.38) / 0.87 : 0)}</div>
+    <div class="ps-r"><span class="ps-n">Mouvement</span><span class="ps-d">caisse claire = rotation · vitesse = ondulation</span>${bar(FG.M ? FG.M.wob / 1.4 : 0)}</div>
+    <div class="ps-r"><span class="ps-n">Impacts</span><span class="ps-d">kick = onde de choc · crash / section = flash</span>${bar(FG.ring || 0)}</div>
     <div class="ps-fx">Effets sur la forme : ${fx.length ? fx.join(" · ") : "aucun"} <small>(post-traitement et effets de pistes, fond toujours transparent)</small></div>`;
 }
 (() => {
@@ -9334,7 +9338,31 @@ function pfStats() {
     place();
   });
 })();
-
+/* ---------- Physique du mouvement : une masse de liquide sur des ressorts ---------- */
+// Taille : petite au calme, très grande quand ça cogne ; chaque kick la propulse, elle dépasse et rebondit.
+// Étirement/écrasement selon la vitesse, rotation et dérive poussées par les caisses claires, ondulation liée à la vitesse.
+function fglMotion(M, energy, hits, dt, playing, t) {
+  if (!M.init) Object.assign(M, { init: 1, s: 0.72, sv: 0, rot: 0, rv: 0, ox: 0, oy: 0, ovx: 0, ovy: 0, lvl: 0 });
+  M.lvl += ((playing ? energy : 0) - M.lvl) * Math.min(1, dt * 6);
+  let ks = 0, ss = 0;
+  for (const h of hits) {
+    if (h.kind === "kick" && !h.sub && ks < 1) { ks++; M.sv += 2.4 * (0.5 + h.v); const a = Math.random() * 6.283; M.ovx += Math.cos(a) * 0.25 * h.v; M.ovy += Math.sin(a) * 0.25 * h.v; }
+    else if (h.kind === "snare" && ss < 1) { ss++; M.rv += (Math.random() < 0.5 ? -1 : 1) * 2.2 * h.v; M.sv -= 0.9 * h.v; }
+    else if (h.kind === "crash") { M.sv += 4; M.rv += 3; }
+  }
+  const target = playing ? 0.55 + 0.55 * Math.min(1, M.lvl * 1.4) : 0.72 + 0.03 * Math.sin(t * 1.3);
+  const n = Math.max(1, Math.ceil(dt / 0.008)), h = dt / n;
+  for (let i = 0; i < n; i++) {
+    const ks = 90, cs = 2 * Math.sqrt(ks) * 0.28; M.sv += (ks * (target - M.s) - cs * M.sv) * h; M.s += M.sv * h;            // rebond (peu amorti)
+    const kr = 40, cr = 2 * Math.sqrt(kr) * 0.35, rt = 0.18 * Math.sin(t * 0.37) + 0.08 * Math.sin(t * 0.91); M.rv += (kr * (rt - M.rot) - cr * M.rv) * h; M.rot += M.rv * h;
+    const ko = 30, co = 2 * Math.sqrt(ko) * 0.4, tx = 0.035 * Math.sin(t * 0.53), ty = 0.03 * Math.cos(t * 0.71);
+    M.ovx += (ko * (tx - M.ox) - co * M.ovx) * h; M.ovy += (ko * (ty - M.oy) - co * M.ovy) * h; M.ox += M.ovx * h; M.oy += M.ovy * h;
+  }
+  if (M.s > 1.25) { M.s = 1.25; M.sv = -Math.abs(M.sv) * 0.35; } if (M.s < 0.38) { M.s = 0.38; M.sv = Math.abs(M.sv) * 0.35; } M.ox = Math.max(-0.14, Math.min(0.14, M.ox)); M.oy = Math.max(-0.14, Math.min(0.14, M.oy));
+  const st = Math.max(-0.35, Math.min(0.35, M.sv * 0.09)), vel = Math.hypot(M.ovx, M.ovy);
+  M.sx = M.s * (1 + st + vel * 0.15); M.sy = M.s * (1 - st * 0.8); M.wob = Math.min(1.4, Math.abs(M.sv) * 0.12 + Math.abs(M.rv) * 0.08 + vel * 1.2);
+  return M;
+}
 
 </script>
 
