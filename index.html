@@ -5724,14 +5724,27 @@ const SY_VIBES = {
     syTrack("chop", syS("..x.......x.....", syD([[2, 14], [10, 11]])), { space: 0.7, vol: 0.4, fx: { echo: { on: true, k: 0.35 } } }) ] },
   // Mesuré sur le morceau complet de LTJ (analyse audio) : ~167 bpm, kick « bounce » 4-3-3-2-4 (pas 0, 4, 7, 10, 12),
   // 69 % de l'énergie sous 60 Hz (sub en Do1 / Fa1), presque mono, drop écrasé en mur saturé. Tonalité Do / Fa.
-  "Indietronica (indie sleaze)": { bpm: 167, swing: 0, key: 0, prog: "I–IV (Do / Fa)", post: { preset: "Club", space: "room", mix: true, duck: 0.7, fx: { glue: { on: true, k: 0.95 }, crush: { on: true, k: 0.3 }, tape: { on: true, k: 0.4 } }, filter: 0.55 }, tracks: [
+  "Indietronica (indie sleaze)": { bpm: 167, swing: 0, key: 0, prog: "i seul (drone)", post: { preset: "Club", space: "room", mix: true, duck: 0.7, fx: { glue: { on: true, k: 0.95 }, crush: { on: true, k: 0.3 }, tape: { on: true, k: 0.4 } }, filter: 0.55 }, tracks: [
     syTrack("kick", syS("x...x..x..x.x..."), { drive: 0.85, tone: 0.5, move: 0.25 }),
-    syTrack("k808", syS("x...x..x..x.x...", syD([[0, -12], [4, -12], [7, -7], [10, -7], [12, -12]]), syL([[0, 4], [4, 3], [7, 3], [10, 2], [12, 4]])), { drive: 0.95, move: 0.3, tone: 0.45, vol: 1 }),
+    syTrack("k808", syS("x...x..x..x.x...", syD([[0, -7], [4, -7], [7, -4], [10, -4], [12, -7]]), syL([[0, 4], [4, 3], [7, 3], [10, 2], [12, 4]])), { drive: 0.95, move: 0.3, tone: 0.45, vol: 1 }),
     syTrack("clap", syS("....x.......x..."), { drive: 0.6, space: 0.25, vol: 0.7 }),
     syTrack("hat", syS("x.x.x.x.x.x.x.x."), { vol: 0.32, tone: 0.8, drive: 0.35 }),
     syTrack("stab", syS("x..x..x...x..x.."), { tone: 0.66, space: 0.3, vol: 0.42, drive: 0.4, fx: { pump: { on: true, k: 0.75 }, crush: { on: true, k: 0.25 } } }),
-    syTrack("lead", syS("x...x.x.....x.x.", syD([[0, 16], [4, 14], [6, 12], [12, 11], [14, 12]])), { tone: 0.72, space: 0.35, vol: 0.38, drive: 0.5, fx: { chorus: { on: true, k: 0.45 }, crush: { on: true, k: 0.3 } } }),
-    syTrack("chop", syS("x.x...x.x...x.x.", syD([[0, 7], [2, 7], [6, 4], [8, 4], [12, 0], [14, 2]])), { space: 0.4, vol: 0.38, fx: { stutter: { on: true, k: 0.5 }, crush: { on: true, k: 0.35 } } }) ] },
+    syTrack("lead", syS("x...x.x.....x.x.", syD([[0, 11], [4, 10], [6, 9], [12, 8], [14, 9]])), { tone: 0.72, space: 0.35, vol: 0.38, drive: 0.5, fx: { chorus: { on: true, k: 0.45 }, crush: { on: true, k: 0.3 } } }),
+    syTrack("chop", syS("x.x...x.x...x.x.", syD([[0, 4], [2, 4], [6, 2], [8, 2], [12, 0], [14, 1]])), { space: 0.4, vol: 0.38, fx: { stutter: { on: true, k: 0.5 }, crush: { on: true, k: 0.35 } } }) ] },
+  // Mesuré sur 6 morceaux de Jane Remover (Revengeseekerz, Census Designated, Dancing with your eyes closed…) :
+  // ~160 bpm (ou moitié, ~80), ré mineur le plus souvent, -6 LUFS avec ~2 % d'échantillons écrêtés (saturation voulue),
+  // 40-65 % de l'énergie sous 60 Hz, 808 qui « plonge » en hauteur à chaque coup (73 → 51 Hz), roulements rapides,
+  // coupures sèches au silence, stéréo assez large (0,3-0,4), voix aiguës très mélodiques.
+  "Jane Remover (hyper / rage)": { bpm: 160, swing: 0, key: 2, prog: "i–VI–III–VII", post: { preset: "Club", space: "hall", mix: true, duck: 0.65, fx: { crush: { on: true, k: 0.45 }, glue: { on: true, k: 1 }, tape: { on: true, k: 0.3 } }, filter: 0.5 }, tracks: [
+    syTrack("kick", syS("x...x...x...x..."), { drive: 0.9, tone: 0.52, move: 0.2 }),
+    syTrack("k808", syS("x...x...x..xx.xx", syD([[0, 0], [4, -2], [8, -3], [11, -3], [12, -2], [14, -3], [15, -4]])), { drive: 0.7, move: 0.75, tone: 0.5, vol: 1 }),
+    syTrack("snare", syS("........x......x"), { drive: 0.55, space: 0.45, vol: 0.72, tone: 0.6 }),
+    syTrack("hat", syS("x.x3x.x.x2x.x3xx"), { vol: 0.55, tone: 0.9, drive: 0.4 }),
+    syTrack("hoover", syS("x.....x.....x.x.", syD([[0, 7], [6, 9], [12, 10], [14, 11]]), syL([[0, 5], [6, 5], [12, 2], [14, 2]])), { tone: 0.75, space: 0.5, vol: 0.55, drive: 0.6, fx: { chorus: { on: true, k: 0.6 }, crush: { on: true, k: 0.25 } } }),
+    syTrack("lead", syS("..x.x..x..x.x..x", syD([[2, 14], [4, 13], [7, 11], [10, 13], [12, 14], [15, 16]])), { tone: 0.85, space: 0.55, vol: 0.48, drive: 0.4, fx: { echo: { on: true, k: 0.35 }, stutter: { on: true, k: 0.3 } } }),
+    syTrack("pad", syS("x...............", [], syL([[0, 16]])), { space: 0.75, vol: 0.45, move: 0.5, fx: { wash: { on: true, k: 0.4 } } }),
+    syTrack("chop", syS("....x.....x.x...", syD([[4, 10], [10, 11], [12, 13]])), { space: 0.6, vol: 0.5, fx: { stutter: { on: true, k: 0.45 }, crush: { on: true, k: 0.3 } } }) ] },
   "Psyché (Tame Impala)": { bpm: 100, swing: 0.1, key: 4, prog: "i–VII–VI–VII", post: { preset: "Cassette", space: "plate", mix: true, duck: 0.35, fx: { tape: { on: true, k: 0.5 }, wide: { on: true, k: 0.55 } }, filter: 0.5 }, tracks: [
     syTrack("kick", syS("x......xx.x....."), { tone: 0.4, drive: 0.3, fx: { phaser: { on: true, k: 0.4 } } }), syTrack("snare", syS("....x.......x..."), { tone: 0.5, drive: 0.35, fx: { phaser: { on: true, k: 0.5 } } }),
     syTrack("hat", syS("x.x.x.x.x.x.x.x."), { vol: 0.35, tone: 0.55, fx: { phaser: { on: true, k: 0.6 } } }),
@@ -6119,7 +6132,7 @@ function syPlay(inst, out, t, m, v, mv, sec, glideFrom, hold) {
   }
 }
 function syNote(T, st, bar) {
-  const I = SY_INST[T.inst], chord = SY_PROGS[SY.prog][bar % 4], base = 48 + SY.key + (I.oct || 0) * 12;
+  const I = SY_INST[T.inst], chord = (SY_PROGS[SY.prog] || SY_PROGS["i–VI–III–VII"])[bar % 4], base = 48 + SY.key + (I.oct || 0) * 12;
   if (I.chord && !syFeel("voicing")) return chord.map(x => base + 12 + x);
   if (I.chord) {                                   // accord resserré autour d'un centre : les voix bougent peu d'un accord à l'autre
     const center = base + 17, out = [];
@@ -8118,6 +8131,7 @@ const LEARN_VIBE = {
   "Sade-like": "Soul feutrée : basse qui chante, Rhodes, rim et shaker, swing lent, accords de jazz. Tout est retenu.",
   "French touch (Daft Punk)": "French touch : ~122 bpm, kick sur chaque temps (« four on the floor »), basse funky en octaves, accords filtrés qui pompent avec le kick.",
   "Alt sombre (070 Shake)": "Alt sombre façon 070 Shake : une pulsation de synthé qui avance en croches et pompe avec le kick, une 808 saturée, une caisse claire noyée dans une grande salle, un chœur en fond. Grille VI → VII → i : cinématographique, ça monte puis ça retombe dans le sombre.",
+  "Jane Remover (hyper / rage)": "Façon Jane Remover (mesuré sur 6 de ses morceaux) : 160 bpm en ré mineur, une 808 énorme qui plonge à chaque coup et part en roulements rapides, charleys en rafales, un hoover et un lead très aigus et chantants, une nappe noyée de réverbe derrière, des voix découpées qui bégaient. Tout est poussé jusqu'à saturer (≈ 2 % du son est écrêté, exprès) et le morceau respire par des coupures sèches au silence avant de repartir plein pot.",
   "Indietronica (indie sleaze)": "Indietronica façon ear / bassvictim (mesuré sur le morceau de LTJ) : 167 bpm, kick qui rebondit en 4-3-3-2-4 (pas 0, 4, 7, 10, 12), une 808 énorme collée au kick en Do puis Fa — 69 % de l'énergie du morceau est sous 60 Hz — presque mono, et tout est écrasé en un mur saturé. Le morceau d'origine joue sur le contraste : intro calme faite d'un sample découpé, une montée en coupures (silences), puis le drop d'un coup.",
   "Jerk rêveur (fakemink)": "Jerk rêveur façon fakemink : un rebond jerk rapide (kick décalé qui sautille), une 808 qui grésille, un lead flou et désaccordé, une nappe noyée de réverb, des voix pitchées très aigu. Le grain cassette fait le reste : rêveur, lo-fi, entre cloud rap et witch house.",
   "Funk live (batterie acoustique)": "Funk live : une vraie batterie. Grosse caisse syncopée, caisse claire avec plein de notes fantômes (le secret du groove), charley fermé qui coupe l'ouvert, descente de toms en fin de mesure. Basse jouée, Rhodes, et des cuivres qui piquent.",
