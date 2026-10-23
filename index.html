@@ -4458,6 +4458,7 @@ const W_ISLANDS = [
   { k: "learn", lab: "Apprendre", r: 250, note: 62, a: [1.3, 0.9], p: [0.62, 1.95] },
   { k: "iris", lab: "Couleurs", r: 240, note: 64, a: [-0.42, 1.35], p: [-0.36, 2.75] },
   { k: "pavage", lab: "Pavages", r: 240, note: 67, a: [0.42, 1.35], p: [0.36, 2.75] },
+  { k: "design", lab: "Design", r: 270, note: 70, a: [0, 1.78], p: [0, 3.5] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4676,7 +4677,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".dz, .ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5061,6 +5062,10 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "design") {                      // un t-shirt à plat
+    const T = [[-0.2, -0.6], [-0.62, -0.42], [-0.85, -0.05], [-0.6, 0.08], [-0.48, -0.12], [-0.48, 0.66], [0.48, 0.66], [0.48, -0.12], [0.6, 0.08], [0.85, -0.05], [0.62, -0.42], [0.2, -0.6]];
+    T.forEach(([u, v], i) => i ? x.lineTo(cx + u * s, cy + v * s) : x.moveTo(cx + u * s, cy + v * s)); x.quadraticCurveTo(cx, cy - 0.38 * s, cx - 0.2 * s, cy - 0.6 * s); x.stroke();
+    x.setLineDash([0.06 * s, 0.05 * s]); x.beginPath(); x.moveTo(cx - 0.4 * s, cy + 0.56 * s); x.lineTo(cx + 0.4 * s, cy + 0.56 * s); x.stroke(); x.setLineDash([]);
   } else if (k === "pavage") {                      // petits hexagones qui pavent
     for (const [ox, oy] of [[0, 0], [0.52, 0], [-0.52, 0], [0.26, 0.45], [-0.26, 0.45], [0.26, -0.45], [-0.26, -0.45]]) for (let q = 0; q <= 6; q++) { const a = q * Math.PI / 3 + Math.PI / 6, px = cx + (ox + Math.cos(a) * 0.29) * s, py = cy + (oy + Math.sin(a) * 0.29) * s; if (q) x.lineTo(px, py); else x.moveTo(px, py); }
     x.stroke();
@@ -5170,7 +5175,7 @@ function wPanel(k) {
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile, design: wPDesign }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5254,9 +5259,10 @@ const wMyFavs = (n = 24) => favScenes().slice(0, n);
 function wPProduction(p) {
   p.innerHTML = wHead("Production · du dessin au vêtement") + `<div class="w-center"><div class="w-box w-glass-ui w-live">
   <h3>Choisis une forme</h3><p>Elle s'ouvre dans le studio : plan à gauche, vêtement en 3D à droite. Longsleeve ou bonnet, couleur, technique d'impression, placement.</p>
-  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button><button class="w-pill w-glass-ui" id="w-p-jw">💎 En bijou 3D</button></div>
+  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button><button class="w-pill w-glass-ui" id="w-p-jw">💎 En bijou 3D</button><button class="w-pill w-glass-ui" id="w-p-dz">✂ Dessiner un vêtement</button></div>
   <p class="sp-hint">Bijou 3D : la forme devient un pendentif (chrome, or, argent, acrylique, émail irisé), porté sur une chaîne, une bague, une tirette de zip ou un porte-clés.</p><div id="w-p-list"></div></div></div>`;
   p.querySelector("#w-p-cur").onclick = () => { uisClick(); openMockup(current.find(s => votes[s.id]?.v > 0) || current[0]); };
+  p.querySelector("#w-p-dz").onclick = () => { uisClick(); wFlyIsland(W_ISLANDS.find(i => i.k === "design")); };
   p.querySelector("#w-p-jw").onclick = () => { uisClick(); jwOpen(current.find(s => votes[s.id]?.v > 0) || current[0] || (wMyFavs(1)[0])); };
   const favs = wMyFavs(18), host = p.querySelector("#w-p-list");
   if (favs.length) { const l = document.createElement("p"); l.textContent = "Ou une de tes favorites :"; host.append(l); wThumbs(host, favs, sc => openMockup(sc)); }
@@ -10760,6 +10766,640 @@ const GEN_CSS = `
 #gen-model { width: 100%; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px rgba(27,29,34,.08); }
 @media (max-width: 900px) { .gen { grid-template-columns: 1fr; padding: 72px 12px 150px; } }
 `;
+/* =====================================================================
+   Îlot DESIGN — concevoir un vêtement : patron 2D (Bézier) ⇄ aperçu 3D
+   Pensé pour tout le monde : on part d'un modèle, on fait des opérations en un clic
+   (chaque opération explique ce qu'elle fait « en vrai » à l'atelier), on choisit les
+   matières, on pose des décos (sérigraphie, broderie, patch…), on publie.
+   Unités : centimètres. Pièce = contour fermé en courbes de Bézier (u horizontal, v vers le bas).
+   ===================================================================== */
+const DZ = { st: null, undo: [], redo: [], sel: null, tool: "edit", tab: "modeles", draw: [], decoSrc: null, decoTech: "serigraphie", decoSize: 14, decoRot: 0, gallery: [], th: null };
+
+/* ---------- Construire un chemin : M(x,y) puis C(c1x,c1y,c2x,c2y,x,y) ou L(x,y) ---------- */
+const dzP = (x, y) => ({ x, y });
+function dzPath(start, ...segs) { return { start: dzP(...start), segs: segs.map(s => s.length === 2 ? { c1: dzP(...s), c2: dzP(...s), p: dzP(...s), line: true } : { c1: dzP(s[0], s[1]), c2: dzP(s[2], s[3]), p: dzP(s[4], s[5]) }) }; }
+// Les lignes droites sont des Bézier dont les poignées sont aux tiers : on peut les courber ensuite
+function dzFixLines(path) { let a = path.start; for (const s of path.segs) { if (s.line) { s.c1 = dzP(a.x + (s.p.x - a.x) / 3, a.y + (s.p.y - a.y) / 3); s.c2 = dzP(a.x + 2 * (s.p.x - a.x) / 3, a.y + 2 * (s.p.y - a.y) / 3); delete s.line; } a = s.p; } return path; }
+function dzSample(path, n = 18) {
+  const pts = [dzP(path.start.x, path.start.y)]; let a = path.start;
+  for (const s of path.segs) { for (let i = 1; i <= n; i++) { const t = i / n, m = 1 - t; pts.push(dzP(m * m * m * a.x + 3 * m * m * t * s.c1.x + 3 * m * t * t * s.c2.x + t * t * t * s.p.x, m * m * m * a.y + 3 * m * m * t * s.c1.y + 3 * m * t * t * s.c2.y + t * t * t * s.p.y)); } a = s.p; }
+  return pts;
+}
+
+/* ---------- Le catalogue : chaque modèle = des pièces de patron + comment elles s'assemblent en 3D ---------- */
+// map : half (demi-cylindre, devant/dos), tube (tour complet), sector (quartier de dôme), hood (capuche), visor (visière)
+function dzAsset(kind) {
+  const P = [];
+  const piece = (id, name, path, o) => P.push(Object.assign({ id, name, sym: false, path: dzFixLines(path), mat: "jersey" }, o));
+  if (kind === "tshirt" || kind === "sweat") {
+    const sw = kind === "sweat", W = sw ? 29 : 26, L = sw ? 64 : 70, sl = sw ? 58 : 21, bw = sw ? 20 : 18.5;
+    piece("devant", "Devant", dzPath([0, sw ? 10 : 9], [5, sw ? 10 : 9, 8.5, 4, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", map: { t: "half", side: 1 } });
+    piece("dos", "Dos", dzPath([0, 2.5], [5, 2.5, 8.5, 1.5, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", map: { t: "half", side: -1 } });
+    for (const side of [1, -1]) piece("manche" + (side > 0 ? "D" : "G"), side > 0 ? "Manche droite" : "Manche gauche", dzPath([0, 0], [8, 0, bw - 3, 7, bw, 14], [bw - (sw ? 7 : 2), sl], [0, sl]), { sym: true, role: "sleeve", map: { t: "tube", sleeve: side } });
+    if (sw) {
+      piece("bordbas", "Bord-côte bas", dzPath([0, 0], [W - 2, 0], [W - 2, 7], [0, 7]), { sym: true, role: "hem", mat: "cote", map: { t: "tube", ring: "hem" } });
+      for (const side of [1, -1]) piece("poignet" + (side > 0 ? "D" : "G"), side > 0 ? "Poignet droit" : "Poignet gauche", dzPath([0, 0], [9, 0], [9, 7], [0, 7]), { sym: true, role: "cuff", mat: "cote", map: { t: "tube", cuff: side } });
+      for (const side of [1, -1]) piece("capuche" + (side > 0 ? "D" : "G"), side > 0 ? "Capuche droite" : "Capuche gauche", dzPath([0, 2], [0, 12, 0, 26, 2, 34], [10, 36, 22, 34, 25, 30], [27, 20, 26, 6, 20, 0], [12, -1, 4, 0, 0, 2]), { role: "hood", map: { t: "hood", side } });
+    }
+  } else if (kind === "bonnet") {
+    piece("corps", "Bonnet", dzPath([0, 0], [6, 0.5, 18, 2, 26, 9], [26, 30], [0, 30]), { sym: true, role: "crown", mat: "cote", map: { t: "tube", beanie: true } });
+    piece("revers", "Revers", dzPath([0, 0], [27, 0], [27, 8], [0, 8]), { sym: true, role: "cuff", mat: "cote", map: { t: "tube", turnup: true } });
+  } else if (kind === "casquette") {
+    for (let k = 0; k < 6; k++) piece("pan" + k, k < 2 ? `Pan avant ${k + 1}` : `Pan arrière ${k - 1}`, dzPath([0, 0], [1.5, 3, 4.5, 8, 5.4, 13.5], [0, 13.5]), { sym: true, role: k < 2 ? "front" : "back", mat: k < 2 ? "toile" : "mesh", map: { t: "sector", k, n: 6 } });
+    piece("visiere", "Visière", dzPath([0, 0], [10.5, 0], [11, 3.5, 8, 7, 0, 7.5]), { sym: true, role: "visor", mat: "toile", map: { t: "visor" } });
+  } else if (kind === "pantalon") {
+    for (const side of [1, -1]) {
+      piece("jambeAv" + (side > 0 ? "D" : "G"), side > 0 ? "Devant droit" : "Devant gauche", dzPath([0, 0], [11, 0], [11.5, 24], [10.5, 104], [-10.5, 104], [-11.5, 40], [-12, 28, -16, 24, -17, 24], [-15, 18, -12, 8, -11, 0]), { role: "leg", mat: "denim", map: { t: "half", side: 1, leg: side } });
+      piece("jambeDos" + (side > 0 ? "D" : "G"), side > 0 ? "Dos droit" : "Dos gauche", dzPath([0, -2], [13, 0], [13.5, 24], [11.5, 104], [-11.5, 104], [-13, 40], [-14, 30, -20, 26, -21, 26], [-18, 18, -14, 6, -13, -3]), { role: "leg", mat: "denim", map: { t: "half", side: -1, leg: side } });
+    }
+    piece("ceinture", "Ceinture", dzPath([0, 0], [42, 0], [42, 4.5], [0, 4.5]), { sym: true, role: "waist", mat: "denim", map: { t: "tube", waist: true } });
+  }
+  return P;
+}
+const DZ_ASSETS = [["tshirt", "T-shirt"], ["sweat", "Sweat à capuche"], ["bonnet", "Bonnet"], ["casquette", "Casquette trucker"], ["pantalon", "Pantalon"]];
+
+/* ---------- Matières (textures procédurales ; le moteur physique viendra plus tard) ---------- */
+const DZ_MATS = {
+  jersey:  { lab: "Jersey coton", col: "#f2f0ea", rough: 0.92, cm: 1.2 },
+  molleton:{ lab: "Molleton gratté", col: "#2a2a30", rough: 0.97, cm: 2 },
+  cote:    { lab: "Maille côtelée", col: "#f2f0ea", rough: 0.9, cm: 1.6 },
+  denim:   { lab: "Denim brut", col: "#2b3a5c", rough: 0.85, cm: 1.5 },
+  toile:   { lab: "Toile canvas", col: "#d9cdb4", rough: 0.88, cm: 1.5 },
+  nylon:   { lab: "Nylon ripstop", col: "#1b1d22", rough: 0.45, cm: 2 },
+  cuir:    { lab: "Cuir", col: "#3a2418", rough: 0.55, cm: 6 },
+  velours: { lab: "Velours côtelé", col: "#6b4a2b", rough: 0.95, cm: 2.5 },
+  satin:   { lab: "Satin", col: "#c9c3d6", rough: 0.3, cm: 4 },
+  mesh:    { lab: "Filet (mesh)", col: "#f2f0ea", rough: 0.85, cm: 1, alpha: true },
+};
+const dzTiles = new Map();
+function dzTile(kind, col) {
+  const key = kind + col; if (dzTiles.has(key)) return dzTiles.get(key);
+  const S = 128, c = document.createElement("canvas"); c.width = c.height = S; const x = c.getContext("2d"), id = x.createImageData(S, S), d = id.data;
+  const v = parseInt(col.slice(1), 16), R = (v >> 16) & 255, G = (v >> 8) & 255, B = v & 255, h = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    let k = 1, a = 255; const n = h(i, j);
+    if (kind === "jersey") k = 0.9 + 0.1 * Math.abs(Math.sin((i % 8 < 4 ? j + i % 4 : j - i % 4) * 0.8)) + (n - 0.5) * 0.05;
+    else if (kind === "cote") k = 0.78 + 0.22 * Math.pow(Math.abs(Math.sin(i * Math.PI / 8)), 0.6) + (n - 0.5) * 0.05;
+    else if (kind === "molleton") k = 0.9 + 0.1 * n * n + 0.05 * Math.sin(i * 0.3 + j * 0.2);
+    else if (kind === "denim") { const tw = ((i + j) % 6) < 3 ? 1 : 0.82; k = tw * (0.85 + 0.25 * h(i >> 1, j)) ; }
+    else if (kind === "toile") k = 0.86 + 0.14 * ((((i >> 2) + (j >> 2)) % 2) ? 1 : 0.6) + (n - 0.5) * 0.08;
+    else if (kind === "nylon") k = (i % 16 < 1 || j % 16 < 1) ? 0.72 : 0.95 + (n - 0.5) * 0.04;
+    else if (kind === "cuir") { const g = h(i >> 2, j >> 2) * 0.6 + h(i >> 1, j >> 1) * 0.4; k = 0.82 + 0.25 * g; }
+    else if (kind === "velours") k = 0.7 + 0.3 * Math.pow(Math.abs(Math.sin(i * Math.PI / 16)), 0.4) + (n - 0.5) * 0.06;
+    else if (kind === "satin") k = 0.92 + 0.08 * Math.sin(j * 0.05 + i * 0.01);
+    else if (kind === "mesh") { const cx = (i % 16) - 8, cy = (j % 16) - 8 + ((i >> 4) % 2 ? 0 : 0); const r = Math.hypot(cx, cy); a = r < 5.2 ? 0 : 255; k = 0.92; }
+    const p = (j * S + i) * 4; d[p] = Math.min(255, R * k); d[p + 1] = Math.min(255, G * k); d[p + 2] = Math.min(255, B * k); d[p + 3] = a;
+  }
+  x.putImageData(id, 0, 0); dzTiles.set(key, c); return c;
+}
+
+/* ---------- État d'un design ---------- */
+function dzNew(kind) {
+  return { v: 1, asset: kind, pieces: dzAsset(kind), color: kind === "pantalon" ? "#2b3a5c" : kind === "casquette" ? "#1b1d22" : "#f2f0ea", stitch: "#1b1d22", matAll: null,
+    params: { len: 0, ample: 1, sleeve: kind === "sweat" ? "longues" : "courtes", hood: true, kangourou: kind === "sweat", rib: true }, ops: [], decos: [] };
+}
+const dzClone = o => JSON.parse(JSON.stringify(o));
+function dzPush() { DZ.undo.push(JSON.stringify(DZ.st)); if (DZ.undo.length > 40) DZ.undo.shift(); DZ.redo = []; }
+function dzSave() { try { const s = dzClone(DZ.st); s.decos = s.decos.filter(d => !d.src || d.src.t !== "img" || (d.src.data || "").length < 250000); store.set("atelier-design", s); } catch {} }
+
+/* ---------- Pièces « effectives » : le patron + les réglages (longueur, ampleur, manches) ---------- */
+function dzPolyClipY(poly, ymax) {     // garde la partie du contour au-dessus de y = ymax (une découpe nette)
+  const out = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], ia = a.y <= ymax, ib = b.y <= ymax;
+    if (ia) out.push(a); if (ia !== ib) { const t = (ymax - a.y) / (b.y - a.y); out.push(dzP(a.x + t * (b.x - a.x), ymax)); } } return out;
+}
+function dzPolyOf(pc) { const half = dzSample(pc.path); if (!pc.sym) return half; const mir = half.slice(1, -1).reverse().map(p => dzP(-p.x, p.y)); return half.concat(mir); }
+// Transformations d'une pièce selon les réglages (et leur inverse, pour éditer les points en vue réelle)
+function dzTf(st, pc, base) {
+  const P = st.params, ys = base.map(p => p.y), y1 = Math.max(...ys), y0 = Math.min(...ys); let fy = y => y, ify = y => y, fx = (x, y) => x, clip = null;
+  const stretch = (from, add) => { const k = (y1 + add - from) / (y1 - from); fy = y => y > from ? from + (y - from) * k : y; ify = y => y > from ? from + (y - from) / k : y; };
+  if (pc.role === "body" && P.len) { if (P.len < 0) clip = y1 + P.len; else stretch(26, P.len); }
+  if (pc.role === "leg" && P.len) { if (P.len < 0) clip = y1 + P.len * 2; else stretch(30, P.len * 2); }
+  if (pc.role === "sleeve") { const target = { courtes: 21, "3/4": 42, longues: st.asset === "sweat" ? 58 : 60 }[P.sleeve] || y1; stretch(14, target - y1); }
+  const am = ["body", "sleeve", "hem", "hood"].includes(pc.role) ? P.ample : 1;
+  return { tf: p => dzP(fx(p.x, p.y) * am, fy(p.y)), itf: p => dzP(p.x / am, ify(p.y)), clip };
+}
+function dzEffective(st) {
+  const P = st.params, out = [];
+  for (const pc of st.pieces) {
+    if (pc.role === "hood" && !(st.asset === "sweat" && P.hood)) continue;
+    if ((pc.role === "hem" || pc.role === "cuff") && st.asset === "sweat" && !P.rib) continue;
+    if (pc.role === "sleeve" && P.sleeve === "sans") continue;
+    if (pc.role === "cuff" && st.asset === "sweat" && P.sleeve !== "longues") continue;
+    const base = dzPolyOf(pc), T = dzTf(st, pc, base); let poly = base.map(T.tf);
+    if (T.clip != null) poly = dzPolyClipY(poly, T.clip);
+    out.push({ pc, poly, T });
+  }
+  return out;
+}
+/* ---------- Géométrie : ligne par ligne dans le patron, puis on « enroule » sur le corps ---------- */
+function dzRows(poly, v) { const xs = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; if ((a.y <= v && b.y > v) || (b.y <= v && a.y > v)) xs.push(a.x + (v - a.y) / (b.y - a.y) * (b.x - a.x)); } return xs.sort((p, q) => p - q); }
+function dzInside(poly, x, y) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) c = !c; } return c; }
+function dzMapper(e, st, all) {
+  const m = e.pc.map, P = st.params, ys = e.poly.map(p => p.y), xs = e.poly.map(p => p.x), y0 = Math.min(...ys), y1 = Math.max(...ys), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const V3 = (x, y, z) => [x, y, z];
+  if (m.t === "half") {
+    const legX = m.leg ? m.leg * 9.5 : 0, top = m.leg ? -4 : 0, sq = m.leg ? 0.95 : 0.78;
+    // le rayon tient compte de la pièce d'en face (devant ↔ dos) pour que les coutures de côté se rejoignent
+    const mate = all.find(q => q !== e && q.pc.map.t === "half" && (q.pc.map.leg || 0) === (m.leg || 0) && q.pc.map.side === -m.side);
+    const mys = mate ? mate.poly.map(p => p.y) : null, my0 = mate ? Math.min(...mys) : 0, my1 = mate ? Math.max(...mys) : 0;
+    const mw = v => { if (!mate) return null; const r = dzRows(mate.poly, Math.max(my0 + 0.01, Math.min(my1 - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : null; };
+    return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), w2 = mw(v), r = (w2 ? (w + w2) / 2 : w) / Math.PI, th = Math.PI * ((u - uL) / w - 0.5), s = m.side, lean = m.leg ? m.leg * 0.05 * v : 0;
+      return V3(legX + lean + r * Math.sin(th) * s * (m.leg ? 1 : 1), top - v, r * Math.cos(th) * s * sq); };
+  }
+  if (m.t === "tube") {
+    if (m.sleeve) {   // manche : un tube qui part de l'épaule, en biais
+      const body = all.find(q => q.pc.role === "body"), bw = body ? Math.max(...dzRows(body.poly, 24)) : 26, sx = m.sleeve * bw * 0.88 / Math.PI * 1.2, a = 0.62;
+      const d = [m.sleeve * Math.sin(a), -Math.cos(a), 0], e1 = [0, 0, 1], e2 = [d[1] * e1[2] - d[2] * e1[1], d[2] * e1[0] - d[0] * e1[2], d[0] * e1[1] - d[1] * e1[0]];
+      return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; const o = [sx, -3, 0];
+        return V3(o[0] + v * d[0] + r * (Math.cos(th) * e1[0] + Math.sin(th) * e2[0]), o[1] + v * d[1] + r * (Math.cos(th) * e1[1] + Math.sin(th) * e2[1]), o[2] + v * d[2] + r * (Math.cos(th) * e1[2] + Math.sin(th) * e2[2]) * 0.92); };
+    }
+    if (m.cuff) {     // poignet : au bout de la manche
+      const sl = all.find(q => q.pc.role === "sleeve" && q.pc.map.sleeve === m.cuff); if (!sl) return null; const sm = dzMapper(sl, st, all), sy1 = Math.max(...sl.poly.map(p => p.y)), row = dzRows(sl.poly, sy1 - 0.3);
+      return (u, v, uL, uR) => { const k = (u - uL) / Math.max(0.01, uR - uL), uu = row[0] + k * (row[row.length - 1] - row[0]); const p = sm(uu, sy1 - 0.3 + v, row[0], row[row.length - 1]); return p; };
+    }
+    if (m.ring === "hem") {   // bord-côte bas : sous le devant et le dos
+      const f = all.find(q => q.pc.id === "devant"), b = all.find(q => q.pc.id === "dos"); if (!f) return null; const fy = Math.max(...f.poly.map(p => p.y)) - 0.5, fr = dzRows(f.poly, fy), br = b ? dzRows(b.poly, Math.max(...b.poly.map(p => p.y)) - 0.5) : fr;
+      const fm = dzMapper(f, st, all), bm = b ? dzMapper(b, st, all) : fm;
+      return (u, v, uL, uR) => { const k = (u - uL) / Math.max(0.01, uR - uL), front = k < 0.5, kk = front ? k * 2 : (k - 0.5) * 2, row = front ? fr : br, mp = front ? fm : bm, rr = [row[0], row[row.length - 1]];
+        const p = mp(rr[0] + (front ? kk : 1 - kk) * (rr[1] - rr[0]), fy + v * 0.95, rr[0], rr[1]); p[0] *= 0.94; p[2] *= 0.94; return p; };
+    }
+    if (m.waist) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), -v, r * Math.cos(th) * 0.8); };
+    if (m.beanie) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI) * 1.02, th = 2 * Math.PI * (u - uL) / w, dome = v < 9 ? Math.sqrt(Math.max(0, 1 - Math.pow(1 - v / 9, 2))) : 1; return V3(r * Math.sin(th), 22 - v * (v < 9 ? 0.75 : 1), r * Math.cos(th) * 0.92); };
+    if (m.turnup) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI) * 1.06, th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), 22 - 30 + 8 - v + 0.3, r * Math.cos(th) * 0.92); };
+    return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), -v, r * Math.cos(th)); };
+  }
+  if (m.t === "sector") return (u, v, uL, uR) => { const w = Math.max(0.0001, uR - uL), r = w * m.n / (2 * Math.PI), th = (m.k + (u - uL) / w) * 2 * Math.PI / m.n - Math.PI / m.n * 2, H = 13.5, y = 11.2 * Math.cos(Math.min(1, v / H) * Math.PI / 2);
+    return V3(r * Math.sin(th), y, r * Math.cos(th) * 1.05); };
+  if (m.t === "visor") return (u, v) => { const R = 9.6, z0 = Math.sqrt(Math.max(0, R * R - u * u * 0.8)) * 1.05; return V3(u, -0.4 - v * 0.18 - 0.012 * u * u * (v / 7.5), z0 + v); };
+  if (m.t === "hood") return (u, v, uL, uR) => { const s = (u - uL) / Math.max(0.01, uR - uL), t = (v - y0) / (y1 - y0), ph = 0.28 * Math.PI + s * 0.72 * Math.PI, la = (0.5 - t) * Math.PI * 0.92;
+    return V3(m.side * 11.5 * Math.cos(la) * Math.sin(ph), 7 + 17 * Math.sin(la), -4.5 + 13.5 * Math.cos(la) * Math.cos(ph)); };
+  return null;
+}
+function dzGeometry(e, st, all) {
+  const map = dzMapper(e, st, all); if (!map) return null;
+  const poly = e.poly, ys = poly.map(p => p.y), xs = poly.map(p => p.x), y0 = Math.min(...ys), y1 = Math.max(...ys), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const holes = st.ops.filter(o => o.t === "decoupe" && o.piece === e.pc.id && o.pts && o.pts.length > 2).map(o => o.pts);
+  const NC = 44, dv = 0.7, rows = [];
+  for (let v = y0 + 0.01; v <= y1 + 0.001; v += dv) { const r = dzRows(poly, Math.min(v, y1 - 0.01)); if (r.length >= 2) rows.push({ v: Math.min(v, y1 - 0.01), uL: r[0], uR: r[r.length - 1], multi: r.length > 2 }); }
+  if (rows.length < 2) return null;
+  const pos = [], uv = [], idx = [];
+  for (const R of rows) for (let j = 0; j <= NC; j++) { const u = R.uL + (R.uR - R.uL) * j / NC, p = map(u, R.v, R.uL, R.uR); pos.push(p[0], p[1], p[2]); uv.push((u - x0) / (x1 - x0), 1 - (R.v - y0) / (y1 - y0)); }
+  const at = (i, j) => i * (NC + 1) + j, U = k => x0 + uv[2 * k] * (x1 - x0), Vv = k => y0 + (1 - uv[2 * k + 1]) * (y1 - y0);
+  const keep = (a, b, c, i) => { const cx = (U(a) + U(b) + U(c)) / 3, cy = (Vv(a) + Vv(b) + Vv(c)) / 3; return (!(rows[i].multi || rows[i + 1].multi) || dzInside(poly, cx, cy)) && !holes.some(h => dzInside(h, cx, cy)); };
+  for (let i = 0; i < rows.length - 1; i++) for (let j = 0; j < NC; j++) { const a = at(i, j), b = at(i, j + 1), c = at(i + 1, j), d = at(i + 1, j + 1); if (keep(a, c, b, i)) idx.push(a, c, b); if (keep(b, c, d, i)) idx.push(b, c, d); }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  g.userData = { x0, x1, y0, y1 }; return g;
+}
+/* ---------- Ce que fait chaque opération « en vrai » (le carnet d'atelier) ---------- */
+const DZ_HOW = {
+  len_moins: "Cropper : on marque la nouvelle longueur, on coupe en gardant 2 à 3 cm de rentré, on replie deux fois pour cacher le bord brut, puis on surpique (sur du jersey : surjeteuse puis ourlet double aiguille pour que ça reste élastique).",
+  len_plus: "Allonger : on prolonge le patron dans l'aplomb des côtés, on recoupe une pièce plus longue (ou on rapporte une bande raccordée), puis ourlet.",
+  ample: "Ampleur : on « grade » le patron — on l'écarte au milieu et aux côtés. Plus d'ampleur = épaule qui tombe, look oversize ; moins = ajusté.",
+  manches: "Manches : on redessine la longueur de manche sur le patron et on coupe ; pour sans manches, l'emmanchure est finie par un biais ou une parementure.",
+  capuche: "Capuche : deux pièces assemblées par une couture au milieu, doublées (ou parementure devant), puis montées sur l'encolure — la base de la capuche doit faire la longueur de l'encolure.",
+  kangourou: "Poche kangourou : une pièce plaquée sur le devant, cousue en haut et en bas ; les ouvertures en biais sur les côtés sont finies par une surpiqûre ou un bord-côte.",
+  rib: "Bord-côte : bande de maille côtelée coupée 10 à 15 % plus courte que l'ouverture, pliée en deux, étirée pendant la couture à la surjeteuse : ça resserre le poignet ou le bas.",
+  zip: "Zip : on trace la fente, on la renforce au thermocollant, on coupe, on pose la fermeture entre la pièce et une parementure (ou la doublure), puis on surpique à 6 mm de chaque côté.",
+  zippoche: "Poche zippée : fente au tracé, fermeture posée, puis un sac de poche (doublure) cousu derrière et fermé tout autour : dehors, on ne voit que le zip.",
+  poche: "Poche plaquée : on coupe la poche avec 1 cm de rentré, on replie et surpique le haut, on la plaque et on surpique les 3 autres côtés, avec des points d'arrêt aux coins.",
+  decoupe: "Découpe : on trace la forme, on coupe en laissant 1 cm, on crante les courbes, on rentre le bord et on surpique — ou on le laisse surjeté visible pour un effet brut.",
+  oeillets: "Œillets : on perce au poinçon, on pose l'œillet métal avec sa rondelle et on sertit à la pince, sur deux épaisseurs ou avec un renfort.",
+  boutons: "Boutonnage : une patte doublée le long de la ligne, des boutonnières à la machine d'un côté, les boutons cousus de l'autre, espacés régulièrement.",
+  etiquette: "Étiquette : tissée, prise dans la couture (col, ourlet) ou surpiquée à plat ; elle se coud avant d'assembler les pièces.",
+  serigraphie: "Sérigraphie : un écran par couleur ; l'encre est poussée à la raclette à travers l'écran puis cuite. Aplats nets, léger relief, idéal jusqu'à ~6 couleurs.",
+  broderie: "Broderie : le motif est « digitalisé » en points (remplissage, satin), brodé à la machine avec une toile de stabilisation derrière. Relief et brillance du fil.",
+  patch: "Patch : motif brodé ou tissé sur une pièce à part, bord surjeté (« merrowed »), puis cousu au point zigzag sur le vêtement.",
+  flocage: "Flocage : film velours découpé au plotter puis posé à la presse à chaud. Toucher doux, aspect mat.",
+  impression: "Impression directe (DTG) : une imprimante jet d'encre textile imprime dans la fibre, en couleurs, idéale pour les dégradés et les photos.",
+};
+const DZ_TOOLS = [["edit", "✎ Courbes", "Glisse les points ronds (passages) et carrés (poignées de courbe)."], ["zip", "Zip", "Touche pour tracer la fente, « Terminer » pour finir. Reviens au premier point = poche zippée."],
+  ["poche", "Poche plaquée", "Touche deux coins opposés."], ["decoupe", "Découpe", "Trace une forme fermée : elle sera ajourée."], ["oeillets", "Œillets", "Chaque touche pose un œillet."],
+  ["boutons", "Boutonnage", "Touche le début puis la fin de la patte."], ["etiquette", "Étiquette", "Touche l'endroit où la coudre."], ["deco", "Déco", "Touche l'endroit où poser le motif choisi (aussi en 3D)."]];
+const DZ_TECH = [["serigraphie", "Sérigraphie"], ["broderie", "Broderie"], ["patch", "Patch cousu"], ["flocage", "Flocage"], ["impression", "Impression (DTG)"]];
+
+/* ---------- Texture d'une pièce : matière + coutures + opérations + décos ---------- */
+const DZ_K = 9;   // pixels par cm
+function dzOffset(poly, d) {   // contour décalé vers l'intérieur de d cm
+  let a = 0; for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p.x * q.y - q.x * p.y; } const s = a > 0 ? 1 : -1, n = poly.length;
+  return poly.map((p, i) => { const pr = poly[(i - 1 + n) % n], nx = poly[(i + 1) % n], dx = nx.x - pr.x, dy = nx.y - pr.y, l = Math.hypot(dx, dy) || 1; return dzP(p.x - s * dy / l * d, p.y + s * dx / l * d); });
+}
+const dzSrcCache = new Map();
+function dzDecoCanvas(src, col) {
+  const key = (src.t === "form" ? "f" + src.id : "i" + (src.data || "").length + (src.data || "").slice(-24)) + col; if (dzSrcCache.has(key)) return dzSrcCache.get(key);
+  const S = 256, c = document.createElement("canvas"); c.width = c.height = S; const x = c.getContext("2d");
+  if (src.t === "form") x.drawImage(tlSprite({ id: src.id, stars: src.stars }, col, S), 0, 0);
+  else if (src.img) { const k = Math.min(S / src.img.width, S / src.img.height); x.drawImage(src.img, (S - src.img.width * k) / 2, (S - src.img.height * k) / 2, src.img.width * k, src.img.height * k); }
+  dzSrcCache.set(key, c); if (dzSrcCache.size > 40) dzSrcCache.delete(dzSrcCache.keys().next().value); return c;
+}
+function dzPaintDeco(x, d, K, x0, y0) {
+  const src = dzDecoCanvas(d.src, d.color || "#1b1d22"), w = d.size * K, cx = (d.u - x0) * K, cy = (d.v - y0) * K;
+  x.save(); x.translate(cx, cy); x.rotate((d.rot || 0) * Math.PI / 180);
+  const t = document.createElement("canvas"); t.width = t.height = 256; const tx = t.getContext("2d");
+  if (d.tech === "patch") {   // fond du patch (forme dilatée) + bord surjeté
+    x.shadowColor = "rgba(0,0,0,.35)"; x.shadowBlur = 0.4 * K; x.shadowOffsetY = 0.15 * K;
+    x.beginPath(); x.roundRect(-w * 0.58, -w * 0.58, w * 1.16, w * 1.16, w * 0.22); x.fillStyle = d.bg || "#1b1d22"; x.fill(); x.shadowColor = "transparent";
+    x.setLineDash([0.25 * K, 0.18 * K]); x.lineWidth = 0.25 * K; x.strokeStyle = d.color || "#f2f0ea"; x.beginPath(); x.roundRect(-w * 0.53, -w * 0.53, w * 1.06, w * 1.06, w * 0.19); x.stroke(); x.setLineDash([]);
+  }
+  tx.drawImage(src, 0, 0);
+  if (d.tech === "broderie") {   // fils en diagonale + liseré
+    tx.globalCompositeOperation = "source-atop"; for (let i = -256; i < 512; i += 5) { tx.strokeStyle = i % 10 ? "rgba(255,255,255,.28)" : "rgba(0,0,0,.25)"; tx.lineWidth = 2; tx.beginPath(); tx.moveTo(i, 0); tx.lineTo(i + 256, 256); tx.stroke(); }
+    x.shadowColor = "rgba(0,0,0,.45)"; x.shadowBlur = 0.25 * K; x.shadowOffsetY = 0.12 * K;
+  } else if (d.tech === "serigraphie") { tx.globalCompositeOperation = "destination-out"; for (let i = 0; i < 260; i++) { tx.fillStyle = `rgba(0,0,0,${0.15 + Math.random() * 0.3})`; tx.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 2, 1); } }
+  else if (d.tech === "flocage") { x.filter = "blur(0.6px)"; x.globalAlpha = 0.93; }
+  else if (d.tech === "impression") { x.globalCompositeOperation = "multiply"; }
+  x.drawImage(t, -w / 2, -w / 2, w, w); x.restore();
+}
+function dzPieceTexture(e, st) {
+  const { pc, poly } = e, xs = poly.map(p => p.x), ys = poly.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const K = Math.min(DZ_K, 1100 / Math.max(x1 - x0, y1 - y0)), W = Math.ceil((x1 - x0) * K) + 2, H = Math.ceil((y1 - y0) * K) + 2, c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+  const P = p => [(p.x - x0) * K, (p.y - y0) * K], path = pts => { x.beginPath(); pts.forEach((p, i) => { const [a, b] = P(p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); };
+  const mk = st.matAll || pc.mat, M = DZ_MATS[mk] || DZ_MATS.jersey, col = pc.color || (pc.role === "front" && st.asset === "casquette" ? "#f2f0ea" : st.color);
+  const tile = dzTile(mk, col), pat = x.createPattern(tile, "repeat"), sc = (mk === "cuir" || mk === "satin" ? 16 : 6) * K / 128; pat.setTransform(new DOMMatrix([sc, 0, 0, sc, 0, 0]));
+  x.fillStyle = pat; x.fillRect(0, 0, W, H);   // débord de matière : pas de liseré clair aux coutures
+  x.save(); path(poly); x.clip();
+  // ombre de couture le long des bords
+  path(poly); x.lineWidth = 1.4 * K; x.strokeStyle = "rgba(0,0,0,.12)"; x.stroke(); path(poly); x.lineWidth = 0.5 * K; x.strokeStyle = "rgba(0,0,0,.12)"; x.stroke();
+  // poche kangourou
+  if (pc.id === "devant" && st.asset === "sweat" && st.params.kangourou) { const yb = y1 - (st.params.rib ? 1 : 6), kp = [dzP(-13, yb - 25), dzP(13, yb - 25), dzP(19, yb - 12), dzP(19, yb), dzP(-19, yb), dzP(-19, yb - 12)]; x.save(); x.shadowColor = "rgba(0,0,0,.35)"; x.shadowBlur = 0.6 * K; path(kp); x.fillStyle = pat; x.fill(); x.restore(); x.setLineDash([0.35 * K, 0.25 * K]); x.lineWidth = 0.12 * K; x.strokeStyle = st.stitch; path(dzOffset(kp, 0.6)); x.stroke(); x.setLineDash([]); }
+  // opérations
+  for (const o of st.ops.filter(o => o.piece === pc.id)) {
+    const pts = o.pts || [];
+    if (o.t === "zip" || o.t === "zippoche") { const L = pts.concat(o.t === "zippoche" ? [pts[0]] : []); x.lineCap = "round"; x.lineJoin = "round";
+      x.beginPath(); L.forEach((p, i) => { const [a, b] = P(p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.lineWidth = 1.3 * K; x.strokeStyle = o.tape || "#1b1d22"; x.stroke(); x.setLineDash([0.12 * K, 0.18 * K]); x.lineWidth = 0.55 * K; x.strokeStyle = o.teeth || "#c9cbd2"; x.stroke(); x.setLineDash([]);
+      const [ax, ay] = P(L[0]); x.fillStyle = "#c9cbd2"; x.strokeStyle = "#5b5e66"; x.lineWidth = 0.08 * K; x.beginPath(); x.roundRect(ax - 0.5 * K, ay - 0.3 * K, 1 * K, 2.2 * K, 0.3 * K); x.fill(); x.stroke(); }
+    if (o.t === "poche" && pts.length === 2) { const [a, b] = pts, r = [dzP(Math.min(a.x, b.x), Math.min(a.y, b.y)), dzP(Math.max(a.x, b.x), Math.min(a.y, b.y)), dzP(Math.max(a.x, b.x), Math.max(a.y, b.y)), dzP(Math.min(a.x, b.x), Math.max(a.y, b.y))];
+      x.save(); x.shadowColor = "rgba(0,0,0,.35)"; x.shadowBlur = 0.6 * K; x.shadowOffsetY = 0.15 * K; path(r); x.fillStyle = pat; x.fill(); x.restore(); x.setLineDash([0.35 * K, 0.25 * K]); x.lineWidth = 0.12 * K; x.strokeStyle = st.stitch; path(dzOffset(r, 0.6)); x.stroke();
+      x.beginPath(); const [p1, q1] = P(dzP(r[0].x + 0.6, r[0].y + 2)), [p2] = P(dzP(r[1].x - 0.6, 0)); x.moveTo(p1, q1); x.lineTo(p2, q1); x.stroke(); x.setLineDash([]); }
+    if (o.t === "decoupe" && pts.length > 2) { x.setLineDash([0.3 * K, 0.22 * K]); x.lineWidth = 0.12 * K; x.strokeStyle = st.stitch; path(dzOffset(pts, -0.7)); x.stroke(); x.setLineDash([]); path(pts); x.lineWidth = 0.6 * K; x.strokeStyle = "rgba(0,0,0,.25)"; x.stroke(); }
+    if (o.t === "oeillet" && pts[0]) { const [a, b] = P(pts[0]), g = x.createRadialGradient(a - 0.15 * K, b - 0.15 * K, 0.1 * K, a, b, 0.75 * K); g.addColorStop(0, "#f4f5f8"); g.addColorStop(1, "#7c7f88"); x.fillStyle = g; x.beginPath(); x.arc(a, b, 0.7 * K, 0, 7); x.fill(); x.fillStyle = "#16171b"; x.beginPath(); x.arc(a, b, 0.32 * K, 0, 7); x.fill(); }
+    if (o.t === "boutons" && pts.length === 2) { const [a, b] = pts, n = o.n || 5, ang = Math.atan2(b.y - a.y, b.x - a.x), len = Math.hypot(b.x - a.x, b.y - a.y);
+      x.save(); const [ax, ay] = P(a); x.translate(ax, ay); x.rotate(ang); x.shadowColor = "rgba(0,0,0,.3)"; x.shadowBlur = 0.4 * K; x.fillStyle = pat; x.fillRect(-1, -1.6 * K, len * K + 2, 3.2 * K); x.shadowColor = "transparent";
+      x.setLineDash([0.3 * K, 0.22 * K]); x.lineWidth = 0.12 * K; x.strokeStyle = st.stitch; x.strokeRect(0.3 * K, -1.25 * K, len * K - 0.6 * K, 2.5 * K); x.setLineDash([]);
+      for (let i = 0; i < n; i++) { const bx = (len * K) * (i + 0.5) / n; x.fillStyle = o.btn || "#1b1d22"; x.beginPath(); x.arc(bx, 0, 0.7 * K, 0, 7); x.fill(); x.fillStyle = "rgba(255,255,255,.35)"; for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { x.beginPath(); x.arc(bx + dx * 0.18 * K, dy * 0.18 * K, 0.09 * K, 0, 7); x.fill(); } }
+      x.restore(); }
+    if (o.t === "etiquette" && pts[0]) { const [a, b] = P(pts[0]); x.save(); x.translate(a, b); x.shadowColor = "rgba(0,0,0,.3)"; x.shadowBlur = 0.3 * K; x.fillStyle = o.bg || "#1b1d22"; x.fillRect(-2.5 * K, -1 * K, 5 * K, 2 * K); x.shadowColor = "transparent"; x.fillStyle = o.fg || "#f2f0ea"; x.font = `700 ${0.9 * K}px Inter, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(o.text || "TNB", 0, 0.05 * K); x.restore(); }
+  }
+  for (const d of st.decos.filter(d => d.piece === pc.id)) dzPaintDeco(x, d, K, x0, y0);
+  // surpiqûres : tout autour (sauf maille côtelée), ourlet double aiguille en bas des pièces du corps
+  if (mk !== "cote" && mk !== "mesh") { x.setLineDash([0.32 * K, 0.22 * K]); x.lineWidth = 0.11 * K; x.strokeStyle = st.stitch; path(dzOffset(poly, 0.55)); x.stroke();
+    if (["body", "sleeve", "leg"].includes(pc.role) && !(st.asset === "sweat" && st.params.rib)) for (const off of [1.6, 2.2]) { const yy = (y1 - off - y0) * K; const r = dzRows(poly, y1 - off); if (r.length >= 2) { x.beginPath(); x.moveTo((r[0] - x0) * K, yy); x.lineTo((r[r.length - 1] - x0) * K, yy); x.stroke(); } }
+    x.setLineDash([]); }
+  x.restore(); return { c, x0, x1, y0, y1, K };
+}
+
+/* ---------- Studio 3D ---------- */
+function dzEnv(renderer) {
+  const c = document.createElement("canvas"); c.width = 512; c.height = 256; const x = c.getContext("2d"), g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#e8e8ec"); g.addColorStop(1, "#9a9ca4"); x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  x.fillStyle = "#ffffff"; x.fillRect(60, 40, 120, 80); x.fillRect(330, 30, 140, 70);
+  const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding; const pm = new THREE.PMREMGenerator(renderer), env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); return env;
+}
+function dz3dInit(cv) {
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+  const sc = new THREE.Scene(); sc.environment = dzEnv(r); const cam = new THREE.PerspectiveCamera(30, 1, 1, 2000); cam.position.set(0, 0, 180);
+  const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(60, 120, 140); sc.add(key, new THREE.HemisphereLight(0xffffff, 0x9a9ca4, 0.55));
+  const ctl = new THREE.OrbitControls(cam, cv); ctl.enableDamping = true; ctl.enablePan = false; ctl.minDistance = 40; ctl.maxDistance = 420;
+  const root = new THREE.Group(); sc.add(root);
+  const sc2 = document.createElement("canvas"); sc2.width = sc2.height = 128; { const q = sc2.getContext("2d"), g = q.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, "rgba(0,0,0,.28)"); g.addColorStop(1, "rgba(0,0,0,0)"); q.fillStyle = g; q.fillRect(0, 0, 128, 128); }
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc2), transparent: true, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; sc.add(shadow);
+  return { r, sc, cam, ctl, root, shadow, meshes: [], fitted: null };
+}
+function dzBuild3d(V, st, eff) {
+  for (const m of V.meshes) { V.root.remove(m); m.geometry.dispose(); if (m.material.map && m.userData.ownMap) m.material.map.dispose(); m.material.dispose(); } V.meshes = [];
+  for (const e of eff) {
+    let g; try { g = dzGeometry(e, st, eff); } catch (err) { console.warn(err); g = null; } if (!g) continue;
+    const T = dzPieceTexture(e, st), tex = new THREE.CanvasTexture(T.c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+    const M = DZ_MATS[st.matAll || e.pc.mat] || DZ_MATS.jersey;
+    const fm = new THREE.MeshStandardMaterial({ map: tex, roughness: M.rough, metalness: 0, side: THREE.FrontSide, alphaTest: M.alpha ? 0.5 : 0, transparent: false });
+    const bm = new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0, side: THREE.BackSide, color: 0x8a8a8f, alphaTest: M.alpha ? 0.5 : 0 });
+    for (const mat of [fm, bm]) { const m = new THREE.Mesh(g, mat); m.userData = { pid: e.pc.id, box: g.userData, ownMap: mat === fm }; V.root.add(m); V.meshes.push(m); }
+  }
+  const box = new THREE.Box3().setFromObject(V.root);
+  if (!box.isEmpty()) { const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), key = st.asset;
+    V.shadow.position.set(c.x, box.min.y - 1, c.z); V.shadow.scale.setScalar(Math.max(s.x, s.z) * 0.62);
+    if (V.fitted !== key) { V.fitted = key; V.ctl.target.copy(c); const d = Math.max(s.x, s.y) * 2.1 + 20; V.cam.position.set(c.x + d * 0.35, c.y + d * 0.12, c.z + d * 0.93); V.ctl.update(); } }
+}
+/* ---------- Îlot Design : l'interface ---------- */
+const DZ_SW = ["#f2f0ea", "#1b1d22", "#8a8d96", "#2b3a5c", "#3f5a3a", "#6b4a2b", "#b8322e", "#ff4f9a", "#e8c547", "#c9c3d6"];
+const dzEff = () => dzEffective(DZ.st);
+function dzSelE(eff) { eff = eff || dzEff(); let e = eff.find(q => q.pc.id === DZ.sel); if (!e) { e = eff[0]; DZ.sel = e && e.pc.id; } return e; }
+function dzCommit(full = true) { dzSave(); dzRefresh(full); }
+function dzDims(poly) { const xs = poly.map(p => p.x), ys = poly.map(p => p.y); return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]; }
+function dzLoad() { const s = store.get("atelier-design", null); DZ.st = s && s.v === 1 && s.pieces ? s : dzNew("sweat"); }
+
+/* --- vue 2D : le patron de la pièce choisie --- */
+function dzView2d(cv, e) {
+  const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1), W = Math.max(100, Math.round(r.width * d)), H = Math.max(100, Math.round(r.height * d));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), m = 34 * d;
+  const s = Math.min((W - 2 * m) / (x1 - x0 || 1), (H - 2 * m) / (y1 - y0 || 1)), ox = (W - (x1 - x0) * s) / 2 - x0 * s, oy = (H - (y1 - y0) * s) / 2 - y0 * s;
+  return { W, H, d, s, to: p => [ox + p.x * s, oy + p.y * s], from: (X, Y) => dzP((X - ox) / s, (Y - oy) / s) };
+}
+function dzHandles(e) {   // points éditables : passages (ancres) et poignées, en vue réelle
+  const pc = e.pc, P = pc.path, out = []; out.push({ k: "a", i: -1, p: e.T.tf(P.start) });
+  P.segs.forEach((sg, i) => { out.push({ k: "c1", i, p: e.T.tf(sg.c1), at: e.T.tf(i ? P.segs[i - 1].p : P.start) }); out.push({ k: "c2", i, p: e.T.tf(sg.c2), at: e.T.tf(sg.p) }); out.push({ k: "a", i, p: e.T.tf(sg.p) }); });
+  return out;
+}
+function dzDraw2d() {
+  const cv = document.getElementById("dz-2d"); if (!cv) return; const eff = dzEff(), e = dzSelE(eff); if (!e) return;
+  const V = DZ.lockV || dzView2d(cv, e), x = cv.getContext("2d"), { d, s } = V; DZ.v2 = V; x.clearRect(0, 0, V.W, V.H);
+  // grille en cm
+  x.strokeStyle = "rgba(27,29,34,.06)"; x.lineWidth = 1; const g0 = V.from(0, 0), g1 = V.from(V.W, V.H);
+  for (let u = Math.ceil(g0.x / 5) * 5; u < g1.x; u += 5) { const [a] = V.to(dzP(u, 0)); x.beginPath(); x.moveTo(a, 0); x.lineTo(a, V.H); x.stroke(); }
+  for (let v = Math.ceil(g0.y / 5) * 5; v < g1.y; v += 5) { const [, b] = V.to(dzP(0, v)); x.beginPath(); x.moveTo(0, b); x.lineTo(V.W, b); x.stroke(); }
+  // marge de couture (1 cm) puis la pièce texturée
+  const path = pts => { x.beginPath(); pts.forEach((p, i) => { const [a, b] = V.to(p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); };
+  x.setLineDash([6 * d, 5 * d]); x.strokeStyle = "rgba(27,29,34,.35)"; path(dzOffset(e.poly, -1)); x.stroke(); x.setLineDash([]);
+  const T = dzPieceTexture(e, DZ.st), [tx, ty] = V.to(dzP(T.x0, T.y0)); x.save(); path(e.poly); x.clip(); x.drawImage(T.c, tx, ty, (T.x1 - T.x0) * s, (T.y1 - T.y0) * s); x.restore();
+  x.lineWidth = 1.5 * d; x.strokeStyle = "#1b1d22"; path(e.poly); x.stroke();
+  if (e.pc.sym) { const [a, b0] = V.to(dzP(0, Math.min(...e.poly.map(p => p.y)))), [, b1] = V.to(dzP(0, Math.max(...e.poly.map(p => p.y)))); x.setLineDash([2 * d, 4 * d]); x.strokeStyle = "rgba(27,29,34,.5)"; x.beginPath(); x.moveTo(a, b0); x.lineTo(a, b1); x.stroke(); x.setLineDash([]); }
+  // cotes
+  const [w, h] = dzDims(e.poly); x.fillStyle = "#1b1d22"; x.font = `600 ${11 * d}px Inter, sans-serif`; x.textAlign = "center"; const [cx] = V.to(dzP((Math.min(...e.poly.map(p => p.x)) + Math.max(...e.poly.map(p => p.x))) / 2, 0)), [, by] = V.to(dzP(0, Math.max(...e.poly.map(p => p.y))));
+  x.fillText(`${w.toFixed(1)} × ${h.toFixed(1)} cm${e.pc.sym ? " · coupé au pli" : ""}`, cx, Math.min(V.H - 6 * d, by + 22 * d));
+  // points de Bézier
+  if (DZ.tool === "edit") for (const hd of dzHandles(e)) { const [a, b] = V.to(hd.p);
+    if (hd.k !== "a") { const [p, q] = V.to(hd.at); x.strokeStyle = "rgba(255,79,154,.7)"; x.lineWidth = 1 * d; x.beginPath(); x.moveTo(p, q); x.lineTo(a, b); x.stroke(); x.fillStyle = "#fff"; x.strokeStyle = "#ff4f9a"; x.lineWidth = 1.5 * d; x.fillRect(a - 4 * d, b - 4 * d, 8 * d, 8 * d); x.strokeRect(a - 4 * d, b - 4 * d, 8 * d, 8 * d); }
+    else { x.fillStyle = "#1b1d22"; x.beginPath(); x.arc(a, b, 6 * d, 0, 7); x.fill(); x.fillStyle = "#fff"; x.beginPath(); x.arc(a, b, 2.5 * d, 0, 7); x.fill(); } }
+  // tracé en cours
+  if (DZ.draw.length) { x.strokeStyle = "#ff4f9a"; x.lineWidth = 2 * d; x.beginPath(); DZ.draw.forEach((p, i) => { const [a, b] = V.to(p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); DZ.draw.forEach((p, i) => { const [a, b] = V.to(p); x.fillStyle = i ? "#ff4f9a" : "#1b1d22"; x.beginPath(); x.arc(a, b, (i ? 4 : 7) * d, 0, 7); x.fill(); }); }
+  const bar = document.getElementById("dz-drawbar"); if (bar) bar.hidden = !DZ.draw.length || !["zip", "decoupe"].includes(DZ.tool);
+}
+function dzRefresh(full = true) {
+  dzDraw2d(); clearTimeout(DZ.th); DZ.th = setTimeout(() => { if (DZ.V3) dzBuild3d(DZ.V3, DZ.st, dzEff()); }, full ? 30 : 140);
+}
+function dzToolHint() { const t = DZ_TOOLS.find(t => t[0] === DZ.tool), h = document.getElementById("dz-hint"); if (h && t) h.textContent = t[2]; }
+function dzSetTool(k) { DZ.tool = k; DZ.draw = []; document.querySelectorAll("[data-tool]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tool === k)); dzToolHint(); dzDraw2d(); }
+
+// poser une opération ou une déco à l'endroit touché (dans la pièce pid, coords patron effectives)
+function dzPlace(pid, p) {
+  const st = DZ.st, t = DZ.tool;
+  if (t === "oeillets") { dzPush(); st.ops.push({ t: "oeillet", piece: pid, pts: [p] }); dzHow("oeillets"); }
+  else if (t === "etiquette") { dzPush(); st.ops.push({ t: "etiquette", piece: pid, pts: [p], text: "TNB" }); dzHow("etiquette"); }
+  else if (t === "deco") {
+    if (!DZ.decoSrc) { wToast("Choisis d'abord un motif dans l'onglet Déco"); return; }
+    dzPush(); const pt = DZ.decoTech === "patch"; st.decos.push({ piece: pid, u: p.x, v: p.y, size: DZ.decoSize, rot: DZ.decoRot, tech: DZ.decoTech, src: DZ.decoSrc, color: pt ? "#f2f0ea" : DZ.decoCol || "#1b1d22", bg: "#1b1d22" }); dzHow(DZ.decoTech); dzTabsRender();
+  } else return false;
+  dzCommit(); return true;
+}
+function dzHow(k) { const h = document.getElementById("dz-how"); if (h && DZ_HOW[k]) { h.innerHTML = `<b>En vrai, à l'atelier</b>${DZ_HOW[k]}`; h.hidden = false; } }
+
+function dz2dPointer(cv) {
+  let drag = null;
+  const pt = ev => { const r = cv.getBoundingClientRect(), d = DZ.v2.d; return [(ev.clientX - r.left) * d, (ev.clientY - r.top) * d]; };
+  cv.onpointerdown = ev => {
+    const e = dzSelE(); if (!e || !DZ.v2) return; const [X, Y] = pt(ev), V = DZ.v2, p = V.from(X, Y), st = DZ.st; cv.setPointerCapture(ev.pointerId);
+    if (DZ.tool === "edit") { let best = null, bd = 18 * V.d; for (const hd of dzHandles(e)) { const [a, b] = V.to(hd.p), dd = Math.hypot(a - X, b - Y); if (dd < bd || (hd.k === "a" && dd < bd + 4 * V.d && best && best.k !== "a")) { bd = dd; best = hd; } } if (best) { dzPush(); drag = { hd: best, e }; DZ.lockV = V; } return; }
+    if (DZ.tool === "deco") { const hit = st.decos.find(dc => dc.piece === e.pc.id && Math.hypot(dc.u - p.x, dc.v - p.y) < dc.size * 0.5); if (hit) { dzPush(); drag = { deco: hit, dx: hit.u - p.x, dy: hit.v - p.y }; DZ.lockV = V; return; } }
+    if (!dzInside(e.poly, p.x, p.y) && !["zip", "decoupe"].includes(DZ.tool)) { wToast("Touche à l'intérieur de la pièce"); return; }
+    if (dzPlace(e.pc.id, p) !== false) return;
+    if (DZ.tool === "zip" || DZ.tool === "decoupe") {
+      if (DZ.draw.length >= 3) { const [a, b] = V.to(DZ.draw[0]); if (Math.hypot(a - X, b - Y) < 16 * V.d) { dzFinishDraw(true); return; } }
+      DZ.draw.push(p); dzDraw2d(); return;
+    }
+    if (DZ.tool === "poche" || DZ.tool === "boutons") { DZ.draw.push(p); if (DZ.draw.length === 2) { dzPush(); st.ops.push(DZ.tool === "poche" ? { t: "poche", piece: e.pc.id, pts: DZ.draw } : { t: "boutons", piece: e.pc.id, pts: DZ.draw, n: 5 }); dzHow(DZ.tool); DZ.draw = []; dzCommit(); dzTabsRender(); } else dzDraw2d(); }
+  };
+  cv.onpointermove = ev => {
+    if (!drag) return; const [X, Y] = pt(ev), p = DZ.v2.from(X, Y);
+    if (drag.deco) { drag.deco.u = p.x + drag.dx; drag.deco.v = p.y + drag.dy; dzRefresh(false); return; }
+    const { hd, e } = drag, P = e.pc.path, b = e.T.itf(p); if (e.pc.sym && hd.k === "a" && Math.abs((hd.i < 0 ? P.start : P.segs[hd.i].p).x) < 0.05) b.x = 0;   // les points sur la pliure restent sur la pliure
+    if (hd.k === "a") { const A = hd.i < 0 ? P.start : P.segs[hd.i].p, dx = b.x - A.x, dy = b.y - A.y, mv = q => { q.x += dx; q.y += dy; };
+      mv(A); if (hd.i >= 0) mv(P.segs[hd.i].c2); const nx = P.segs[hd.i + 1]; if (nx) mv(nx.c1); }
+    else { const q = P.segs[hd.i][hd.k]; q.x = b.x; q.y = b.y; }
+    dzRefresh(false);
+  };
+  cv.onpointerup = cv.onpointercancel = () => { if (drag) { drag = null; DZ.lockV = null; dzCommit(); } };   // la vue reste figée pendant le geste, puis se recadre
+}
+function dzFinishDraw(closed) {
+  const e = dzSelE(), pts = DZ.draw.slice(); DZ.draw = []; if (!e) return;
+  if (DZ.tool === "zip" && pts.length >= 2) { dzPush(); DZ.st.ops.push({ t: closed ? "zippoche" : "zip", piece: e.pc.id, pts, lining: true }); dzHow(closed ? "zippoche" : "zip"); }
+  else if (DZ.tool === "decoupe" && pts.length >= 3) { dzPush(); DZ.st.ops.push({ t: "decoupe", piece: e.pc.id, pts }); dzHow("decoupe"); }
+  dzCommit(); dzTabsRender();
+}
+
+/* --- vue 3D --- */
+function dz3dMount(cv) {
+  const V = dz3dInit(cv); DZ.V3 = V; dzBuild3d(V, DZ.st, dzEff());
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let down = null;
+  cv.addEventListener("pointerdown", ev => { down = [ev.clientX, ev.clientY, performance.now()]; });
+  cv.addEventListener("pointerup", ev => {
+    if (!down || Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 6 || performance.now() - down[2] > 400) return; const r = cv.getBoundingClientRect();
+    ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -(ev.clientY - r.top) / r.height * 2 + 1); ray.setFromCamera(ndc, V.cam);
+    const hit = ray.intersectObjects(V.meshes, false)[0]; if (!hit || !hit.uv) return; const { pid, box } = hit.object.userData;
+    const p = dzP(box.x0 + hit.uv.x * (box.x1 - box.x0), box.y0 + (1 - hit.uv.y) * (box.y1 - box.y0));
+    if (DZ.sel !== pid) { DZ.sel = pid; dzPieceChips(); }
+    if (!dzPlace(pid, p)) dzDraw2d();
+  });
+  const loop = () => {
+    if (!cv.isConnected) { V.r.dispose(); V.r.forceContextLoss && V.r.forceContextLoss(); if (DZ.V3 === V) DZ.V3 = null; return; }
+    const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1), W = Math.round(r.width), H = Math.round(r.height);
+    if (W && H && (V.w !== W || V.h !== H)) { V.w = W; V.h = H; V.r.setSize(W, H, false); V.cam.aspect = W / H; V.cam.updateProjectionMatrix(); }
+    V.ctl.update(); V.r.render(V.sc, V.cam); requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+/* --- les onglets --- */
+const DZ_TABS = [["modeles", "Modèles"], ["ops", "Opérations"], ["mat", "Matières"], ["deco", "Déco"], ["fiche", "Fiche technique"], ["pub", "Publier"]];
+function dzPieceChips() {
+  const box = document.getElementById("dz-pieces"); if (!box) return; box.replaceChildren(); const eff = dzEff(); dzSelE(eff);
+  for (const e of eff) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = e.pc.name; b.setAttribute("aria-pressed", e.pc.id === DZ.sel); b.onclick = () => { DZ.sel = e.pc.id; DZ.draw = []; uisClick(); dzPieceChips(); dzDraw2d(); if (DZ.tab === "mat") dzTabsRender(); }; box.append(b); }
+}
+const dzEsc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const DZ_OPLAB = { zip: "Zip", zippoche: "Poche zippée", poche: "Poche plaquée", decoupe: "Découpe", oeillet: "Œillet", boutons: "Boutonnage", etiquette: "Étiquette" };
+function dzTabsRender() {
+  const host = document.getElementById("dz-tab"); if (!host) return; const st = DZ.st, P = st.params, top = st.asset === "tshirt" || st.asset === "sweat";
+  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tab === DZ.tab));
+  const chips = (arr, cur, attr) => arr.map(([k, l]) => `<button class="w-chip" data-${attr}="${k}" aria-pressed="${cur === k}">${l}</button>`).join("");
+  const pieceName = id => (st.pieces.find(p => p.id === id) || {}).name || id;
+  let h = "";
+  if (DZ.tab === "modeles") {
+    h = `<div class="w-sec">Partir d'un modèle</div><div class="dz-assets">${DZ_ASSETS.map(([k, l]) => `<button class="dz-asset" data-asset="${k}" aria-pressed="${st.asset === k}"><canvas width="120" height="120"></canvas><span>${l}</span></button>`).join("")}</div>
+    <p class="sp-hint">Chaque modèle arrive avec son patron (les pièces de tissu à plat). Tu modifies le patron à gauche, le vêtement se met à jour en 3D.</p>`;
+  } else if (DZ.tab === "ops") {
+    const lenLab = P.len < 0 ? `Cropper ${-P.len} cm` : P.len > 0 ? `Allonger +${P.len} cm` : "Longueur d'origine";
+    h = `<div class="w-sec">Coupe <span>en un geste</span></div>
+      ${st.asset === "bonnet" || st.asset === "casquette" ? "" : `<label class="w-fx-tr"><small>Longueur</small><output id="dz-lenv">${lenLab}</output><input class="w-range" type="range" min="-25" max="15" step="1" value="${P.len}" data-p="len"></label>`}
+      ${top ? `<label class="w-fx-tr"><small>Ampleur</small><output>${P.ample < 0.97 ? "ajusté" : P.ample > 1.08 ? "oversize" : "regular"} · ${Math.round(P.ample * 100)} %</output><input class="w-range" type="range" min="0.85" max="1.35" step="0.01" value="${P.ample}" data-p="ample"></label>
+      <div class="w-sec">Manches</div><div class="ir-chips">${chips([["sans", "Sans"], ["courtes", "Courtes"], ["3/4", "3/4"], ["longues", "Longues"]], P.sleeve, "sleeve")}</div>` : ""}
+      ${st.asset === "sweat" ? `<div class="ir-chips"><button class="w-chip" data-flag="hood" aria-pressed="${P.hood}">Capuche</button><button class="w-chip" data-flag="kangourou" aria-pressed="${P.kangourou}">Poche kangourou</button><button class="w-chip" data-flag="rib" aria-pressed="${P.rib}">Bords-côtes</button></div>` : ""}
+      <div class="w-sec">Ajouter <span>choisis l'outil puis touche le patron ou la 3D</span></div>
+      <div class="ir-chips">${DZ_TOOLS.filter(t => t[0] !== "edit" && t[0] !== "deco").map(([k, l]) => `<button class="w-chip" data-tool="${k}" aria-pressed="${DZ.tool === k}">${l}</button>`).join("")}</div>
+      <div class="w-sec">Sur ce vêtement</div>
+      <div class="dz-list">${st.ops.length ? st.ops.map((o, i) => `<div class="dz-li"><span>${DZ_OPLAB[o.t] || o.t}<small> · ${dzEsc(pieceName(o.piece))}</small></span>${o.t === "zippoche" ? `<button class="w-chip" data-lin="${i}" aria-pressed="${o.lining !== false}">Doublure</button>` : ""}${o.t === "boutons" ? `<button class="w-chip" data-nb="${i}">${o.n || 5} boutons</button>` : ""}${o.t === "etiquette" ? `<input class="dz-in" data-txt="${i}" value="${dzEsc(o.text || "TNB")}" maxlength="10">` : ""}<button class="w-chip" data-how="${o.t}">?</button><button class="w-chip" data-del="${i}">✕</button></div>`).join("") : `<p class="sp-hint">Rien pour l'instant : zip, poche, découpe, œillets, boutonnage, étiquette…</p>`}</div>`;
+  } else if (DZ.tab === "mat") {
+    const e = dzSelE(), scope = DZ.matScope || "all", pc = e && e.pc, cur = scope === "all" ? (st.pieces.find(p => p.role === "body" || p.role === "leg" || p.role === "crown" || p.role === "back") || st.pieces[0]).mat : pc.mat;
+    h = `<div class="ir-chips">${chips([["all", "Tout le vêtement"], ["piece", "Pièce : " + (pc ? pc.name : "")]], scope, "scope")}</div>
+      <div class="w-sec">Matière</div><div class="dz-mats">${Object.entries(DZ_MATS).map(([k, M]) => `<button class="dz-mat" data-mat="${k}" aria-pressed="${cur === k}"><i style="background-image:url(${dzTile(k, M.col).toDataURL()})"></i>${M.lab}</button>`).join("")}</div>
+      <div class="w-sec">Couleur</div><div class="dz-sw">${DZ_SW.map(c => `<button data-col="${c}" style="background:${c}" aria-label="${c}"></button>`).join("")}<label class="dz-pick">+<input type="color" value="${scope === "piece" && pc.color ? pc.color : st.color}"></label></div>
+      <div class="w-sec">Fil des surpiqûres</div><div class="dz-sw">${["#1b1d22", "#f2f0ea", "#e8c547", "#ff4f9a", "#b8322e", "#8a8d96"].map(c => `<button data-stitch="${c}" style="background:${c}" aria-pressed="${st.stitch === c}"></button>`).join("")}</div>
+      <p class="sp-hint">Pour l'instant ce sont des textures. Plus tard : un moteur de rendu physique (tombé, épaisseur, brillance, élasticité).</p>`;
+  } else if (DZ.tab === "deco") {
+    h = `<div class="w-sec">Motif <span>tes formes ou une image</span></div><div class="dz-src" id="dz-src"></div>
+      <label class="w-chip dz-up">Importer une image<input type="file" accept="image/*"></label>
+      <div class="w-sec">Technique</div><div class="ir-chips">${chips(DZ_TECH, DZ.decoTech, "tech")}</div>
+      <p class="dz-howtxt">${DZ_HOW[DZ.decoTech]}</p>
+      <label class="w-fx-tr"><small>Taille</small><output>${DZ.decoSize} cm</output><input class="w-range" type="range" min="3" max="34" step="0.5" value="${DZ.decoSize}" data-dk="decoSize"></label>
+      <label class="w-fx-tr"><small>Rotation</small><output>${DZ.decoRot}°</output><input class="w-range" type="range" min="-180" max="180" step="1" value="${DZ.decoRot}" data-dk="decoRot"></label>
+      <div class="w-sec">Couleur de l'encre / du fil</div><div class="dz-sw">${DZ_SW.map(c => `<button data-dcol="${c}" style="background:${c}" aria-pressed="${(DZ.decoCol || "#1b1d22") === c}"></button>`).join("")}</div>
+      <p class="sp-hint">Touche le patron ou le vêtement 3D pour poser le motif. Sur le patron, fais glisser un motif pour le déplacer.</p>
+      <div class="w-sec">Posés</div><div class="dz-list">${st.decos.length ? st.decos.map((d, i) => `<div class="dz-li"><span>${(DZ_TECH.find(t => t[0] === d.tech) || [0, d.tech])[1]}<small> · ${dzEsc(pieceName(d.piece))} · ${d.size} cm</small></span><button class="w-chip" data-dsz="${i}" title="Appliquer la taille, la rotation et la couleur choisies">Appliquer réglages</button><button class="w-chip" data-ddel="${i}">✕</button></div>`).join("") : `<p class="sp-hint">Aucun motif posé.</p>`}</div>`;
+  } else if (DZ.tab === "fiche") {
+    const eff = dzEff();
+    h = `<div class="w-sec">Pièces à couper</div><div class="dz-list">${eff.map(e => { const [w, hh] = dzDims(e.poly); return `<div class="dz-li"><span>${e.pc.name}<small> · ${DZ_MATS[e.pc.mat].lab} · ${w.toFixed(1)} × ${hh.toFixed(1)} cm${e.pc.sym ? " · au pli" : ""}</small></span></div>`; }).join("")}</div>
+      <div class="w-sec">Montage</div><ol class="dz-steps">${[...new Set(st.ops.map(o => o.t === "oeillet" ? "oeillets" : o.t))].map(k => `<li><b>${DZ_OPLAB[k] || DZ_OPLAB[k.replace(/s$/, "")] || k}</b> — ${DZ_HOW[k] || ""}</li>`).join("")}
+        ${[...new Set(st.decos.map(d => d.tech))].map(k => `<li><b>${(DZ_TECH.find(t => t[0] === k) || [0, k])[1]}</b> — ${DZ_HOW[k]}</li>`).join("")}
+        ${P.len < 0 ? `<li><b>Crop</b> — ${DZ_HOW.len_moins}</li>` : P.len > 0 ? `<li><b>Rallonge</b> — ${DZ_HOW.len_plus}</li>` : ""}<li><b>Assemblage</b> — épaules, montage des manches, côtés, puis finitions (bords, ourlets) ; surpiqûres en fil ${st.stitch}.</li></ol>
+      <div class="ir-chips"><button class="w-chip" data-a="svg">Télécharger le patron (SVG à l'échelle)</button><button class="w-chip" data-a="png">Image 3D (PNG)</button></div>
+      <p class="sp-hint">Le patron SVG est en centimètres réels, marge de couture de 1 cm en pointillés : imprimable tel quel.</p>`;
+  } else if (DZ.tab === "pub") {
+    h = `<div class="w-sec">Publier dans la galerie</div><input class="dz-in wide" id="dz-title" placeholder="Nom du design" maxlength="60" value="${dzEsc(DZ.title || "")}"><input class="dz-in wide" id="dz-author" placeholder="Signé par" maxlength="30" value="${dzEsc(prAuthorDefault())}">
+      <button class="w-pill dark" data-a="pub">Publier</button><p class="sp-hint">Visible par tout le monde en bas de la page. Les autres peuvent l'ouvrir et en faire leur version.</p>
+      <div class="w-sec">Recommencer</div><button class="w-chip" data-a="reset">Remettre ce modèle à zéro</button>`;
+  }
+  host.innerHTML = h; dzTabsBind(host);
+}
+function dzTabsBind(host) {
+  const st = DZ.st, P = st.params, on = (sel, fn) => host.querySelectorAll(sel).forEach(b => b.addEventListener(b.tagName === "INPUT" ? "input" : "click", ev => fn(b, ev)));
+  host.querySelectorAll(".dz-asset canvas").forEach(cv => dzAssetThumb(cv, cv.parentElement.dataset.asset));
+  on("[data-asset]", b => { if (b.dataset.asset === st.asset) return; dzPush(); DZ.st = dzNew(b.dataset.asset); DZ.sel = null; DZ.V3 && (DZ.V3.fitted = null); uisClick(); dzPieceChips(); dzCommit(); dzTabsRender(); });
+  on("[data-p]", (r, ev) => { if (!r.dataset.pushed) { dzPush(); r.dataset.pushed = 1; } P[r.dataset.p] = +r.value; const o = r.parentElement.querySelector("output"); if (r.dataset.p === "len") { o.textContent = P.len < 0 ? `Cropper ${-P.len} cm` : P.len > 0 ? `Allonger +${P.len} cm` : "Longueur d'origine"; dzHow(P.len < 0 ? "len_moins" : "len_plus"); } else { o.textContent = `${P.ample < 0.97 ? "ajusté" : P.ample > 1.08 ? "oversize" : "regular"} · ${Math.round(P.ample * 100)} %`; dzHow("ample"); } dzRefresh(false); });
+  host.querySelectorAll("[data-p]").forEach(r => r.addEventListener("change", () => { delete r.dataset.pushed; dzCommit(); dzPieceChips(); }));
+  on("[data-sleeve]", b => { dzPush(); P.sleeve = b.dataset.sleeve; dzHow("manches"); dzCommit(); dzPieceChips(); dzTabsRender(); });
+  on("[data-flag]", b => { dzPush(); P[b.dataset.flag] = !P[b.dataset.flag]; dzHow(b.dataset.flag === "hood" ? "capuche" : b.dataset.flag); dzCommit(); dzPieceChips(); dzTabsRender(); });
+  on("[data-tool]", b => { uisClick(); dzSetTool(DZ.tool === b.dataset.tool ? "edit" : b.dataset.tool); dzHow(b.dataset.tool); });
+  on("[data-del]", b => { dzPush(); st.ops.splice(+b.dataset.del, 1); dzCommit(); dzTabsRender(); });
+  on("[data-how]", b => dzHow(b.dataset.how === "oeillet" ? "oeillets" : b.dataset.how));
+  on("[data-lin]", b => { dzPush(); const o = st.ops[+b.dataset.lin]; o.lining = o.lining === false; dzCommit(); dzTabsRender(); });
+  on("[data-nb]", b => { dzPush(); const o = st.ops[+b.dataset.nb]; o.n = (o.n || 5) % 9 + 1 < 2 ? 2 : (o.n || 5) % 9 + 1; dzCommit(); dzTabsRender(); });
+  on("[data-txt]", r => { st.ops[+r.dataset.txt].text = r.value.toUpperCase(); dzCommit(); });
+  on("[data-scope]", b => { DZ.matScope = b.dataset.scope; dzTabsRender(); });
+  const targets = () => DZ.matScope === "piece" ? [dzSelE().pc] : st.pieces;
+  on("[data-mat]", b => { dzPush(); const k = b.dataset.mat; for (const pc of targets()) if (DZ.matScope === "piece" || !["hem", "cuff"].includes(pc.role) || k === "cote") pc.mat = k; st.matAll = null; dzCommit(); dzTabsRender(); });
+  const setCol = c => { dzPush(); if (DZ.matScope === "piece") dzSelE().pc.color = c; else { st.color = c; st.pieces.forEach(p => delete p.color); } dzCommit(); };
+  on("[data-col]", b => setCol(b.dataset.col));
+  const pick = host.querySelector(".dz-pick input"); if (pick) pick.onchange = () => setCol(pick.value);
+  on("[data-stitch]", b => { dzPush(); st.stitch = b.dataset.stitch; dzCommit(); dzTabsRender(); });
+  on("[data-tech]", b => { DZ.decoTech = b.dataset.tech; dzSetTool("deco"); dzTabsRender(); });
+  on("[data-dk]", r => { DZ[r.dataset.dk] = +r.value; r.parentElement.querySelector("output").textContent = r.value + (r.dataset.dk === "decoSize" ? " cm" : "°"); });
+  on("[data-dcol]", b => { DZ.decoCol = b.dataset.dcol; host.querySelectorAll("[data-dcol]").forEach(z => z.setAttribute("aria-pressed", z === b)); });
+  on("[data-ddel]", b => { dzPush(); st.decos.splice(+b.dataset.ddel, 1); dzCommit(); dzTabsRender(); });
+  on("[data-dsz]", b => { dzPush(); const d = st.decos[+b.dataset.dsz]; d.size = DZ.decoSize; d.rot = DZ.decoRot; d.tech = DZ.decoTech; if (d.tech !== "patch") d.color = DZ.decoCol || "#1b1d22"; dzCommit(); dzTabsRender(); });
+  const src = host.querySelector("#dz-src");
+  if (src) { let pool = []; try { pool = wMyFavs(18); } catch {} for (const sc of (current || [])) if (pool.length < 24 && !pool.includes(sc)) pool.push(sc);
+    for (const sc of pool) { const b = document.createElement("button"); b.className = "tl-f"; b.setAttribute("aria-pressed", DZ.decoSrc && DZ.decoSrc.id === sc.id); const c = document.createElement("canvas"); c.width = c.height = 80; c.getContext("2d").drawImage(tlSprite(sc, "#1b1d22", 80), 0, 0); b.append(c);
+      b.onclick = () => { DZ.decoSrc = { t: "form", id: sc.id, stars: sc.stars }; src.querySelectorAll(".tl-f").forEach(z => z.setAttribute("aria-pressed", z === b)); dzSetTool("deco"); wToast("Touche le vêtement pour poser le motif"); }; src.append(b); }
+    if (DZ.decoSrc && DZ.decoSrc.t === "img") { const b = document.createElement("button"); b.className = "tl-f"; b.setAttribute("aria-pressed", true); const im = new Image(); im.src = DZ.decoSrc.data; im.style.cssText = "width:100%;height:100%;object-fit:contain"; b.append(im); src.prepend(b); } }
+  const up = host.querySelector(".dz-up input");
+  if (up) up.onchange = () => { const f = up.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const k = Math.min(1, 512 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); const data = c.toDataURL("image/png"); const im2 = new Image(); im2.onload = () => { DZ.decoSrc = { t: "img", data, img: im2 }; dzSetTool("deco"); dzTabsRender(); wToast("Touche le vêtement pour poser l'image"); }; im2.src = data; URL.revokeObjectURL(im.src); }; im.src = URL.createObjectURL(f); };
+  on('[data-a="svg"]', () => dzExportSvg());
+  on('[data-a="png"]', () => { const cv = document.getElementById("dz-3d"); if (DZ.V3) DZ.V3.r.render(DZ.V3.sc, DZ.V3.cam); cv.toBlob(b => offerBlob(b, `tnb_design_${st.asset}.png`)); });
+  on('[data-a="pub"]', () => dzPublish());
+  on('[data-a="reset"]', () => { dzPush(); DZ.st = dzNew(st.asset); dzPieceChips(); dzCommit(); dzTabsRender(); });
+  on("#dz-title", r => { DZ.title = r.value; });
+}
+function dzAssetThumb(cv, kind) {   // silhouette à plat du modèle (devant + manches)
+  const st = dzNew(kind), eff = dzEffective(st).filter(e => !["hood", "hem", "cuff"].includes(e.pc.role)), x = cv.getContext("2d"); x.clearRect(0, 0, 120, 120);
+  const pieces = kind === "tshirt" || kind === "sweat" ? eff.filter(e => e.pc.id === "devant" || e.pc.role === "sleeve").slice(0, 3) : kind === "pantalon" ? eff.filter(e => e.pc.id.startsWith("jambeAv")) : eff.slice(0, kind === "casquette" ? 1 : 2);
+  const layout = []; let ox = 0; for (const e of pieces) { const xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y); layout.push({ e, dx: ox - Math.min(...xs), y0: Math.min(...ys) }); ox += Math.max(...xs) - Math.min(...xs) + 3; }
+  const H = Math.max(...layout.map(l => Math.max(...l.e.poly.map(p => p.y)) - l.y0)), s = Math.min(104 / ox, 104 / H), oX = (120 - ox * s) / 2;
+  x.fillStyle = "#f2f0ea"; x.strokeStyle = "#1b1d22"; x.lineWidth = 1.4;
+  for (const l of layout) { x.beginPath(); l.e.poly.forEach((p, i) => { const a = oX + (p.x + l.dx) * s, b = 8 + (p.y - l.y0) * s; i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); x.stroke(); }
+}
+function dzExportSvg() {
+  const eff = dzEff(); let X = 2, H = 0; const parts = [];
+  for (const e of eff) { const xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y), x0 = Math.min(...xs) - 1.5, y0 = Math.min(...ys) - 1.5, w = Math.max(...xs) - x0 + 1.5, h = Math.max(...ys) - y0 + 1.5, dx = X - x0, dy = 2 - y0;
+    const d = pts => "M" + pts.map(p => `${(p.x + dx).toFixed(2)},${(p.y + dy).toFixed(2)}`).join("L") + "Z";
+    parts.push(`<path d="${d(dzOffset(e.poly, -1))}" fill="none" stroke="#000" stroke-width="0.05" stroke-dasharray="0.4 0.3"/><path d="${d(e.poly)}" fill="none" stroke="#000" stroke-width="0.08"/>`
+      + (e.pc.sym ? `<line x1="${dx}" y1="${Math.min(...ys) + dy}" x2="${dx}" y2="${Math.max(...ys) + dy}" stroke="#000" stroke-width="0.04" stroke-dasharray="1 0.4 0.2 0.4"/>` : "")
+      + DZ.st.ops.filter(o => o.piece === e.pc.id && o.pts).map(o => `<path d="M${o.pts.map(p => `${(p.x + dx).toFixed(2)},${(p.y + dy).toFixed(2)}`).join("L")}${["zippoche", "decoupe"].includes(o.t) ? "Z" : ""}" fill="none" stroke="#d00" stroke-width="0.06"/>`).join("")
+      + `<text x="${X + w / 2}" y="${2 + h / 2}" font-size="1.4" text-anchor="middle" font-family="Arial">${dzEsc(e.pc.name)}${e.pc.sym ? " (au pli)" : ""}</text><text x="${X + w / 2}" y="${2 + h / 2 + 1.8}" font-size="0.9" text-anchor="middle" font-family="Arial">${DZ_MATS[e.pc.mat].lab}</text>`);
+    X += w + 3; H = Math.max(H, h); }
+  const W = X, HH = H + 6, svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}cm" height="${HH}cm" viewBox="0 0 ${W} ${HH}">${parts.join("")}<text x="2" y="${HH - 1.5}" font-size="0.9" font-family="Arial">TNB formfinding · patron ${DZ.st.asset} · marge de couture 1 cm (pointillés) · rouge = opérations · carré témoin 5 cm →</text><rect x="${W - 7}" y="${HH - 6}" width="5" height="5" fill="none" stroke="#000" stroke-width="0.05"/></svg>`;
+  offerBlob(new Blob([svg], { type: "image/svg+xml" }), `tnb_patron_${DZ.st.asset}.svg`); uisYes();
+}
+async function dzPublish() {
+  const db = prDb(); if (!db || !me) { wToast("Connecte-toi pour publier"); return; }
+  const title = (document.getElementById("dz-title").value || "").trim() || "Sans titre", author = (document.getElementById("dz-author").value || "").trim() || prAuthorDefault();
+  const data = dzClone(DZ.st); for (const d of data.decos) if (d.src && d.src.img) delete d.src.img;
+  if (JSON.stringify(data).length > 390000) { wToast("Trop lourd : retire une image importée"); return; }
+  const cv = document.getElementById("dz-3d"); DZ.V3 && DZ.V3.r.render(DZ.V3.sc, DZ.V3.cam); const t = document.createElement("canvas"), k = 360 / Math.max(cv.width, cv.height); t.width = Math.round(cv.width * k); t.height = Math.round(cv.height * k); const tx = t.getContext("2d"); tx.fillStyle = "#eceef2"; tx.fillRect(0, 0, t.width, t.height); tx.drawImage(cv, 0, 0, t.width, t.height);
+  const { error } = await db.from("atelier_designs").insert({ user_id: me, author, title, asset: DZ.st.asset, data, thumb: t.toDataURL("image/jpeg", 0.8), parent: DZ.parent || null });
+  if (error) { console.warn(error); wToast("Publication impossible"); return; }
+  uisYes(); wToast("Publié ✓"); store.set("atelier-pseudo", author); dzGallery();
+}
+async function dzGallery() {
+  const box = document.getElementById("dz-gal"); if (!box) return; const db = prDb(); if (!db) { box.innerHTML = `<p class="sp-hint">La galerie s'affiche une fois connecté.</p>`; return; }
+  const { data, error } = await db.from("atelier_designs").select("id,author,title,asset,thumb,created_at").order("created_at", { ascending: false }).limit(30);
+  if (error || !data) { box.innerHTML = `<p class="sp-hint">Galerie indisponible.</p>`; return; }
+  if (!data.length) { box.innerHTML = `<p class="sp-hint">Aucun design publié pour l'instant : sois le premier.</p>`; return; }
+  box.replaceChildren(); for (const r of data) { const b = document.createElement("button"); b.className = "dz-g"; b.innerHTML = `<img alt="" src="${r.thumb || ""}"><b>${dzEsc(r.title)}</b><small>${dzEsc(r.author || "")} · ${(DZ_ASSETS.find(a => a[0] === r.asset) || [0, r.asset])[1]}</small>`;
+    b.onclick = async () => { const { data: d } = await db.from("atelier_designs").select("data").eq("id", r.id).maybeSingle(); if (!d || !d.data || !d.data.pieces) return; dzPush(); DZ.st = d.data; DZ.parent = r.id; DZ.title = r.title + " (remix)"; DZ.sel = null; DZ.V3 && (DZ.V3.fitted = null); dzPieceChips(); dzCommit(); dzTabsRender(); document.querySelector(".dz")?.scrollIntoView({ behavior: "smooth" }); wToast("Ouvert : fais-en ta version"); }; box.append(b); }
+}
+function dzUndo(redo) { const from = redo ? DZ.redo : DZ.undo, to = redo ? DZ.undo : DZ.redo; if (!from.length) return; to.push(JSON.stringify(DZ.st)); DZ.st = JSON.parse(from.pop()); dzPieceChips(); dzCommit(); dzTabsRender(); }
+
+function wPDesign(p) {
+  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS; document.head.append(c); }
+  if (!DZ.st) dzLoad();
+  p.innerHTML = wHead("Design · dessine un vêtement", `<button class="w-pill w-glass-ui w-live" data-a="undo" title="Annuler">↶</button><button class="w-pill w-glass-ui w-live" data-a="redo" title="Rétablir">↷</button>`)
+    + `<div class="w-scroll w-live"><div class="dz">
+      <div class="dz-stages">
+        <div class="dz-st dz-2d"><span class="dz-lab">Patron · 2D</span><canvas id="dz-2d"></canvas><div class="dz-drawbar" id="dz-drawbar" hidden><button class="w-chip" data-a="fin">Terminer</button><button class="w-chip" data-a="annul">Annuler</button></div></div>
+        <div class="dz-st dz-3d"><span class="dz-lab">Vêtement · 3D</span><canvas id="dz-3d"></canvas></div>
+      </div>
+      <div class="dz-bar"><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="true">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
+      <div class="dz-ctl sp-card"><div class="dz-tabs">${DZ_TABS.map(([k, l]) => `<button class="w-chip" data-tab="${k}">${l}</button>`).join("")}</div><div id="dz-tab"></div></div>
+      <div class="dz-galw"><div class="w-sec">Designs publiés <span>touche pour en faire ta version</span></div><div class="dz-gal" id="dz-gal"><p class="sp-hint">Chargement…</p></div></div>
+    </div></div>`;
+  p.querySelector('[data-a="undo"]').onclick = () => dzUndo(false); p.querySelector('[data-a="redo"]').onclick = () => dzUndo(true);
+  p.querySelector('[data-a="fin"]').onclick = () => dzFinishDraw(false); p.querySelector('[data-a="annul"]').onclick = () => { DZ.draw = []; dzDraw2d(); };
+  p.querySelectorAll(".dz-bar [data-tool]").forEach(b => b.onclick = () => { uisClick(); dzSetTool(b.dataset.tool); if (b.dataset.tool === "deco") { DZ.tab = "deco"; dzTabsRender(); } });
+  p.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { uisClick(); DZ.tab = b.dataset.tab; dzTabsRender(); });
+  dzPieceChips(); dzTabsRender(); dzToolHint(); dz2dPointer(p.querySelector("#dz-2d"));
+  requestAnimationFrame(() => { dzDraw2d(); ensureThree().then(() => { const cv = document.getElementById("dz-3d"); if (cv) dz3dMount(cv); }).catch(err => console.warn(err)); });
+  const ro = new ResizeObserver(() => { if (!document.getElementById("dz-2d")) return ro.disconnect(); dzDraw2d(); }); ro.observe(p.querySelector(".dz-2d"));
+  dzGallery();
+}
+const DZ_CSS = `
+.dz { max-width: 1320px; margin: 0 auto; padding: 84px 18px 160px; display: grid; grid-template-columns: 1fr 400px; gap: 16px; align-items: start; color: #1b1d22; }
+.dz-stages { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; grid-column: 1; }
+.dz-st { position: relative; border-radius: 24px; background: #fff; box-shadow: 0 20px 60px rgba(40,40,90,.12); overflow: hidden; aspect-ratio: 4 / 5; }
+.dz-3d { background: radial-gradient(circle at 50% 40%, #ffffff, #e6e7ec); }
+.dz-st canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.dz-lab { position: absolute; left: 14px; top: 12px; font: 600 11px/1 Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #5b5f6b; pointer-events: none; }
+.dz-drawbar { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 6px; } .dz-drawbar[hidden] { display: none; }
+.dz-bar { grid-column: 1; display: flex; flex-direction: column; gap: 8px; }
+.dz-hint { margin: 0; font-size: 13px; color: #3c3f48; } .dz-how { margin: 0; font-size: 13px; line-height: 1.45; background: #fff7d6; border-radius: 14px; padding: 10px 12px; color: #1b1d22; } .dz-how b { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; } .dz-how[hidden] { display: none; }
+.dz-ctl { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 84px; max-height: calc(100vh - 110px); overflow: auto; font-size: 13px; background: rgba(252,252,254,.97) !important; }
+.dz .w-chip { font-size: 12.5px; color: #1b1d22; background: #fff; border: 1px solid rgba(27,29,34,.2); } .dz .w-chip[aria-pressed="true"] { background: #1b1d22; color: #fff; }
+.dz .w-sec { opacity: 1; color: #5b5f6b; font-weight: 600; font-size: 11px; } .dz .w-sec span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.dz .sp-hint { color: #4a4d56; font-size: 12px; opacity: 1; } .dz .w-fx-tr { font-size: 12.5px; } .dz .w-fx-tr small, .dz .w-fx-tr output { opacity: 1; color: #3c3f48; font-size: 12px; }
+.dz-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding-bottom: 6px; border-bottom: 1px solid rgba(27,29,34,.1); }
+#dz-tab { display: flex; flex-direction: column; gap: 8px; }
+.dz-assets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dz-asset { border: 1px solid rgba(27,29,34,.14); border-radius: 16px; background: #fff; padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font: 600 12px Inter, sans-serif; color: #1b1d22; }
+.dz-asset canvas { width: 100%; aspect-ratio: 1; } .dz-asset[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
+.dz-mats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.dz-mat { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(27,29,34,.14); border-radius: 12px; background: #fff; padding: 5px; font: 500 12px Inter, sans-serif; color: #1b1d22; cursor: pointer; text-align: left; }
+.dz-mat i { width: 30px; height: 30px; border-radius: 8px; background-size: 30px; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); } .dz-mat[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
+.dz-sw { display: flex; flex-wrap: wrap; gap: 6px; } .dz-sw button, .dz-pick { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(27,29,34,.2); cursor: pointer; }
+.dz-sw button[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1b1d22; }
+.dz-pick { position: relative; display: grid; place-items: center; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); color: #fff; font-weight: 700; } .dz-pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dz-src { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; } .dz-src .tl-f[aria-pressed="true"] { box-shadow: 0 0 0 2px #ff4f9a; }
+.dz-up { position: relative; overflow: hidden; align-self: flex-start; } .dz-up input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dz-howtxt { margin: 0; font-size: 12px; line-height: 1.45; color: #3c3f48; background: #f3f3f7; padding: 8px 10px; border-radius: 12px; }
+.dz-list { display: flex; flex-direction: column; gap: 5px; } .dz-li { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid rgba(27,29,34,.1); border-radius: 12px; padding: 5px 6px 5px 10px; }
+.dz-li span { flex: 1; font-weight: 600; font-size: 12.5px; } .dz-li small { font-weight: 400; color: #5b5f6b; } .dz-li .w-chip { padding: 3px 9px; }
+.dz-in { border: 1px solid rgba(27,29,34,.2); border-radius: 10px; padding: 6px 8px; font: 500 13px Inter, sans-serif; width: 70px; color: #1b1d22; background: #fff; } .dz-in.wide { width: 100%; box-sizing: border-box; }
+.dz-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 1.45; color: #2c2f37; }
+.dz-galw { grid-column: 1 / -1; } .dz-gal p { grid-column: 1 / -1; } .dz-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.dz-g { border: 0; border-radius: 18px; background: #fff; padding: 6px 6px 10px; text-align: left; cursor: pointer; box-shadow: 0 10px 30px rgba(40,40,90,.08); display: flex; flex-direction: column; gap: 3px; font-family: Inter, sans-serif; color: #1b1d22; }
+.dz-g img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 13px; background: #eceef2; } .dz-g b { font-size: 13px; padding: 0 4px; } .dz-g small { font-size: 11px; color: #5b5f6b; padding: 0 4px; }
+@media (max-width: 900px) {
+  .dz { grid-template-columns: 1fr; padding: 74px 10px 140px; gap: 10px; }
+  .dz-stages { gap: 8px; position: sticky; top: 64px; z-index: 2; } .dz-st { aspect-ratio: 3 / 4; border-radius: 18px; }
+  .dz-ctl { grid-column: 1; grid-row: auto; position: static; max-height: none; }
+  .dz-src { grid-template-columns: repeat(5, 1fr); } .dz-assets { grid-template-columns: repeat(3, 1fr); }
+}`;
 
 </script>
 
