@@ -351,6 +351,10 @@ body.world {
           <label class="lab" for="count">Scènes par série</label>
           <select id="count"><option>12</option><option>24</option><option>36</option><option>48</option></select>
         </div>
+        <div class="field">
+          <label class="lab" for="morpho">Silhouette</label>
+          <select id="morpho"><option value="etoile">Étoile à 6 branches</option><option value="bonhomme">Bonhomme : 2 bras, 2 jambes, tête étoile</option><option value="mix">Les deux, mélangés</option></select>
+        </div>
         <label class="check"><input type="checkbox" id="six"> Exiger 6 branches visibles</label>
         <p class="hint">Chaque étoile est vérifiée après déformation : si une branche disparaît ou se colle à une autre, l'étoile est rejetée et refaite.</p>
       </div>
@@ -756,7 +760,7 @@ function headCanvasOf(h) {
   const n = h.n, c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(n, n) : document.createElement("canvas"); c.width = c.height = n;
   const x = c.getContext("2d"), id = x.createImageData(n, n); for (let i = 0; i < n * n; i++) id.data[i * 4 + 3] = h.m[i]; x.putImageData(id, 0, 0); return c;
 }
-function renderStar(g, seed, T, count = false) {
+function renderStar(g, seed, T, count = false, m = 0) {   // m = 1 : bonhomme (2 bras, 2 jambes, tête étoile)
   const r = mulberry(seed);
   const v = k => { const x = g[IDX[k]]; return x === undefined ? (GENES[IDX[k]].amp ? -1 : 0) : x; };
   const u = T / 200, c = T / 2, h = T / 2; let headAt = null;
@@ -767,6 +771,27 @@ function renderStar(g, seed, T, count = false) {
   workCtx.fillStyle = "#000";
   const disk = (x, y, rad) => { workCtx.beginPath(); workCtx.arc(x, y, Math.max(0.5, rad), 0, TAU); workCtx.fill(); };
   const bodyR = 22 * u * (1 + 0.3 * v("corps"));
+  if (m) {
+    // Bonhomme : un torse, deux bras, deux jambes (gènes des branches 1/5 et 2/4), un cou et une tête en étoile (branche 0 ; branche 3 = rotation de la tête)
+    const S1 = 1 + 0.3 * v("corps"), tw = 14 * u * S1, ty0 = c - 24 * u, ty1 = c + 8 * u;
+    for (let k = 0; k <= 30; k++) { const t = k / 30; disk(c, ty0 + (ty1 - ty0) * t, tw * (0.9 + 0.1 * Math.sin(t * Math.PI))); }
+    const limb = (i, x0, y0, deg, L0, k0) => {
+      const ang = (deg + 20 * v(`b${i}ang`)) * Math.PI / 180, lg = L0 * u * clamp(1 + 0.55 * v(`b${i}len`), 0.35, 1.5), ep = k0 * u * Math.max(0.35, 1 + 0.4 * v(`b${i}ep`));
+      const bout = 1.15 + 0.35 * v(`b${i}bout`), courb = 0.5 * v(`b${i}courb`), ond = Math.max(0, 1.5 + 1.5 * v(`b${i}ond`)) * u, ph = r() * TAU;
+      for (let k = 0; k <= 60; k++) { const t = k / 60, a = ang + courb * t * t; disk(x0 + t * lg * Math.cos(a), y0 + t * lg * Math.sin(a), ep * (1 - 0.35 * t) + ep * (bout - 0.65) * Math.max(0, (t - 0.8) / 0.2) + ond * Math.sin(t * 9 + ph)); }
+    };
+    limb(1, c + tw * 0.7, ty0 + 5 * u, -14, 48, 9); limb(5, c - tw * 0.7, ty0 + 5 * u, 194, 48, 9);     // bras
+    limb(2, c + tw * 0.45, ty1 - 2 * u, 80, 58, 10.5); limb(4, c - tw * 0.45, ty1 - 2 * u, 100, 58, 10.5);   // jambes
+    const neck = ty0 - 7 * u; for (let k = 0; k <= 8; k++) disk(c, ty0 - k * u, 6 * u * S1);
+    const hr = 24 * u * clamp(1 + 0.4 * v("b0len"), 0.6, 1.4), hrot = (-90 + 30 * v("b3ang")) * Math.PI / 180, hph = r() * TAU;
+    if (HEADM) { const s = 46 * u * (HEADM.k || 1); headAt = { a: -Math.PI / 2, s, x: c, y: neck - s * 0.36 }; }
+    else {
+      const hc = neck - hr * 0.72, hep = 6 * u * Math.max(0.4, 1 + 0.4 * v("b0ep")), hb = 1.15 + 0.35 * v("b0bout"), hcb = 0.4 * v("b0courb");
+      disk(c, hc, hr * 0.36);
+      for (let i = 0; i < 6; i++) { const a0 = hrot + i * TAU / 6 + 0.12 * Math.sin(hph + i * 2.1) * v("b3len");
+        for (let k = 0; k <= 30; k++) { const t = k / 30, a = a0 + hcb * t * t; disk(c + t * hr * Math.cos(a), hc + t * hr * Math.sin(a), hep * (1 - 0.35 * t) + hep * (hb - 0.65) * Math.max(0, (t - 0.8) / 0.2)); } }
+    }
+  } else {
   disk(c, c, bodyR);
   for (let i = 0; i < 6; i++) {
     const ang = (-90 + 60 * i + 20 * v(`b${i}ang`)) * Math.PI / 180;
@@ -785,6 +810,7 @@ function renderStar(g, seed, T, count = false) {
       const a = ang + courb, s = 46 * u * (HEADM.k || 1);
       headAt = { a, s, x: c + lg * Math.cos(a) + Math.cos(a) * s * 0.42, y: c + lg * Math.sin(a) + Math.sin(a) * s * 0.42 };
     }
+  }
   }
   const px = workCtx.getImageData(0, 0, T, T).data;
   const base = new Float32Array(T * T);
@@ -868,7 +894,7 @@ function renderStar(g, seed, T, count = false) {
   });
 
   const ksec = TAU / 6, kph = -Math.PI / 2 + ksec * Math.floor(r() * 6); // axe sur une branche : 6 copies miroir de cette branche
-  if (v("kalei") > 0.25) maps.push(p => {
+  if (!m && v("kalei") > 0.25) maps.push(p => {
     const rr = Math.hypot(p[0], p[1]);
     let t = Math.atan2(p[1], p[0]) - kph + ksec / 2;
     t = Math.abs((t % ksec + ksec) % ksec - ksec / 2);
@@ -941,7 +967,7 @@ function renderStar(g, seed, T, count = false) {
     for (let i = 0; i < T * T; i++) out[i] = smooth(t - 0.08, t + 0.08, b[i]);
   }
   if (headM && keep > 0.02) { if (out === mask) out = mask.slice(); for (let i = 0; i < T * T; i++) out[i] = Math.max(out[i], headM[i] * Math.min(1, keep * 1.6)); }   // le logo intact reste net même quand le corps est lissé
-  return { mask: out, branches: count ? countBranches(out, body, T, u) : 6 };
+  return { mask: out, branches: count && !m ? countBranches(out, body, T, u) : 6 };
 }
 
 /* Nombre de branches visibles : morceaux d'encre hors du corps central.
@@ -985,7 +1011,7 @@ const STYLES = {
   delave: ["Délavé", "Couleurs passées, taches de lavage"],
 };
 const S = Object.assign({
-  nStars: 1, sizeVar: 0.5, count: 24, six: true, ai: true, explore: 0.35, off: [], preset: "encre",
+  nStars: 1, sizeVar: 0.5, count: 24, morpho: "etoile", six: true, ai: true, explore: 0.35, off: [], preset: "encre",
   styles: Object.fromEntries(Object.keys(STYLES).map(k => [k, { on: false, k: 1 }])),
 }, store.get("atelier-reglages", {}));
 for (const k of Object.keys(STYLES)) S.styles[k] = S.styles[k] || { on: false, k: 1 };
@@ -1114,6 +1140,7 @@ function sampleGenome(r) {
 }
 
 async function makeStar(r, L) {
+  const bon = S.morpho === "bonhomme" ? 1 : S.morpho === "mix" ? (r() < 0.5 ? 1 : 0) : 0;   // silhouette : étoile, bonhomme, ou les deux
   const eps = 0.1 + 0.4 * S.explore;
   let cands = [], exploring = false;
   const pool = S.ai && M.w ? 6 : 1;
@@ -1126,6 +1153,7 @@ async function makeStar(r, L) {
     if (!c) { c = sampleGenome(r); c.p = score(c.g); }
     if (exploring) c.tag = c.tag || "exploration";
     c.seed = Math.floor(r() * 2 ** 31);
+    if (bon) { c.m = 1; return c; }
     if (!S.six) return c;
     stats.tried++;
     const branches = await branchesAsync(c.g, c.seed, Math.min(L, 220));
@@ -1163,7 +1191,7 @@ function layout(n, varr, r) {
 function packScene(stars, r) {
   const P = 80, R = 96, n = stars.length;
   const ink = stars.map(st => {
-    const m = renderStar(st.g, st.seed, P).mask; let x0 = P, y0 = P, x1 = -1, y1 = -1;
+    const m = renderStar(st.g, st.seed, P, false, st.m).mask; let x0 = P, y0 = P, x1 = -1, y1 = -1;
     for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) if (m[y * P + x] > 0.5) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     return { m, b: x1 < 0 ? [0, 1, 0, 1] : [x0 / P, (x1 + 1) / P, y0 / P, (y1 + 1) / P] };
   });
@@ -1291,7 +1319,7 @@ function workerCall(msg) {
     RW.busy[k]++; RW.pool[k].postMessage(Object.assign({ id }, msg));
   });
 }
-const plainScene = sc => ({ stars: sc.stars.map(s => ({ g: s.g, seed: s.seed, x: s.x, y: s.y, s: s.s })) });
+const plainScene = sc => ({ stars: sc.stars.map(s => ({ g: s.g, seed: s.seed, x: s.x, y: s.y, s: s.s, m: s.m || 0 })) });
 async function maskAsync(scene, T) {
   const r = await workerCall({ op: "fast", scene: plainScene(scene), T });
   return r ? r.mask : renderSceneFast(scene, T);
@@ -1311,7 +1339,7 @@ function renderSceneMask(scene, T) {
   let bad = false;
   for (const st of scene.stars) {
     const L = Math.max(24, Math.round(st.s * T));
-    const { mask: m } = renderStar(st.g, st.seed, L);
+    const { mask: m } = renderStar(st.g, st.seed, L, false, st.m);
     const ox = Math.round((st.x + 1) / 2 * T - L / 2), oy = Math.round((st.y + 1) / 2 * T - L / 2);
     for (let y = 0; y < L; y++) {
       const ty = oy + y; if (ty < 0 || ty >= T) continue;
@@ -1924,7 +1952,7 @@ function renderLogs() {
 let votesAtSeries = 0;
 async function castVote(scene, v) {
   const id = scene.id, cur = votes[id], remove = cur && cur.v === v;
-  const rec = remove ? null : { stars: scene.stars.map(s => ({ g: s.g, seed: s.seed, x: +(+s.x).toFixed(4), y: +(+s.y).toFixed(4), s: +(+s.s).toFixed(4) })), v, off: scene.off, n: scene.stars.length, t: Date.now(), by: me || null };
+  const rec = remove ? null : { stars: scene.stars.map(s => Object.assign({ g: s.g, seed: s.seed, x: +(+s.x).toFixed(4), y: +(+s.y).toFixed(4), s: +(+s.s).toFixed(4) }, s.m ? { m: 1 } : {})), v, off: scene.off, n: scene.stars.length, t: Date.now(), by: me || null };
   if (!sb || !me || (cur && cur.local)) {
     if (remove) delete localVotes[id]; else localVotes[id] = Object.assign({}, rec, { local: true });
     store.set(LOCAL_VOTES, localVotes); mergeVotes();
@@ -3068,7 +3096,7 @@ function scenesFromEntries(entries) {
     const pos = v.stars.every(st => st.x != null) ? null : layout(n, 0.5, r);
     return { id, t: v.t, off: v.off || [], stars: v.stars.map((st, k) => ({
       g: st.g, seed: st.seed ?? Math.floor(r() * 2 ** 31),
-      x: st.x ?? pos[k].x, y: st.y ?? pos[k].y, s: st.s ?? pos[k].s })) };
+      x: st.x ?? pos[k].x, y: st.y ?? pos[k].y, s: st.s ?? pos[k].s, m: st.m ? 1 : 0 })) };
   });
 }
 let favList = [];
@@ -3484,6 +3512,7 @@ function setupPanel() {
   range("explore", "explore", v => Math.round(v * 100) + " %");
   const count = document.getElementById("count"); count.value = S.count;
   count.onchange = () => { S.count = +count.value; saveS(); schedule(); };
+  const morpho = document.getElementById("morpho"); morpho.value = S.morpho || "etoile"; morpho.onchange = () => { S.morpho = morpho.value; saveS(); schedule(); };
   const six = document.getElementById("six"); six.checked = S.six;
   six.onchange = () => { S.six = six.checked; saveS(); schedule(); };
   const ai = document.getElementById("ai"); ai.checked = S.ai;
@@ -7841,6 +7870,7 @@ function wFx(host, preview) {
     <div class="w-sec">Composition <span>relance une série</span></div>
     <div class="w-fx-st on" style="grid-template-columns:1fr"><b>Formes par image</b><div class="w-fx-fams" data-c="n"></div>
       <div data-c="sv" style="display:${S.nStars > 1 ? "block" : "none"}"><small style="opacity:.55;font-size:10px">Écart de taille entre les formes</small><input class="w-range" style="display:block" type="range" min="0" max="1" step="0.05" value="${S.sizeVar}" aria-label="Écart de taille"></div>
+      <b style="margin-top:6px">Silhouette</b><div class="w-fx-fams" data-c="morpho"></div>
       <b style="margin-top:6px">Images par série</b><div class="w-fx-fams" data-c="count"></div></div>
     <div class="w-sec">Rendu</div><div class="w-fx-presets"></div>
     <div class="w-sec">Tête de bonhomme <span>ton logo</span></div><div class="w-fx-head"></div>
@@ -7856,6 +7886,12 @@ function wFx(host, preview) {
     const b = document.createElement("button"); b.className = "w-chip"; b.textContent = n; b.setAttribute("aria-pressed", S.nStars === n);
     b.onclick = () => { S.nStars = n; segN.querySelectorAll(".w-chip").forEach(c => c.setAttribute("aria-pressed", c === b)); sv.style.display = n > 1 ? "block" : "none"; uisChime(n * 2, 0.5); comp(); wToast(`${n} forme${n > 1 ? "s" : ""} par image, nouvelle série…`); };
     segN.append(b);
+  }
+  const segM = host.querySelector('[data-c="morpho"]');
+  for (const [k, l] of [["etoile", "Étoile 6 branches"], ["bonhomme", "Bonhomme : 2 bras, 2 jambes, tête étoile"], ["mix", "Les deux"]]) {
+    const b = document.createElement("button"); b.className = "w-chip"; b.textContent = l; b.setAttribute("aria-pressed", (S.morpho || "etoile") === k);
+    b.onclick = () => { S.morpho = k; segM.querySelectorAll(".w-chip").forEach(x => x.setAttribute("aria-pressed", x === b)); const sel = document.getElementById("morpho"); if (sel) sel.value = k; uisClick(); comp(); wToast(`Silhouette : ${l.toLowerCase()}, nouvelle série…`); };
+    segM.append(b);
   }
   for (const c of [12, 24, 36, 48]) {
     const b = document.createElement("button"); b.className = "w-chip"; b.textContent = c; b.setAttribute("aria-pressed", S.count === c);
