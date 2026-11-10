@@ -11045,7 +11045,7 @@ function dzPaintDeco(x, d, K, x0, y0) {
   else if (d.tech === "impression") { x.globalCompositeOperation = "multiply"; }
   x.drawImage(t, -w / 2, -w / 2, w, w); x.restore();
 }
-function dzPieceTexture(e, st) {
+function dzPieceTexture(e, st, noArts = false) {
   const { pc, poly } = e, xs = poly.map(p => p.x), ys = poly.map(p => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const K = Math.min(DZ_K, 1100 / Math.max(x1 - x0, y1 - y0)), W = Math.ceil((x1 - x0) * K) + 2, H = Math.ceil((y1 - y0) * K) + 2, c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
   const P = p => [(p.x - x0) * K, (p.y - y0) * K], path = pts => { x.beginPath(); pts.forEach((p, i) => { const [a, b] = P(p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); };
@@ -11075,6 +11075,7 @@ function dzPieceTexture(e, st) {
       x.restore(); }
     if (o.t === "etiquette" && pts[0]) { const [a, b] = P(pts[0]); x.save(); x.translate(a, b); x.shadowColor = "rgba(0,0,0,.3)"; x.shadowBlur = 0.3 * K; x.fillStyle = o.bg || "#1b1d22"; x.fillRect(-2.5 * K, -1 * K, 5 * K, 2 * K); x.shadowColor = "transparent"; x.fillStyle = o.fg || "#f2f0ea"; x.font = `700 ${0.9 * K}px Inter, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(o.text || "TNB", 0, 0.05 * K); x.restore(); }
   }
+  if (!noArts) dzPaintArts(x, e, st, K, x0, y0);   // imprimés posés sur le patron complet (peuvent déborder sur plusieurs pièces)
   for (const d of st.decos.filter(d => d.piece === pc.id)) dzPaintDeco(x, d, K, x0, y0);
   // surpiqûres : tout autour (sauf maille côtelée), ourlet double aiguille en bas des pièces du corps
   if (mk !== "cote" && mk !== "mesh") { x.setLineDash([0.32 * K, 0.22 * K]); x.lineWidth = 0.11 * K; x.strokeStyle = st.stitch; path(dzOffset(poly, 0.55)); x.stroke();
@@ -11121,7 +11122,7 @@ const dzEff = () => dzEffective(DZ.st);
 function dzSelE(eff) { eff = eff || dzEff(); let e = eff.find(q => q.pc.id === DZ.sel); if (!e) { e = eff[0]; DZ.sel = e && e.pc.id; } return e; }
 function dzCommit(full = true) { dzSave(); dzRefresh(full); }
 function dzDims(poly) { const xs = poly.map(p => p.x), ys = poly.map(p => p.y); return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]; }
-function dzLoad() { const s = store.get("atelier-design", null); DZ.st = s && s.v === 1 && s.pieces ? s : dzNew("sweat"); }
+function dzLoad() { const s = store.get("atelier-design", null); DZ.st = s && s.v === 1 && s.pieces ? s : dzNew("tshirt"); dzArts(DZ.st); }
 
 /* --- vue 2D : le patron de la pièce choisie --- */
 function dzView2d(cv, e) {
@@ -11137,6 +11138,7 @@ function dzHandles(e) {   // points éditables : passages (ancres) et poignées,
   return out;
 }
 function dzDraw2d() {
+  if (DZ.view === "sheet") return dzDrawSheet();
   const cv = document.getElementById("dz-2d"); if (!cv) return; const eff = dzEff(), e = dzSelE(eff); if (!e) return;
   const V = DZ.lockV || dzView2d(cv, e), x = cv.getContext("2d"), { d, s } = V; DZ.v2 = V; x.clearRect(0, 0, V.W, V.H);
   // grille en cm
@@ -11164,7 +11166,7 @@ function dzRefresh(full = true) {
   dzDraw2d(); clearTimeout(DZ.th); DZ.th = setTimeout(() => { if (DZ.V3) dzBuild3d(DZ.V3, DZ.st, dzEff()); }, full ? 30 : 140);
 }
 function dzToolHint() { const t = DZ_TOOLS.find(t => t[0] === DZ.tool), h = document.getElementById("dz-hint"); if (h && t) h.textContent = t[2]; }
-function dzSetTool(k) { DZ.tool = k; DZ.draw = []; document.querySelectorAll("[data-tool]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tool === k)); dzToolHint(); dzDraw2d(); }
+function dzSetTool(k) { if (["edit", "zip", "decoupe", "poche", "boutons"].includes(k) && DZ.view === "sheet") dzSetView("piece"); DZ.tool = k; DZ.draw = []; document.querySelectorAll("[data-tool]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tool === k)); dzToolHint(); dzDraw2d(); }
 
 // poser une opération ou une déco à l'endroit touché (dans la pièce pid, coords patron effectives)
 function dzPlace(pid, p) {
@@ -11183,6 +11185,7 @@ function dz2dPointer(cv) {
   let drag = null;
   const pt = ev => { const r = cv.getBoundingClientRect(), d = DZ.v2.d; return [(ev.clientX - r.left) * d, (ev.clientY - r.top) * d]; };
   cv.onpointerdown = ev => {
+    if (DZ.view === "sheet") return dzSheetPointer("down", ev, cv);
     const e = dzSelE(); if (!e || !DZ.v2) return; const [X, Y] = pt(ev), V = DZ.v2, p = V.from(X, Y), st = DZ.st; cv.setPointerCapture(ev.pointerId);
     if (DZ.tool === "edit") { let best = null, bd = 18 * V.d; for (const hd of dzHandles(e)) { const [a, b] = V.to(hd.p), dd = Math.hypot(a - X, b - Y); if (dd < bd || (hd.k === "a" && dd < bd + 4 * V.d && best && best.k !== "a")) { bd = dd; best = hd; } } if (best) { dzPush(); drag = { hd: best, e }; DZ.lockV = V; } return; }
     if (DZ.tool === "deco") { const hit = st.decos.find(dc => dc.piece === e.pc.id && Math.hypot(dc.u - p.x, dc.v - p.y) < dc.size * 0.5); if (hit) { dzPush(); drag = { deco: hit, dx: hit.u - p.x, dy: hit.v - p.y }; DZ.lockV = V; return; } }
@@ -11195,6 +11198,7 @@ function dz2dPointer(cv) {
     if (DZ.tool === "poche" || DZ.tool === "boutons") { DZ.draw.push(p); if (DZ.draw.length === 2) { dzPush(); st.ops.push(DZ.tool === "poche" ? { t: "poche", piece: e.pc.id, pts: DZ.draw } : { t: "boutons", piece: e.pc.id, pts: DZ.draw, n: 5 }); dzHow(DZ.tool); DZ.draw = []; dzCommit(); dzTabsRender(); } else dzDraw2d(); }
   };
   cv.onpointermove = ev => {
+    if (DZ.view === "sheet") return dzSheetPointer("move", ev, cv);
     if (!drag) return; const [X, Y] = pt(ev), p = DZ.v2.from(X, Y);
     if (drag.deco) { drag.deco.u = p.x + drag.dx; drag.deco.v = p.y + drag.dy; dzRefresh(false); return; }
     const { hd, e } = drag, P = e.pc.path, b = e.T.itf(p); if (e.pc.sym && hd.k === "a" && Math.abs((hd.i < 0 ? P.start : P.segs[hd.i].p).x) < 0.05) b.x = 0;   // les points sur la pliure restent sur la pliure
@@ -11203,7 +11207,7 @@ function dz2dPointer(cv) {
     else { const q = P.segs[hd.i][hd.k]; q.x = b.x; q.y = b.y; }
     dzRefresh(false);
   };
-  cv.onpointerup = cv.onpointercancel = () => { if (drag) { drag = null; DZ.lockV = null; dzCommit(); } };   // la vue reste figée pendant le geste, puis se recadre
+  cv.onpointerup = cv.onpointercancel = ev => { if (DZ.view === "sheet") return dzSheetPointer("up", ev, cv); if (drag) { drag = null; DZ.lockV = null; dzCommit(); } };   // la vue reste figée pendant le geste, puis se recadre
 }
 function dzFinishDraw(closed) {
   const e = dzSelE(), pts = DZ.draw.slice(); DZ.draw = []; if (!e) return;
@@ -11235,7 +11239,7 @@ function dz3dMount(cv) {
 }
 
 /* --- les onglets --- */
-const DZ_TABS = [["modeles", "Modèles"], ["ops", "Opérations"], ["mat", "Matières"], ["deco", "Déco"], ["fiche", "Fiche technique"], ["pub", "Publier"]];
+const DZ_TABS = [["modeles", "Modèles"], ["arts", "Imprimés"], ["ops", "Opérations"], ["mat", "Matières"], ["deco", "Déco"], ["fiche", "Fiche technique"], ["pub", "Publier"]];
 function dzPieceChips() {
   const box = document.getElementById("dz-pieces"); if (!box) return; box.replaceChildren(); const eff = dzEff(); dzSelE(eff);
   for (const e of eff) { const b = document.createElement("button"); b.className = "w-chip"; b.textContent = e.pc.name; b.setAttribute("aria-pressed", e.pc.id === DZ.sel); b.onclick = () => { DZ.sel = e.pc.id; DZ.draw = []; uisClick(); dzPieceChips(); dzDraw2d(); if (DZ.tab === "mat") dzTabsRender(); }; box.append(b); }
@@ -11248,7 +11252,8 @@ function dzTabsRender() {
   const chips = (arr, cur, attr) => arr.map(([k, l]) => `<button class="w-chip" data-${attr}="${k}" aria-pressed="${cur === k}">${l}</button>`).join("");
   const pieceName = id => (st.pieces.find(p => p.id === id) || {}).name || id;
   let h = "";
-  if (DZ.tab === "modeles") {
+  if (DZ.tab === "arts") h = dzArtsTab(st);
+  else if (DZ.tab === "modeles") {
     h = `<div class="w-sec">Partir d'un modèle</div><div class="dz-assets">${DZ_ASSETS.map(([k, l]) => `<button class="dz-asset" data-asset="${k}" aria-pressed="${st.asset === k}"><canvas width="120" height="120"></canvas><span>${l}</span></button>`).join("")}</div>
     <p class="sp-hint">Chaque modèle arrive avec son patron (les pièces de tissu à plat). Tu modifies le patron à gauche, le vêtement se met à jour en 3D.</p>`;
   } else if (DZ.tab === "ops") {
@@ -11292,7 +11297,7 @@ function dzTabsRender() {
       <button class="w-pill dark" data-a="pub">Publier</button><p class="sp-hint">Visible par tout le monde en bas de la page. Les autres peuvent l'ouvrir et en faire leur version.</p>
       <div class="w-sec">Recommencer</div><button class="w-chip" data-a="reset">Remettre ce modèle à zéro</button>`;
   }
-  host.innerHTML = h; dzTabsBind(host);
+  host.innerHTML = h; dzTabsBind(host); if (DZ.tab === "arts") dzArtsBind(host);
 }
 function dzTabsBind(host) {
   const st = DZ.st, P = st.params, on = (sel, fn) => host.querySelectorAll(sel).forEach(b => b.addEventListener(b.tagName === "INPUT" ? "input" : "click", ev => fn(b, ev)));
@@ -11374,7 +11379,7 @@ async function dzGallery() {
 function dzUndo(redo) { const from = redo ? DZ.redo : DZ.undo, to = redo ? DZ.undo : DZ.redo; if (!from.length) return; to.push(JSON.stringify(DZ.st)); DZ.st = JSON.parse(from.pop()); dzPieceChips(); dzCommit(); dzTabsRender(); }
 
 function wPDesign(p) {
-  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS; document.head.append(c); }
+  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS + DZ_CSS2; document.head.append(c); }
   if (!DZ.st) dzLoad();
   p.innerHTML = wHead("Design · dessine un vêtement", `<button class="w-pill w-glass-ui w-live" data-a="undo" title="Annuler">↶</button><button class="w-pill w-glass-ui w-live" data-a="redo" title="Rétablir">↷</button>`)
     + `<div class="w-scroll w-live"><div class="dz">
@@ -11382,7 +11387,7 @@ function wPDesign(p) {
         <div class="dz-st dz-2d"><span class="dz-lab">Patron · 2D</span><canvas id="dz-2d"></canvas><div class="dz-drawbar" id="dz-drawbar" hidden><button class="w-chip" data-a="fin">Terminer</button><button class="w-chip" data-a="annul">Annuler</button></div></div>
         <div class="dz-st dz-3d"><span class="dz-lab">Vêtement · 3D</span><canvas id="dz-3d"></canvas></div>
       </div>
-      <div class="dz-bar"><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="true">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
+      <div class="dz-bar"><div class="dz-views"><button class="w-chip" data-view="sheet">Patron complet</button><button class="w-chip" data-view="piece">Une pièce</button></div><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="false">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
       <div class="dz-ctl sp-card"><div class="dz-tabs">${DZ_TABS.map(([k, l]) => `<button class="w-chip" data-tab="${k}">${l}</button>`).join("")}</div><div id="dz-tab"></div></div>
       <div class="dz-galw"><div class="w-sec">Designs publiés <span>touche pour en faire ta version</span></div><div class="dz-gal" id="dz-gal"><p class="sp-hint">Chargement…</p></div></div>
     </div></div>`;
@@ -11390,7 +11395,8 @@ function wPDesign(p) {
   p.querySelector('[data-a="fin"]').onclick = () => dzFinishDraw(false); p.querySelector('[data-a="annul"]').onclick = () => { DZ.draw = []; dzDraw2d(); };
   p.querySelectorAll(".dz-bar [data-tool]").forEach(b => b.onclick = () => { uisClick(); dzSetTool(b.dataset.tool); if (b.dataset.tool === "deco") { DZ.tab = "deco"; dzTabsRender(); } });
   p.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { uisClick(); DZ.tab = b.dataset.tab; dzTabsRender(); });
-  dzPieceChips(); dzTabsRender(); dzToolHint(); dz2dPointer(p.querySelector("#dz-2d"));
+  p.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { uisClick(); if (b.dataset.view === "sheet" && ["edit", "zip", "decoupe", "poche", "boutons"].includes(DZ.tool)) { DZ.tool = "select"; document.querySelectorAll("[data-tool]").forEach(z => z.setAttribute("aria-pressed", false)); } dzSetView(b.dataset.view); });
+  dzPieceChips(); dzTabsRender(); dzToolHint(); dz2dPointer(p.querySelector("#dz-2d")); dzSetView(DZ.view);
   requestAnimationFrame(() => { dzDraw2d(); ensureThree().then(() => { const cv = document.getElementById("dz-3d"); if (cv) dz3dMount(cv); }).catch(err => console.warn(err)); });
   const ro = new ResizeObserver(() => { if (!document.getElementById("dz-2d")) return ro.disconnect(); dzDraw2d(); }); ro.observe(p.querySelector(".dz-2d"));
   dzGallery();
@@ -11435,6 +11441,197 @@ const DZ_CSS = `
   .dz-stages { gap: 8px; position: sticky; top: 64px; z-index: 2; } .dz-st { aspect-ratio: 3 / 4; border-radius: 18px; }
   .dz-ctl { grid-column: 1; grid-row: auto; position: static; max-height: none; }
   .dz-src { grid-template-columns: repeat(5, 1fr); } .dz-assets { grid-template-columns: repeat(3, 1fr); }
+}`;
+/* ---------- Patron complet à taille réelle + imprimés posés dessus (inspiré de blankbuilder) ----------
+   Toutes les pièces sont posées à plat sur une même feuille, en centimètres réels. Un imprimé vit en coordonnées
+   « feuille » : s'il chevauche plusieurs pièces, chacune en reçoit la partie qui la recouvre (il passe d'une pièce
+   à l'autre, comme à la découpe d'un tissu imprimé). Chaque pièce garde une place fixe sur la feuille, réservée pour
+   sa taille maximale (manches longues, +15 cm, ampleur 135 %), pour que les imprimés ne glissent pas quand on
+   change la coupe. */
+DZ.view = "sheet"; DZ.art = null; DZ.tool = "select"; DZ.tab = "arts"; DZ.texCache = new Map(); DZ.artDrag = false;
+const DZ_SLOTS = {};
+function dzSlots(asset) {
+  if (DZ_SLOTS[asset]) return DZ_SLOTS[asset];
+  const st0 = dzNew(asset); Object.assign(st0.params, { len: 15, ample: 1.15, sleeve: "longues", hood: true, rib: true });
+  const eff = dzEffective(st0), box = e => { const xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y); return { id: e.pc.id, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+  const B = eff.map(box), main = B.filter(b => ["body", "leg"].includes(eff.find(e => e.pc.id === b.id).pc.role)), rest = B.filter(b => !main.includes(b)), G = 8, out = {};
+  const rowW = r => r.reduce((s, b) => s + b.x1 - b.x0, 0) + G * Math.max(0, r.length - 1);
+  const maxW = Math.max(main.length ? rowW(main) : 0, 110), rows = [];
+  let cur = []; for (const b of rest) { if (cur.length && rowW(cur.concat(b)) > maxW) { rows.push(cur); cur = []; } cur.push(b); } if (cur.length) rows.push(cur);
+  if (main.length) rows.push(main);
+  let y = 0, W = 0; for (const r of rows) { let x = (maxW - rowW(r)) / 2; const h = Math.max(...r.map(b => b.y1 - b.y0));
+    for (const b of r) { out[b.id] = { dx: x - b.x0, dy: y - b.y0 }; x += b.x1 - b.x0 + G; } W = Math.max(W, maxW); y += h + G + 2; }
+  return (DZ_SLOTS[asset] = { slot: out, W, H: y - G - 2 });
+}
+const dzArts = st => st.arts || (st.arts = []);
+const dzArtImgs = new Map();
+function dzArtSource(a) {
+  const s = a.src; if (!s) return null;
+  if (s.t === "form") { const k = "f" + s.id + (a.col || ""); if (!dzArtImgs.has(k)) dzArtImgs.set(k, tlSprite({ id: s.id, stars: s.stars }, a.col || "#1b1d22", 512)); return dzArtImgs.get(k); }
+  const k = "i" + s.data.length + s.data.slice(-40); let im = dzArtImgs.get(k);
+  if (!im) { im = new Image(); im.onload = () => { DZ.texCache.clear(); dzRefresh(true); }; im.src = s.data; dzArtImgs.set(k, im); }
+  return im.complete && im.naturalWidth ? im : null;
+}
+const dzArtH = a => a.w * (a.ratio || 1);
+function dzPaintArts(x, e, st, K, x0, y0) {
+  const S = dzSlots(st.asset).slot[e.pc.id]; if (!S || !st.arts || !st.arts.length) return;
+  for (const a of st.arts) { if (a.hide) continue; const src = dzArtSource(a); if (!src) continue;
+    x.save(); x.globalAlpha = a.op ?? 1; x.translate((a.x - S.dx - x0) * K, (a.y - S.dy - y0) * K); x.rotate((a.rot || 0) * Math.PI / 180); x.scale(a.flip ? -1 : 1, 1);
+    x.drawImage(src, -a.w * K / 2, -dzArtH(a) * K / 2, a.w * K, dzArtH(a) * K); x.restore(); }
+}
+// où tombe un point de la feuille : quelle pièce, et où dans la pièce
+function dzSheetHit(p, eff) { const L = dzSlots(DZ.st.asset).slot; for (const e of eff) { const S = L[e.pc.id]; if (!S) continue; const q = dzP(p.x - S.dx, p.y - S.dy); if (dzInside(e.poly, q.x, q.y)) return { e, q }; } return null; }
+function dzArtLocal(a, p) { const r = -(a.rot || 0) * Math.PI / 180, dx = p.x - a.x, dy = p.y - a.y; return [dx * Math.cos(r) - dy * Math.sin(r), dx * Math.sin(r) + dy * Math.cos(r)]; }
+function dzArtWorld(a, lx, ly) { const r = (a.rot || 0) * Math.PI / 180; return dzP(a.x + lx * Math.cos(r) - ly * Math.sin(r), a.y + lx * Math.sin(r) + ly * Math.cos(r)); }
+
+function dzSheetView(cv) {
+  const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1), W = Math.max(100, Math.round(r.width * d)), H = Math.max(100, Math.round(r.height * d));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const L = dzSlots(DZ.st.asset), R = 20 * d, m = 26 * d, s = Math.min((W - R - 2 * m) / L.W, (H - R - 2 * m - 14 * d) / L.H);
+  const ox = R + m + ((W - R - 2 * m) - L.W * s) / 2, oy = R + m + ((H - R - 2 * m - 14 * d) - L.H * s) / 2;
+  return { W, H, d, s, R, sheet: true, to: p => [ox + p.x * s, oy + p.y * s], from: (X, Y) => dzP((X - ox) / s, (Y - oy) / s) };
+}
+function dzDrawSheet() {
+  const cv = document.getElementById("dz-2d"); if (!cv) return; const st = DZ.st, eff = dzEff(), L = dzSlots(st.asset).slot;
+  const V = DZ.lockV && DZ.lockV.sheet ? DZ.lockV : dzSheetView(cv), x = cv.getContext("2d"), { d, s } = V; DZ.v2 = V;
+  x.fillStyle = "#1f2127"; x.fillRect(0, 0, V.W, V.H);
+  const sh = (e, p) => { const S = L[e.pc.id]; return V.to(dzP(p.x + S.dx, p.y + S.dy)); };
+  const path = (e, pts, add) => { if (!add) x.beginPath(); pts.forEach((p, i) => { const [a, b] = sh(e, p); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); };
+  const list = eff.filter(e => L[e.pc.id]);
+  // marges de couture, puis les pièces (matière + coutures + opérations, sans les imprimés)
+  for (const e of list) { x.setLineDash([4 * d, 4 * d]); x.strokeStyle = "rgba(242,240,234,.25)"; x.lineWidth = 1; path(e, dzOffset(e.poly, -1)); x.stroke(); x.setLineDash([]);
+    let T = DZ.artDrag ? DZ.texCache.get(e.pc.id) : null; if (!T) { T = dzPieceTexture(e, st, true); DZ.texCache.set(e.pc.id, T); }
+    const [tx, ty] = sh(e, dzP(T.x0, T.y0)); x.save(); path(e, e.poly); x.clip(); x.drawImage(T.c, tx, ty, (T.x1 - T.x0) * s, (T.y1 - T.y0) * s); x.restore(); }
+  // imprimés : fantôme hors des pièces (pour voir ce qui est perdu à la découpe), net à l'intérieur
+  const arts = dzArts(st), drawArts = () => { for (const a of arts) { if (a.hide) continue; const src = dzArtSource(a); if (!src) continue; const [cx, cy] = V.to(a);
+    x.save(); x.globalAlpha *= a.op ?? 1; x.translate(cx, cy); x.rotate((a.rot || 0) * Math.PI / 180); x.scale(a.flip ? -1 : 1, 1); x.drawImage(src, -a.w * s / 2, -dzArtH(a) * s / 2, a.w * s, dzArtH(a) * s); x.restore(); } };
+  x.save(); x.globalAlpha = 0.16; drawArts(); x.restore();
+  x.save(); x.beginPath(); for (const e of list) path(e, e.poly, true); x.clip(); drawArts(); x.restore();
+  // contours, noms et cotes
+  for (const e of list) { const on = e.pc.id === DZ.sel; x.lineWidth = (on ? 2 : 1.2) * d; x.strokeStyle = on ? "#ff4f9a" : "rgba(242,240,234,.85)"; path(e, e.poly); x.stroke();
+    const [w, h] = dzDims(e.poly), xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y), [cx, by] = sh(e, dzP((Math.min(...xs) + Math.max(...xs)) / 2, Math.max(...ys)));
+    x.textAlign = "center"; x.fillStyle = "#f2f0ea"; x.font = `600 ${10.5 * d}px Inter, sans-serif`; x.fillText(e.pc.name, cx, by + 13 * d);
+    x.fillStyle = "rgba(242,240,234,.6)"; x.font = `500 ${9.5 * d}px "JetBrains Mono", monospace`; x.fillText(`${w.toFixed(0)} × ${h.toFixed(0)} cm`, cx, by + 25 * d); }
+  // règles en cm
+  x.fillStyle = "#2a2d34"; x.fillRect(0, 0, V.W, V.R); x.fillRect(0, 0, V.R, V.H); x.strokeStyle = "rgba(242,240,234,.45)"; x.fillStyle = "rgba(242,240,234,.75)"; x.lineWidth = 1; x.font = `500 ${8.5 * d}px "JetBrains Mono", monospace`;
+  const g0 = V.from(V.R, V.R), g1 = V.from(V.W, V.H), step = s > 4 * d ? 1 : 5;
+  for (let u = Math.ceil(g0.x / step) * step; u < g1.x; u += step) { const [a] = V.to(dzP(u, 0)), big = u % 10 === 0; x.beginPath(); x.moveTo(a, V.R); x.lineTo(a, V.R - (big ? 8 : u % 5 === 0 ? 5 : 3) * d); x.stroke(); if (big) { x.textAlign = "left"; x.fillText(u, a + 2 * d, 9 * d); } }
+  for (let v = Math.ceil(g0.y / step) * step; v < g1.y; v += step) { const [, b] = V.to(dzP(0, v)), big = v % 10 === 0; x.beginPath(); x.moveTo(V.R, b); x.lineTo(V.R - (big ? 8 : v % 5 === 0 ? 5 : 3) * d, b); x.stroke(); if (big) { x.save(); x.translate(9 * d, b + 2 * d); x.rotate(-Math.PI / 2); x.textAlign = "right"; x.fillText(v, 0, 0); x.restore(); } }
+  x.fillStyle = "#2a2d34"; x.fillRect(0, 0, V.R, V.R); x.fillStyle = "rgba(242,240,234,.75)"; x.textAlign = "center"; x.fillText("cm", V.R / 2, V.R / 2 + 3 * d);
+  // poignées de l'imprimé choisi
+  const a = arts.find(q => q.id === DZ.art);
+  if (a) { const hw = a.w / 2, hh = dzArtH(a) / 2, C = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([u, v]) => V.to(dzArtWorld(a, u, v)));
+    x.strokeStyle = "#7fd6b0"; x.lineWidth = 1.5 * d; x.beginPath(); C.forEach(([p, q], i) => i ? x.lineTo(p, q) : x.moveTo(p, q)); x.closePath(); x.stroke();
+    for (const [p, q] of C) { x.fillStyle = "#fff"; x.fillRect(p - 5 * d, q - 5 * d, 10 * d, 10 * d); x.strokeRect(p - 5 * d, q - 5 * d, 10 * d, 10 * d); }
+    const [rx, ry] = V.to(dzArtWorld(a, 0, -hh - 18 / s * d)), [tx, ty] = V.to(dzArtWorld(a, 0, -hh)); x.beginPath(); x.moveTo(tx, ty); x.lineTo(rx, ry); x.stroke(); x.fillStyle = "#fff"; x.beginPath(); x.arc(rx, ry, 6 * d, 0, 7); x.fill(); x.stroke();
+    const [lx, ly] = V.to(dzArtWorld(a, 0, hh + 14 / s * d)), lab = `${a.w.toFixed(1).replace(".", ",")} × ${dzArtH(a).toFixed(1).replace(".", ",")} cm`;
+    x.font = `600 ${10 * d}px "JetBrains Mono", monospace`; const tw = x.measureText(lab).width + 12 * d; x.fillStyle = "#3f8f6c"; x.beginPath(); x.roundRect(lx - tw / 2, ly - 9 * d, tw, 18 * d, 5 * d); x.fill(); x.fillStyle = "#fff"; x.textAlign = "center"; x.fillText(lab, lx, ly + 3.5 * d); }
+  const bar = document.getElementById("dz-drawbar"); if (bar) bar.hidden = true;
+}
+let dzSD = null;   // geste en cours sur la feuille
+function dzSheetPointer(kind, ev, cv) {
+  const V = DZ.v2, r = cv.getBoundingClientRect(), X = (ev.clientX - r.left) * V.d, Y = (ev.clientY - r.top) * V.d, p = V.from(X, Y), st = DZ.st, arts = dzArts(st);
+  if (kind === "down") {
+    cv.setPointerCapture(ev.pointerId); const a = arts.find(q => q.id === DZ.art);
+    if (a) { const hw = a.w / 2, hh = dzArtH(a) / 2, near = (u, v) => { const [P, Q] = V.to(dzArtWorld(a, u, v)); return Math.hypot(P - X, Q - Y) < 16 * V.d; };
+      if (near(0, -hh - 18 / V.s * V.d)) { dzPush(); dzSD = { a, mode: "rot", r0: a.rot || 0, ang0: Math.atan2(p.y - a.y, p.x - a.x) }; }
+      else if ([[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].some(([u, v]) => near(u, v))) { dzPush(); dzSD = { a, mode: "scale", w0: a.w, d0: Math.hypot(p.x - a.x, p.y - a.y) }; } }
+    if (!dzSD) { const hit = [...arts].reverse().find(q => { if (q.hide) return false; const [u, v] = dzArtLocal(q, p); return Math.abs(u) < q.w / 2 && Math.abs(v) < dzArtH(q) / 2; });
+      const ph = dzSheetHit(p, dzEff());
+      if (["oeillets", "etiquette", "deco"].includes(DZ.tool) && ph) { DZ.sel = ph.e.pc.id; dzPieceChips(); dzPlace(ph.e.pc.id, ph.q); return; }
+      if (hit) { DZ.art = hit.id; dzPush(); dzSD = { a: hit, mode: "move", dx: hit.x - p.x, dy: hit.y - p.y }; if (DZ.tab === "arts") dzTabsRender(); }
+      else { DZ.art = null; if (ph) { DZ.sel = ph.e.pc.id; dzPieceChips(); } if (DZ.tab === "arts") dzTabsRender(); dzDraw2d(); return; } }
+    DZ.artDrag = true; DZ.lockV = V; dzDraw2d(); return;
+  }
+  if (!dzSD) return; const a = dzSD.a;
+  if (kind === "move") {
+    if (dzSD.mode === "move") { a.x = p.x + dzSD.dx; a.y = p.y + dzSD.dy; }
+    else if (dzSD.mode === "scale") a.w = Math.max(1, Math.min(150, dzSD.w0 * Math.hypot(p.x - a.x, p.y - a.y) / Math.max(0.5, dzSD.d0)));
+    else { let rr = dzSD.r0 + (Math.atan2(p.y - a.y, p.x - a.x) - dzSD.ang0) * 180 / Math.PI; rr = ((rr + 540) % 360) - 180; const sn = Math.round(rr / 45) * 45; if (Math.abs(rr - sn) < 4) rr = sn; a.rot = Math.round(rr); }
+    dzDraw2d(); clearTimeout(DZ.th); DZ.th = setTimeout(() => { if (DZ.V3) dzBuild3d(DZ.V3, DZ.st, dzEff()); }, 160);
+    return;
+  }
+  dzSD = null; DZ.artDrag = false; DZ.lockV = null; dzCommit(); if (DZ.tab === "arts") dzTabsRender();
+}
+
+/* --- ajouter un imprimé, placements en un geste --- */
+function dzPlacements(st) {
+  const tops = st.asset === "tshirt" || st.asset === "sweat";
+  const P = tops ? [["Poitrine", "devant", 0.5, 0.3, 0.5], ["Cœur gauche", "devant", 0.7, 0.24, 0.16], ["Bas devant", "devant", 0.5, 0.8, 0.45], ["Dos", "dos", 0.5, 0.4, 0.7], ["Nuque", "dos", 0.5, 0.09, 0.15],
+      ["Manche droite", "mancheD", 0.5, 0.5, 0.6], ["Manche gauche", "mancheG", 0.5, 0.5, 0.6], ["Capuche", "capucheD", 0.55, 0.45, 0.6]]
+    : st.asset === "pantalon" ? [["Cuisse droite", "jambeAvD", 0.5, 0.25, 0.5], ["Cuisse gauche", "jambeAvG", 0.5, 0.25, 0.5], ["Bas de jambe", "jambeAvD", 0.5, 0.85, 0.5], ["Fesse", "jambeDosD", 0.5, 0.18, 0.45]]
+    : st.asset === "casquette" ? [["Devant", "pan0", 0.5, 0.6, 0.8], ["Visière", "visiere", 0.5, 0.5, 0.5]] : [["Devant", "corps", 0.5, 0.65, 0.3], ["Revers", "revers", 0.5, 0.5, 0.25]];
+  const eff = dzEffective(st); return P.filter(q => eff.some(e => e.pc.id === q[1]));
+}
+function dzPlaceArt(a, pl) {
+  const st = DZ.st, e = dzEffective(st).find(q => q.pc.id === pl[1]); if (!e) return; const S = dzSlots(st.asset).slot[e.pc.id], xs = e.poly.map(p => p.x), ys = e.poly.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys); a.w = +(pl[4] * (x1 - x0)).toFixed(1); a.rot = 0;
+  a.x = x0 + pl[2] * (x1 - x0) + S.dx; a.y = y0 + pl[3] * (y1 - y0) + S.dy; DZ.sel = e.pc.id;
+}
+function dzAddArt(src, ratio, name) {
+  const st = DZ.st; dzPush(); const a = { id: "a" + Date.now().toString(36), src, ratio, name, x: 0, y: 0, w: 20, rot: 0, op: 1 };
+  const pl = dzPlacements(st)[0]; if (pl) dzPlaceArt(a, pl); else { const L = dzSlots(st.asset); a.x = L.W / 2; a.y = L.H / 2; }
+  dzArts(st).push(a); DZ.art = a.id; dzSetView("sheet"); DZ.tab = "arts"; dzTabsRender(); dzPieceChips(); dzCommit();
+  try { if (JSON.stringify(st).length > 4.2e6) wToast("Image très lourde : elle risque de ne pas être gardée après fermeture"); } catch {}
+}
+function dzImportArt(file) {
+  const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 1000 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    let data = c.toDataURL("image/webp", 0.86); if (!data.startsWith("data:image/webp")) data = c.toDataURL("image/png");
+    URL.revokeObjectURL(im.src); dzAddArt({ t: "img", data }, c.height / c.width, (file.name || "Image").replace(/\.[a-z0-9]+$/i, "").slice(0, 28)); wToast("Imprimé posé : glisse-le, tire un coin pour l'agrandir");
+  }; im.src = URL.createObjectURL(file);
+}
+function dzSetView(v) {
+  DZ.view = v; const dz = document.querySelector(".dz"); if (dz) dz.classList.toggle("sheet", v === "sheet");
+  document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === v)); const lab = document.querySelector(".dz-2d .dz-lab"); if (lab) lab.textContent = v === "sheet" ? "Patron complet · taille réelle" : "Pièce · courbes";
+  const h = document.getElementById("dz-hint"); if (h && v === "sheet") h.textContent = "Patron à taille réelle : glisse un imprimé, tire un coin pour l'agrandir, le rond pour le tourner. Un imprimé peut passer d'une pièce à l'autre.";
+  requestAnimationFrame(() => dzDraw2d());
+}
+function dzArtsTab(st) {
+  const arts = dzArts(st), a = arts.find(q => q.id === DZ.art), thumb = q => q.src.t === "img" ? `<img alt="" src="${q.src.data}">` : `<canvas data-fthumb="${q.id}" width="64" height="64"></canvas>`;
+  return `<div class="w-sec">Ajouter un imprimé <span>il se pose sur le patron, à sa taille réelle</span></div>
+    <label class="w-chip dz-up">+ Importer une image<input type="file" accept="image/*" id="dz-art-up"></label>
+    <div class="dz-src" id="dz-art-forms"></div>
+    <div class="w-sec">Calques <span>le dernier passe par-dessus</span></div>
+    <div class="dz-list">${arts.length ? [...arts].reverse().map(q => `<div class="dz-li dz-layer" data-art="${q.id}" aria-pressed="${q.id === DZ.art}">${thumb(q)}<span>${dzEsc(q.name || "Imprimé")}<small> · ${q.w.toFixed(0)} cm</small></span><button class="w-chip" data-up="${q.id}" title="Monter">↑</button><button class="w-chip" data-down="${q.id}" title="Descendre">↓</button><button class="w-chip" data-adel="${q.id}" title="Supprimer">✕</button></div>`).join("") : `<p class="sp-hint">Aucun imprimé. Importe une image (photo, dessin, logo) ou choisis une de tes formes.</p>`}</div>
+    ${a ? `<div class="w-sec">Imprimé choisi</div>
+    <label class="w-fx-tr"><small>Largeur</small><output>${a.w.toFixed(1)} × ${dzArtH(a).toFixed(1)} cm</output><input class="w-range" type="range" min="2" max="80" step="0.5" value="${a.w}" data-ak="w"></label>
+    <label class="w-fx-tr"><small>Rotation</small><output>${a.rot || 0}°</output><input class="w-range" type="range" min="-180" max="180" step="1" value="${a.rot || 0}" data-ak="rot"></label>
+    <label class="w-fx-tr"><small>Opacité</small><output>${Math.round((a.op ?? 1) * 100)} %</output><input class="w-range" type="range" min="0.1" max="1" step="0.05" value="${a.op ?? 1}" data-ak="op"></label>
+    <div class="ir-chips"><button class="w-chip" data-aop="flip" aria-pressed="${!!a.flip}">Miroir</button><button class="w-chip" data-aop="l90">↺ 90°</button><button class="w-chip" data-aop="r90">↻ 90°</button><button class="w-chip" data-aop="dup">Dupliquer</button></div>
+    ${a.src.t === "form" ? `<div class="dz-sw">${DZ_SW.map(c => `<button data-acol="${c}" style="background:${c}" aria-pressed="${(a.col || "#1b1d22") === c}"></button>`).join("")}</div>` : ""}
+    <div class="w-sec">Placer en un geste</div><div class="ir-chips">${dzPlacements(st).map((pl, i) => `<button class="w-chip" data-pl="${i}">${pl[0]}</button>`).join("")}</div>` : ""}`;
+}
+function dzArtsBind(host) {
+  const st = DZ.st, arts = dzArts(st), a = arts.find(q => q.id === DZ.art), on = (sel, fn, ev = "click") => host.querySelectorAll(sel).forEach(b => b.addEventListener(ev, e => fn(b, e)));
+  const up = host.querySelector("#dz-art-up"); if (up) up.onchange = () => up.files[0] && dzImportArt(up.files[0]);
+  const fb = host.querySelector("#dz-art-forms"); if (fb) { let pool = []; try { pool = wMyFavs(12); } catch {} for (const sc of (current || [])) if (pool.length < 18 && !pool.includes(sc)) pool.push(sc);
+    for (const sc of pool) { const b = document.createElement("button"); b.className = "tl-f"; b.title = "Poser cette forme"; const c = document.createElement("canvas"); c.width = c.height = 80; c.getContext("2d").drawImage(tlSprite(sc, "#1b1d22", 80), 0, 0); b.append(c);
+      b.onclick = () => dzAddArt({ t: "form", id: sc.id, stars: sc.stars }, 1, "Forme"); fb.append(b); } }
+  host.querySelectorAll("[data-fthumb]").forEach(c => { const q = arts.find(z => z.id === c.dataset.fthumb), s = q && dzArtSource(q); if (s) c.getContext("2d").drawImage(s, 0, 0, 64, 64); });
+  on(".dz-layer", (b, e) => { if (e.target.closest("button")) return; DZ.art = b.dataset.art; dzSetView("sheet"); dzTabsRender(); });
+  const mv = (id, k) => { const i = arts.findIndex(q => q.id === id), j = i + k; if (j < 0 || j >= arts.length) return; dzPush(); [arts[i], arts[j]] = [arts[j], arts[i]]; dzCommit(); dzTabsRender(); };
+  on("[data-up]", b => mv(b.dataset.up, 1)); on("[data-down]", b => mv(b.dataset.down, -1));
+  on("[data-adel]", b => { dzPush(); st.arts = arts.filter(q => q.id !== b.dataset.adel); if (DZ.art === b.dataset.adel) DZ.art = null; dzCommit(); dzTabsRender(); });
+  if (!a) return;
+  on("[data-ak]", r => { if (!r.dataset.pushed) { dzPush(); r.dataset.pushed = 1; } a[r.dataset.ak] = +r.value; const o = r.parentElement.querySelector("output");
+    o.textContent = r.dataset.ak === "w" ? `${a.w.toFixed(1)} × ${dzArtH(a).toFixed(1)} cm` : r.dataset.ak === "rot" ? `${a.rot}°` : `${Math.round(a.op * 100)} %`; DZ.artDrag = true; dzDraw2d(); DZ.artDrag = false; clearTimeout(DZ.th); DZ.th = setTimeout(() => DZ.V3 && dzBuild3d(DZ.V3, DZ.st, dzEff()), 160); }, "input");
+  host.querySelectorAll("[data-ak]").forEach(r => r.addEventListener("change", () => { delete r.dataset.pushed; dzCommit(); }));
+  on("[data-aop]", b => { dzPush(); const k = b.dataset.aop; if (k === "flip") a.flip = !a.flip; else if (k === "l90") a.rot = (((a.rot || 0) - 90 + 540) % 360) - 180; else if (k === "r90") a.rot = (((a.rot || 0) + 90 + 540) % 360) - 180;
+    else { const c = dzClone(a); c.id = "a" + Date.now().toString(36); c.x += 4; c.y += 4; arts.push(c); DZ.art = c.id; } dzCommit(); dzTabsRender(); });
+  on("[data-acol]", b => { dzPush(); a.col = b.dataset.acol; dzCommit(); dzTabsRender(); });
+  on("[data-pl]", b => { dzPush(); dzPlaceArt(a, dzPlacements(st)[+b.dataset.pl]); dzPieceChips(); dzCommit(); dzTabsRender(); });
+}
+const DZ_CSS2 = `
+.dz.sheet .dz-stages { grid-template-columns: 1.45fr 1fr; }
+.dz.sheet .dz-2d { aspect-ratio: auto; background: #1f2127; }
+.dz.sheet .dz-2d .dz-lab { color: rgba(242,240,234,.75); top: 30px; left: 32px; }
+.dz-layer { cursor: pointer; } .dz-layer[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
+.dz-layer img, .dz-layer canvas { width: 34px; height: 34px; object-fit: contain; border-radius: 8px; background: #eceef2; flex: none; }
+.dz-views { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .dz.sheet .dz-stages { grid-template-columns: 1fr; position: static; }
+  .dz.sheet .dz-2d { aspect-ratio: 1 / 1.05; } .dz.sheet .dz-3d { aspect-ratio: 4 / 3; }
 }`;
 
 </script>
