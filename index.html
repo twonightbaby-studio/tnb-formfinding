@@ -10933,21 +10933,41 @@ function dzInside(poly, x, y) { let c = false; for (let i = 0, j = poly.length -
 function dzMapper(e, st, all) {
   const m = e.pc.map, P = st.params, ys = e.poly.map(p => p.y), xs = e.poly.map(p => p.x), y0 = Math.min(...ys), y1 = Math.max(...ys), x0 = Math.min(...xs), x1 = Math.max(...xs);
   const V3 = (x, y, z) => [x, y, z];
+  if (m.t === "half" && !m.leg) {
+    const mate = all.find(q => q !== e && q.pc.map.t === "half" && !q.pc.map.leg && q.pc.map.side === -m.side);
+    const W1 = (poly, v) => { const ys = poly.map(p => p.y), r = dzRows(poly, Math.max(Math.min(...ys) + 0.01, Math.min(Math.max(...ys) - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : 0; };
+    let wMax = 0; for (let v = y0; v <= y1; v += 0.5) wMax = Math.max(wMax, W1(e.poly, v)); let vArm = y1; for (let v = y0; v <= y1; v += 0.5) if (W1(e.poly, v) >= 0.96 * wMax) { vArm = v; break; }
+    const topV = []; for (let u = x0; u <= x1 + 0.25; u += 0.5) { let vt = y1; for (let v = y0; v <= y1; v += 0.25) if (dzInside(e.poly, u, v)) { vt = v; break; } topV.push(vt); }
+    const topAt = u => topV[Math.max(0, Math.min(topV.length - 1, Math.round((u - x0) / 0.5)))];
+    const Rn = 8.6, Tb = 8;
+    return (u, v) => {
+      const vr = Math.min(Math.max(v, vArm), y1 - 1.5), w1 = W1(e.poly, vr), w2 = mate ? W1(mate.poly, Math.min(vr, Math.max(...mate.poly.map(p => p.y)) - 1.5)) : 0, w = w2 ? (w1 + w2) / 2 : w1;
+      const B = Math.min(10.5, w / (Math.PI * 1.15)), A = (w - Math.PI * B) / 2 + B, flat = A - B, a = Math.abs(u); let x, z;
+      if (a <= flat) { x = a; z = B; } else { const ang = (a - flat) / B; if (ang <= Math.PI / 2) { x = flat + B * Math.sin(ang); z = B * Math.cos(ang); } else { x = A; z = -(a - flat - B * Math.PI / 2); } }
+      x *= Math.sign(u) || 1; let y = -v;
+      const t = v - topAt(u); if (t < Tb) { const k = 1 - Math.max(0, t) / Tb, q = k * k, zt = Math.abs(x) < Rn ? Math.sqrt(Rn * Rn - x * x) * (m.side > 0 ? 0.82 : 0.5) : 0; z += (zt - z) * q; y += 1.6 * q; }
+      return V3(x * m.side, y, z * m.side);
+    };
+  }
   if (m.t === "half") {
-    const legX = m.leg ? m.leg * 9.5 : 0, top = m.leg ? -4 : 0, sq = m.leg ? 0.95 : 0.78;
+    const legX0 = m.leg ? m.leg * 9.5 : 0, top = m.leg ? -4 : 0, sq = m.leg ? 0.95 : 0.78;
     // le rayon tient compte de la pièce d'en face (devant ↔ dos) pour que les coutures de côté se rejoignent
     const mate = all.find(q => q !== e && q.pc.map.t === "half" && (q.pc.map.leg || 0) === (m.leg || 0) && q.pc.map.side === -m.side);
     const mys = mate ? mate.poly.map(p => p.y) : null, my0 = mate ? Math.min(...mys) : 0, my1 = mate ? Math.max(...mys) : 0;
     const mw = v => { if (!mate) return null; const r = dzRows(mate.poly, Math.max(my0 + 0.01, Math.min(my1 - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : null; };
-    return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), w2 = mw(v), r = (w2 ? (w + w2) / 2 : w) / Math.PI, th = Math.PI * ((u - uL) / w - 0.5), s = m.side, lean = m.leg ? m.leg * 0.05 * v : 0;
+    return (u, v, uL, uR) => { const legX = legX0 * (0.62 + 0.38 * Math.min(1, Math.max(0, v / 30))), w = Math.max(0.01, uR - uL), w2 = mw(v), r = (w2 ? (w + w2) / 2 : w) / Math.PI, th = Math.PI * ((u - uL) / w - 0.5), s = m.side, lean = m.leg ? m.leg * 0.05 * v : 0;
       return V3(legX + lean + r * Math.sin(th) * s * (m.leg ? 1 : 1), top - v, r * Math.cos(th) * s * sq); };
   }
   if (m.t === "tube") {
-    if (m.sleeve) {   // manche : un tube qui part de l'épaule, en biais
-      const body = all.find(q => q.pc.role === "body"), bw = body ? Math.max(...dzRows(body.poly, 24)) : 26, sx = m.sleeve * bw * 0.88 / Math.PI * 1.2, a = 0.62;
-      const d = [m.sleeve * Math.sin(a), -Math.cos(a), 0], e1 = [0, 0, 1], e2 = [d[1] * e1[2] - d[2] * e1[1], d[2] * e1[0] - d[0] * e1[2], d[0] * e1[1] - d[1] * e1[0]];
-      return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; const o = [sx, -3, 0];
-        return V3(o[0] + v * d[0] + r * (Math.cos(th) * e1[0] + Math.sin(th) * e2[0]), o[1] + v * d[1] + r * (Math.cos(th) * e1[1] + Math.sin(th) * e2[1]), o[2] + v * d[2] + r * (Math.cos(th) * e1[2] + Math.sin(th) * e2[2]) * 0.92); };
+    if (m.sleeve) {   // manche : accrochée au point d'épaule, en biais ; la tête de manche (plus étroite) ne couvre que le dessus du bras
+      const body = all.find(q => q.pc.id === "devant") || all.find(q => q.pc.role === "body"), side = m.sleeve, a = st.params.sleeve === "courtes" ? 0.62 : 0.4;
+      let S = [side * 20, -4.5, 0];
+      if (body) { const bm = dzMapper(body, st, all), pts = body.poly.filter(p => p.y < Math.min(...body.poly.map(q => q.y)) + 8), sp = pts.reduce((b, p) => p.x > b.x ? p : b, pts[0]); const P0 = bm(sp.x - 0.3, sp.y + 0.6); S = [side * Math.abs(P0[0]), P0[1] - 0.4, 0]; }
+      const W1 = v => { const r = dzRows(e.poly, Math.max(y0 + 0.01, Math.min(y1 - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : 0; };
+      let wMax = 0, vA = y0; for (let v = y0; v <= y1; v += 0.5) { const w = W1(v); if (w > wMax + 0.05) { wMax = w; vA = v; } }
+      const d = [side * Math.sin(a), -Math.cos(a), 0], n = [side * Math.cos(a), Math.sin(a), 0], rA = wMax / (2 * Math.PI), o = [S[0] - n[0] * rA * 0.9, S[1] - n[1] * rA * 0.9, 0];
+      return (u, v) => { const wr = W1(Math.max(v, vA)), r = wr / (2 * Math.PI), th = 2 * Math.PI * u / Math.max(0.01, wr), c = Math.cos(th), sn = Math.sin(th);
+        return V3(o[0] + v * d[0] + r * c * n[0], o[1] + v * d[1] + r * c * n[1], r * sn * 0.94); };
     }
     if (m.cuff) {     // poignet : au bout de la manche
       const sl = all.find(q => q.pc.role === "sleeve" && q.pc.map.sleeve === m.cuff); if (!sl) return null; const sm = dzMapper(sl, st, all), sy1 = Math.max(...sl.poly.map(p => p.y)), row = dzRows(sl.poly, sy1 - 0.3);
@@ -10957,11 +10977,12 @@ function dzMapper(e, st, all) {
       const f = all.find(q => q.pc.id === "devant"), b = all.find(q => q.pc.id === "dos"); if (!f) return null; const fy = Math.max(...f.poly.map(p => p.y)) - 0.5, fr = dzRows(f.poly, fy), br = b ? dzRows(b.poly, Math.max(...b.poly.map(p => p.y)) - 0.5) : fr;
       const fm = dzMapper(f, st, all), bm = b ? dzMapper(b, st, all) : fm;
       return (u, v, uL, uR) => { const k = (u - uL) / Math.max(0.01, uR - uL), front = k < 0.5, kk = front ? k * 2 : (k - 0.5) * 2, row = front ? fr : br, mp = front ? fm : bm, rr = [row[0], row[row.length - 1]];
-        const p = mp(rr[0] + (front ? kk : 1 - kk) * (rr[1] - rr[0]), fy + v * 0.95, rr[0], rr[1]); p[0] *= 0.94; p[2] *= 0.94; return p; };
+        const p = mp(rr[0] + kk * (rr[1] - rr[0]), fy + v * 0.95, rr[0], rr[1]); p[0] *= 0.94; p[2] *= 0.94; return p; };
     }
     if (m.waist) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), -v, r * Math.cos(th) * 0.8); };
-    if (m.beanie) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI) * 1.02, th = 2 * Math.PI * (u - uL) / w, dome = v < 9 ? Math.sqrt(Math.max(0, 1 - Math.pow(1 - v / 9, 2))) : 1; return V3(r * Math.sin(th), 22 - v * (v < 9 ? 0.75 : 1), r * Math.cos(th) * 0.92); };
-    if (m.turnup) return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI) * 1.06, th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), 22 - 30 + 8 - v + 0.3, r * Math.cos(th) * 0.92); };
+    if (m.beanie) { const rr = dzRows(e.poly, 12), R0 = (rr[rr.length - 1] - rr[0]) / (2 * Math.PI) * 1.02;   // calotte ronde en haut, cylindre en dessous
+      return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), th = 2 * Math.PI * (u - uL) / w, D = 10; if (v < D) { const f = v / D * Math.PI / 2, r = R0 * Math.sin(f) * (0.97 + 0.03 * f); return V3(r * Math.sin(th), 22 - D * 0.62 + D * 0.62 * Math.cos(f), r * Math.cos(th) * 0.92); } return V3(R0 * Math.sin(th), 22 - D * 0.62 - (v - D), R0 * Math.cos(th) * 0.92); }; }
+    if (m.turnup) { const cr = all.find(q => q.pc.map.beanie), cb = cr ? 22 - 6.2 - (Math.max(...cr.poly.map(p => p.y)) - 10) : -8; return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI) * 1.06, th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), cb + 7.6 - v, r * Math.cos(th) * 0.92); }; }
     return (u, v, uL, uR) => { const w = Math.max(0.01, uR - uL), r = w / (2 * Math.PI), th = 2 * Math.PI * (u - uL) / w; return V3(r * Math.sin(th), -v, r * Math.cos(th)); };
   }
   if (m.t === "sector") return (u, v, uL, uR) => { const w = Math.max(0.0001, uR - uL), r = w * m.n / (2 * Math.PI), th = (m.k + (u - uL) / w) * 2 * Math.PI / m.n - Math.PI / m.n * 2, H = 13.5, y = 11.2 * Math.cos(Math.min(1, v / H) * Math.PI / 2);
@@ -10984,7 +11005,66 @@ function dzGeometry(e, st, all) {
   const keep = (a, b, c, i) => { const cx = (U(a) + U(b) + U(c)) / 3, cy = (Vv(a) + Vv(b) + Vv(c)) / 3; return (!(rows[i].multi || rows[i + 1].multi) || dzInside(poly, cx, cy)) && !holes.some(h => dzInside(h, cx, cy)); };
   for (let i = 0; i < rows.length - 1; i++) for (let j = 0; j < NC; j++) { const a = at(i, j), b = at(i, j + 1), c = at(i + 1, j), d = at(i + 1, j + 1); if (keep(a, c, b, i)) idx.push(a, c, b); if (keep(b, c, d, i)) idx.push(b, c, d); }
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  dzDrape(g, e, rows, NC, st);
   g.userData = { x0, x1, y0, y1 }; return g;
+}
+
+/* ---------- Drapé : ce qui fait passer du « tube » au vêtement ----------
+   Le tissu ne tombe jamais lisse : plis verticaux qui s'ouvrent vers l'ourlet, plis de traction en diagonale sous
+   l'emmanchure, plis « tassés » en anneaux sur les manches et en bas des jambes. On les ajoute en déplaçant chaque
+   sommet le long de sa normale (bruit doux en coordonnées patron, en cm), nuls près des coutures pour que les pièces
+   restent jointes ; puis on assombrit les creux (occlusion) via les couleurs de sommets. */
+function dzNoise(seed) {
+  const h = (i, j) => { let n = Math.sin(i * 127.1 + j * 311.7 + seed * 74.7) * 43758.5453; return n - Math.floor(n); };
+  return (x, y) => { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sy) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sy - 0.5; };
+}
+function dzDrape(g, e, rows, NC, st) {
+  const pc = e.pc, role = pc.role, mat = st.matAll || pc.mat, P = g.attributes.position, N = g.attributes.normal, n = P.count;
+  const stiff = { cuir: 0.55, denim: 0.75, toile: 0.7, nylon: 0.9, satin: 1.15, cote: 0.25, mesh: 0.3, molleton: 0.85, jersey: 1, velours: 0.9 }[mat] ?? 1;
+  const seed = [...pc.id].reduce((a, c) => a + c.charCodeAt(0), 0), N1 = dzNoise(seed), N2 = dzNoise(seed + 9.3), y0 = rows[0].v, y1 = rows[rows.length - 1].v;
+  // sens « dehors » : on oriente les normales vers l'extérieur du vêtement (axe vertical au centre)
+  let dot = 0; for (let k = 0; k < n; k += 7) dot += P.getX(k) * N.getX(k) + P.getZ(k) * N.getZ(k); const out = dot >= 0 ? 1 : -1;
+  const disp = new Float32Array(n), col = new Float32Array(n * 3); let amax = 0.001;
+  const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  for (let i = 0; i < rows.length; i++) { const R = rows[i], hw = (R.uR - R.uL) / 2;
+    for (let j = 0; j <= NC; j++) { const k = i * (NC + 1) + j, u = R.uL + (R.uR - R.uL) * j / NC, v = R.v, edge = Math.min(u - R.uL, R.uR - u), t = (v - y0) / Math.max(1, y1 - y0);
+      let dd = 0;
+      if (role === "body") {
+        const A = 0.25 + 1.1 * sm(0.3, 1, t);                                                     // plis verticaux qui s'ouvrent vers le bas
+        dd += A * Math.sin(u * 0.62 + 2.6 * N1(u * 0.08, v * 0.035) + seed) * (0.6 + 0.8 * (N2(u * 0.11, v * 0.05) + 0.5));
+        const side = sm(0.45, 0.9, Math.abs(u) / Math.max(1, hw)), arm = Math.exp(-Math.pow((t - 0.3) / 0.14, 2));   // traction en diagonale sous le bras
+        dd += 0.9 * side * arm * Math.sin((Math.abs(u) * 0.8 + v * 0.75) * 0.9 + N1(v * 0.2, 3));
+      } else if (role === "sleeve") {
+        dd += (0.15 + 0.5 * t) * Math.sin(v * 0.9 + 6 * N1(u * 0.09, v * 0.07)) * Math.max(0, N2(u * 0.15, v * 0.09) + 0.35) * 0.9;   // plis tassés, irréguliers
+        dd += 0.35 * Math.sin(u * 0.7 + N2(v * 0.05, 1) * 4);
+      } else if (role === "leg") {
+        dd += (0.1 + 0.75 * sm(0.6, 1, t)) * Math.sin(v * 0.75 + 6 * N1(u * 0.08, v * 0.05)) * Math.max(0, N2(u * 0.12, v * 0.07) + 0.3) * 1.2 + 0.35 * Math.sin(u * 0.45 + N2(v * 0.03, 2) * 5) * sm(0.1, 0.5, t);
+      } else if (role === "hood") dd += 0.7 * N1(u * 0.15, v * 0.12) * 2 + 0.3 * Math.sin(v * 0.6 + u * 0.3);
+      else dd += 0.06 * Math.sin(u * 3.1) * (role === "crown" || role === "cuff" || role === "hem" ? 1 : 0);
+      dd += 0.12 * N2(u * 0.6, v * 0.6);                                                          // micro-froissé
+      dd *= stiff * sm(0, 2.5, Math.min(edge, dzEdgeDist(e.poly, u, v)));                          // nul aux coutures et aux bords
+      disp[k] = dd; amax = Math.max(amax, Math.abs(dd)); }
+  }
+  for (let k = 0; k < n; k++) { const d = disp[k] * out; P.setXYZ(k, P.getX(k) + N.getX(k) * d, P.getY(k) + N.getY(k) * d, P.getZ(k) + N.getZ(k) * d); }
+  g.computeVertexNormals();
+  // occlusion : creux plus sombres, dessous des bras et aisselles plus sombres, bas du vêtement légèrement plus clair
+  for (let k = 0; k < n; k++) { const i = Math.floor(k / (NC + 1)), t = (rows[i].v - y0) / Math.max(1, y1 - y0); let ao = 1 - 0.32 * Math.max(0, -disp[k] / amax) + 0.06 * Math.max(0, disp[k] / amax);
+    if (role === "body") { const x = Math.abs(P.getX(k)), y = P.getY(k); ao *= 1 - 0.28 * Math.exp(-Math.pow((y + 26) / 6, 2)) * sm(12, 22, x); }
+    if (role === "sleeve") { const j = k % (NC + 1), th = Math.abs(j / NC - 0.5) * 2; ao *= 1 - 0.3 * th * (1 - t * 0.6); }
+    col[3 * k] = col[3 * k + 1] = col[3 * k + 2] = Math.max(0.45, Math.min(1.08, ao)); }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+}
+function dzEdgeDist(poly, x, y) { let best = 1e9; for (let i = 0, n = poly.length; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / L)), ex = a.x + t * dx - x, ey = a.y + t * dy - y; best = Math.min(best, ex * ex + ey * ey); } return Math.sqrt(best); }
+
+/* Bord-côte d'encolure : un boudin qui suit le bord haut du devant et du dos, cache l'escalier du maillage */
+function dzNeckRib(st, eff) {
+  if (st.asset !== "tshirt" && !(st.asset === "sweat" && !st.params.hood)) return null; const pts = [];
+  for (const id of ["devant", "dos"]) { const e = eff.find(q => q.pc.id === id); if (!e) return null; const mp = dzMapper(e, st, eff), seg = [];
+    for (let u = -8.4; u <= 8.4 + 1e-6; u += 0.6) { let vt = null; for (let v = Math.min(...e.poly.map(p => p.y)); v < 20; v += 0.1) if (dzInside(e.poly, u, v)) { vt = v; break; } if (vt != null) { const p = mp(u, vt + 0.25); seg.push(new THREE.Vector3(p[0], p[1] + 0.2, p[2])); } }
+    if (id === "dos") seg.reverse(); pts.push(...seg); }
+  if (pts.length < 8) return null;
+  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, "centripetal"), 160, 0.75, 10, true);
 }
 /* ---------- Ce que fait chaque opération « en vrai » (le carnet d'atelier) ---------- */
 const DZ_HOW = {
@@ -11092,9 +11172,12 @@ function dzEnv(renderer) {
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding; const pm = new THREE.PMREMGenerator(renderer), env = pm.fromEquirectangular(t).texture; t.dispose(); pm.dispose(); return env;
 }
 function dz3dInit(cv) {
-  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05; r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
   const sc = new THREE.Scene(); sc.environment = dzEnv(r); const cam = new THREE.PerspectiveCamera(30, 1, 1, 2000); cam.position.set(0, 0, 180);
-  const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(60, 120, 140); sc.add(key, new THREE.HemisphereLight(0xffffff, 0x9a9ca4, 0.55));
+  const key = new THREE.DirectionalLight(0xfff6ec, 1.25); key.position.set(70, 110, 120); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.radius = 6; key.shadow.bias = -0.0006; if ("normalBias" in key.shadow) key.shadow.normalBias = 0.4;
+  Object.assign(key.shadow.camera, { left: -70, right: 70, top: 70, bottom: -90, near: 10, far: 400 }); key.shadow.camera.updateProjectionMatrix();
+  const fill = new THREE.DirectionalLight(0xdfe6ff, 0.35); fill.position.set(-90, 30, 60); const rim = new THREE.DirectionalLight(0xffffff, 0.5); rim.position.set(-30, 60, -120);
+  sc.add(key, key.target, fill, rim, new THREE.HemisphereLight(0xffffff, 0x8e9098, 0.42));
   const ctl = new THREE.OrbitControls(cam, cv); ctl.enableDamping = true; ctl.enablePan = false; ctl.minDistance = 40; ctl.maxDistance = 420;
   const root = new THREE.Group(); sc.add(root);
   const sc2 = document.createElement("canvas"); sc2.width = sc2.height = 128; { const q = sc2.getContext("2d"), g = q.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, "rgba(0,0,0,.28)"); g.addColorStop(1, "rgba(0,0,0,0)"); q.fillStyle = g; q.fillRect(0, 0, 128, 128); }
@@ -11107,10 +11190,11 @@ function dzBuild3d(V, st, eff) {
     let g; try { g = dzGeometry(e, st, eff); } catch (err) { console.warn(err); g = null; } if (!g) continue;
     const T = dzPieceTexture(e, st), tex = new THREE.CanvasTexture(T.c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
     const M = DZ_MATS[st.matAll || e.pc.mat] || DZ_MATS.jersey;
-    const fm = new THREE.MeshStandardMaterial({ map: tex, roughness: M.rough, metalness: 0, side: THREE.FrontSide, alphaTest: M.alpha ? 0.5 : 0, transparent: false });
-    const bm = new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0, side: THREE.BackSide, color: 0x8a8a8f, alphaTest: M.alpha ? 0.5 : 0 });
-    for (const mat of [fm, bm]) { const m = new THREE.Mesh(g, mat); m.userData = { pid: e.pc.id, box: g.userData, ownMap: mat === fm }; V.root.add(m); V.meshes.push(m); }
+    const fm = new THREE.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 0.35, vertexColors: true, roughness: M.rough, metalness: 0, side: THREE.FrontSide, alphaTest: M.alpha ? 0.5 : 0, transparent: false });
+    const bm = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 1, metalness: 0, side: THREE.BackSide, color: 0x7a7a80, alphaTest: M.alpha ? 0.5 : 0 });
+    for (const mat of [fm, bm]) { const m = new THREE.Mesh(g, mat); m.userData = { pid: e.pc.id, box: g.userData, ownMap: mat === fm }; m.castShadow = mat === fm; m.receiveShadow = true; V.root.add(m); V.meshes.push(m); }
   }
+  const ng = dzNeckRib(st, eff); if (ng) { const nc = new THREE.Color((st.pieces.find(p => p.id === "devant") || {}).color || st.color); const m = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({ color: nc, roughness: 0.95, bumpMap: dzTile("cote", "#888888") && new THREE.CanvasTexture(dzTile("cote", "#888888")), bumpScale: 0.3 })); m.material.color.convertSRGBToLinear && m.material.color.convertSRGBToLinear(); m.castShadow = m.receiveShadow = true; m.userData = { pid: "devant", box: { x0: 0, x1: 1, y0: 0, y1: 1 } }; V.root.add(m); V.meshes.push(m); }
   const box = new THREE.Box3().setFromObject(V.root);
   if (!box.isEmpty()) { const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), key = st.asset;
     V.shadow.position.set(c.x, box.min.y - 1, c.z); V.shadow.scale.setScalar(Math.max(s.x, s.z) * 0.62);
