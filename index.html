@@ -10833,7 +10833,7 @@ function dzAsset(kind) {
     piece("dos", "Dos", dzPath([0, 2.5], [5, 2.5, 8.5, 1.5, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", map: { t: "half", side: -1 } });
     for (const side of [1, -1]) piece("manche" + (side > 0 ? "D" : "G"), side > 0 ? "Manche droite" : "Manche gauche", dzPath([0, 0], [8, 0, bw - 3, 7, bw, 14], [bw - (sw ? 7 : 2), sl], [0, sl]), { sym: true, role: "sleeve", map: { t: "tube", sleeve: side } });
     if (sw) {
-      piece("bordbas", "Bord-côte bas", dzPath([0, 0], [W - 2, 0], [W - 2, 7], [0, 7]), { sym: true, role: "hem", mat: "cote", map: { t: "tube", ring: "hem" } });
+      piece("bordbas", "Bord-côte bas", dzPath([0, 0], [W * 1.8, 0], [W * 1.8, 7], [0, 7]), { sym: true, role: "hem", mat: "cote", map: { t: "tube", ring: "hem" } });
       for (const side of [1, -1]) piece("poignet" + (side > 0 ? "D" : "G"), side > 0 ? "Poignet droit" : "Poignet gauche", dzPath([0, 0], [9, 0], [9, 7], [0, 7]), { sym: true, role: "cuff", mat: "cote", map: { t: "tube", cuff: side } });
       for (const side of [1, -1]) piece("capuche" + (side > 0 ? "D" : "G"), side > 0 ? "Capuche droite" : "Capuche gauche", dzPath([0, 2], [0, 12, 0, 26, 2, 34], [10, 36, 22, 34, 25, 30], [27, 20, 26, 6, 20, 0], [12, -1, 4, 0, 0, 2]), { role: "hood", map: { t: "hood", side } });
     }
@@ -10956,7 +10956,7 @@ function dzMapper(e, st, all) {
     const mys = mate ? mate.poly.map(p => p.y) : null, my0 = mate ? Math.min(...mys) : 0, my1 = mate ? Math.max(...mys) : 0;
     const mw = v => { if (!mate) return null; const r = dzRows(mate.poly, Math.max(my0 + 0.01, Math.min(my1 - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : null; };
     return (u, v, uL, uR) => { const legX = legX0 * (0.62 + 0.38 * Math.min(1, Math.max(0, v / 30))), w = Math.max(0.01, uR - uL), w2 = mw(v), r = (w2 ? (w + w2) / 2 : w) / Math.PI, th = Math.PI * ((u - uL) / w - 0.5), s = m.side, lean = m.leg ? m.leg * 0.05 * v : 0;
-      return V3(legX + lean + r * Math.sin(th) * s * (m.leg ? 1 : 1), top - v, r * Math.cos(th) * s * sq); };
+      return V3(legX + lean + r * Math.sin(th) * (m.leg || s), top - v, r * Math.cos(th) * s * sq); };
   }
   if (m.t === "tube") {
     if (m.sleeve) {   // manche : accrochée au point d'épaule, en biais ; la tête de manche (plus étroite) ne couvre que le dessus du bras
@@ -10965,7 +10965,7 @@ function dzMapper(e, st, all) {
       if (body) { const bm = dzMapper(body, st, all), pts = body.poly.filter(p => p.y < Math.min(...body.poly.map(q => q.y)) + 8), sp = pts.reduce((b, p) => p.x > b.x ? p : b, pts[0]); const P0 = bm(sp.x - 0.3, sp.y + 0.6); S = [side * Math.abs(P0[0]), P0[1] - 0.4, 0]; }
       const W1 = v => { const r = dzRows(e.poly, Math.max(y0 + 0.01, Math.min(y1 - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : 0; };
       let wMax = 0, vA = y0; for (let v = y0; v <= y1; v += 0.5) { const w = W1(v); if (w > wMax + 0.05) { wMax = w; vA = v; } }
-      const d = [side * Math.sin(a), -Math.cos(a), 0], n = [side * Math.cos(a), Math.sin(a), 0], rA = wMax / (2 * Math.PI), o = [S[0] - n[0] * rA * 0.9, S[1] - n[1] * rA * 0.9, 0];
+      const d = [side * Math.sin(a), -Math.cos(a), 0], n = [side * Math.cos(a), Math.sin(a), 0], rA = wMax / (2 * Math.PI), o = [S[0] - n[0] * rA * 0.9, S[1] - n[1] * rA * 0.9, 0]; e.arm = { o, d, rA, len: y1 };
       return (u, v) => { const wr = W1(Math.max(v, vA)), r = wr / (2 * Math.PI), th = 2 * Math.PI * u / Math.max(0.01, wr), c = Math.cos(th), sn = Math.sin(th);
         return V3(o[0] + v * d[0] + r * c * n[0], o[1] + v * d[1] + r * c * n[1], r * sn * 0.94); };
     }
@@ -10992,7 +10992,7 @@ function dzMapper(e, st, all) {
     return V3(m.side * 11.5 * Math.cos(la) * Math.sin(ph), 7 + 17 * Math.sin(la), -4.5 + 13.5 * Math.cos(la) * Math.cos(ph)); };
   return null;
 }
-function dzGeometry(e, st, all) {
+function dzGeometry(e, st, all, drape = 1) {
   const map = dzMapper(e, st, all); if (!map) return null;
   const poly = e.poly, ys = poly.map(p => p.y), xs = poly.map(p => p.x), y0 = Math.min(...ys), y1 = Math.max(...ys), x0 = Math.min(...xs), x1 = Math.max(...xs);
   const holes = st.ops.filter(o => o.t === "decoupe" && o.piece === e.pc.id && o.pts && o.pts.length > 2).map(o => o.pts);
@@ -11004,8 +11004,20 @@ function dzGeometry(e, st, all) {
   const at = (i, j) => i * (NC + 1) + j, U = k => x0 + uv[2 * k] * (x1 - x0), Vv = k => y0 + (1 - uv[2 * k + 1]) * (y1 - y0);
   const keep = (a, b, c, i) => { const cx = (U(a) + U(b) + U(c)) / 3, cy = (Vv(a) + Vv(b) + Vv(c)) / 3; return (!(rows[i].multi || rows[i + 1].multi) || dzInside(poly, cx, cy)) && !holes.some(h => dzInside(h, cx, cy)); };
   for (let i = 0; i < rows.length - 1; i++) for (let j = 0; j < NC; j++) { const a = at(i, j), b = at(i, j + 1), c = at(i + 1, j), d = at(i + 1, j + 1); if (keep(a, c, b, i)) idx.push(a, c, b); if (keep(b, c, d, i)) idx.push(b, c, d); }
+  const pu = new Float32Array(rows.length * (NC + 1)), pv = new Float32Array(pu.length); rows.forEach((R, i) => { for (let j = 0; j <= NC; j++) { pu[i * (NC + 1) + j] = R.uL + (R.uR - R.uL) * j / NC; pv[i * (NC + 1) + j] = R.v; } });
+  // bords lisses : les sommets du bord (en escalier sur l'encolure, les découpes…) sont ramenés exactement sur le contour du patron
+  { const ec = new Map(), ek = (a, b) => a < b ? a * 1e6 + b : b * 1e6 + a; for (let t = 0; t < idx.length; t += 3) for (const [a, b] of [[idx[t], idx[t + 1]], [idx[t + 1], idx[t + 2]], [idx[t + 2], idx[t]]]) ec.set(ek(a, b), (ec.get(ek(a, b)) || 0) + 1);
+    const bv = new Set(); for (const [k, c] of ec) if (c === 1) { bv.add(Math.floor(k / 1e6)); bv.add(k % 1e6); }
+    const curves = [poly, ...holes];
+    for (const k of bv) { const u = pu[k], v = pv[k]; let best = null, bd = 0.9; for (const C of curves) for (let i = 0, n = C.length; i < n; i++) { const a = C[i], b = C[(i + 1) % n], dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((u - a.x) * dx + (v - a.y) * dy) / L)), qx = a.x + t * dx, qy = a.y + t * dy, d = Math.hypot(qx - u, qy - v); if (d < bd) { bd = d; best = [qx, qy]; } }
+      if (!best || bd < 0.02) continue; const R = rows[Math.floor(k / (NC + 1))], p = map(best[0], best[1], R.uL, R.uR); if (!p) continue; pu[k] = best[0]; pv[k] = best[1]; pos[3 * k] = p[0]; pos[3 * k + 1] = p[1]; pos[3 * k + 2] = p[2]; uv[2 * k] = (best[0] - x0) / (x1 - x0); uv[2 * k + 1] = 1 - (best[1] - y0) / (y1 - y0); } }
+  // faces tournées vers l'extérieur (sinon on voit l'envers du tissu)
+  { let dot = 0; for (let t = 0; t < idx.length; t += 9) { const a = idx[t], b = idx[t + 1], c = idx[t + 2], ux = pos[3 * b] - pos[3 * a], uy = pos[3 * b + 1] - pos[3 * a + 1], uz = pos[3 * b + 2] - pos[3 * a + 2], vx = pos[3 * c] - pos[3 * a], vy = pos[3 * c + 1] - pos[3 * a + 1], vz = pos[3 * c + 2] - pos[3 * a + 2];
+      const nx = uy * vz - uz * vy, nz = ux * vy - uy * vx, lx = e.pc.map.leg ? pos[3 * a] - e.pc.map.leg * 9 : pos[3 * a]; dot += nx * lx + nz * pos[3 * a + 2]; }
+    if (dot < 0) for (let t = 0; t < idx.length; t += 3) { const q = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = q; } }
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-  dzDrape(g, e, rows, NC, st);
+  g.userData0 = { rows, NC, pu, pv };
+  if (drape) dzDrape(g, e, rows, NC, st, drape);
   g.userData = { x0, x1, y0, y1 }; return g;
 }
 
@@ -11019,7 +11031,7 @@ function dzNoise(seed) {
   return (x, y) => { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
     return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sy) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sy - 0.5; };
 }
-function dzDrape(g, e, rows, NC, st) {
+function dzDrape(g, e, rows, NC, st, scale = 1) {
   const pc = e.pc, role = pc.role, mat = st.matAll || pc.mat, P = g.attributes.position, N = g.attributes.normal, n = P.count;
   const stiff = { cuir: 0.55, denim: 0.75, toile: 0.7, nylon: 0.9, satin: 1.15, cote: 0.25, mesh: 0.3, molleton: 0.85, jersey: 1, velours: 0.9 }[mat] ?? 1;
   const seed = [...pc.id].reduce((a, c) => a + c.charCodeAt(0), 0), N1 = dzNoise(seed), N2 = dzNoise(seed + 9.3), y0 = rows[0].v, y1 = rows[rows.length - 1].v;
@@ -11043,7 +11055,7 @@ function dzDrape(g, e, rows, NC, st) {
       } else if (role === "hood") dd += 0.7 * N1(u * 0.15, v * 0.12) * 2 + 0.3 * Math.sin(v * 0.6 + u * 0.3);
       else dd += 0.06 * Math.sin(u * 3.1) * (role === "crown" || role === "cuff" || role === "hem" ? 1 : 0);
       dd += 0.12 * N2(u * 0.6, v * 0.6);                                                          // micro-froissé
-      dd *= stiff * sm(0, 2.5, Math.min(edge, dzEdgeDist(e.poly, u, v)));                          // nul aux coutures et aux bords
+      dd *= scale * stiff * sm(0, 2.5, Math.min(edge, dzEdgeDist(e.poly, u, v)));                          // nul aux coutures et aux bords
       disp[k] = dd; amax = Math.max(amax, Math.abs(dd)); }
   }
   for (let k = 0; k < n; k++) { const d = disp[k] * out; P.setXYZ(k, P.getX(k) + N.getX(k) * d, P.getY(k) + N.getY(k) * d, P.getZ(k) + N.getZ(k) * d); }
@@ -11183,22 +11195,6 @@ function dz3dInit(cv) {
   const sc2 = document.createElement("canvas"); sc2.width = sc2.height = 128; { const q = sc2.getContext("2d"), g = q.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, "rgba(0,0,0,.28)"); g.addColorStop(1, "rgba(0,0,0,0)"); q.fillStyle = g; q.fillRect(0, 0, 128, 128); }
   const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc2), transparent: true, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; sc.add(shadow);
   return { r, sc, cam, ctl, root, shadow, meshes: [], fitted: null };
-}
-function dzBuild3d(V, st, eff) {
-  for (const m of V.meshes) { V.root.remove(m); m.geometry.dispose(); if (m.material.map && m.userData.ownMap) m.material.map.dispose(); m.material.dispose(); } V.meshes = [];
-  for (const e of eff) {
-    let g; try { g = dzGeometry(e, st, eff); } catch (err) { console.warn(err); g = null; } if (!g) continue;
-    const T = dzPieceTexture(e, st), tex = new THREE.CanvasTexture(T.c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
-    const M = DZ_MATS[st.matAll || e.pc.mat] || DZ_MATS.jersey;
-    const fm = new THREE.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 0.35, vertexColors: true, roughness: M.rough, metalness: 0, side: THREE.FrontSide, alphaTest: M.alpha ? 0.5 : 0, transparent: false });
-    const bm = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 1, metalness: 0, side: THREE.BackSide, color: 0x7a7a80, alphaTest: M.alpha ? 0.5 : 0 });
-    for (const mat of [fm, bm]) { const m = new THREE.Mesh(g, mat); m.userData = { pid: e.pc.id, box: g.userData, ownMap: mat === fm }; m.castShadow = mat === fm; m.receiveShadow = true; V.root.add(m); V.meshes.push(m); }
-  }
-  const ng = dzNeckRib(st, eff); if (ng) { const nc = new THREE.Color((st.pieces.find(p => p.id === "devant") || {}).color || st.color); const m = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({ color: nc, roughness: 0.95, bumpMap: dzTile("cote", "#888888") && new THREE.CanvasTexture(dzTile("cote", "#888888")), bumpScale: 0.3 })); m.material.color.convertSRGBToLinear && m.material.color.convertSRGBToLinear(); m.castShadow = m.receiveShadow = true; m.userData = { pid: "devant", box: { x0: 0, x1: 1, y0: 0, y1: 1 } }; V.root.add(m); V.meshes.push(m); }
-  const box = new THREE.Box3().setFromObject(V.root);
-  if (!box.isEmpty()) { const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), key = st.asset;
-    V.shadow.position.set(c.x, box.min.y - 1, c.z); V.shadow.scale.setScalar(Math.max(s.x, s.z) * 0.62);
-    if (V.fitted !== key) { V.fitted = key; V.ctl.target.copy(c); const d = Math.max(s.x, s.y) * 2.1 + 20; V.cam.position.set(c.x + d * 0.35, c.y + d * 0.12, c.z + d * 0.93); V.ctl.update(); } }
 }
 /* ---------- Îlot Design : l'interface ---------- */
 const DZ_SW = ["#f2f0ea", "#1b1d22", "#8a8d96", "#2b3a5c", "#3f5a3a", "#6b4a2b", "#b8322e", "#ff4f9a", "#e8c547", "#c9c3d6"];
@@ -11417,7 +11413,7 @@ function dzTabsBind(host) {
   const up = host.querySelector(".dz-up input");
   if (up) up.onchange = () => { const f = up.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const k = Math.min(1, 512 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); const data = c.toDataURL("image/png"); const im2 = new Image(); im2.onload = () => { DZ.decoSrc = { t: "img", data, img: im2 }; dzSetTool("deco"); dzTabsRender(); wToast("Touche le vêtement pour poser l'image"); }; im2.src = data; URL.revokeObjectURL(im.src); }; im.src = URL.createObjectURL(f); };
   on('[data-a="svg"]', () => dzExportSvg());
-  on('[data-a="png"]', () => { const cv = document.getElementById("dz-3d"); if (DZ.V3) DZ.V3.r.render(DZ.V3.sc, DZ.V3.cam); cv.toBlob(b => offerBlob(b, `tnb_design_${st.asset}.png`)); });
+  on('[data-a="png"]', () => dzShot(1).toBlob(b => offerBlob(b, `tnb_design_${st.asset}.png`)));
   on('[data-a="pub"]', () => dzPublish());
   on('[data-a="reset"]', () => { dzPush(); DZ.st = dzNew(st.asset); dzPieceChips(); dzCommit(); dzTabsRender(); });
   on("#dz-title", r => { DZ.title = r.value; });
@@ -11447,7 +11443,7 @@ async function dzPublish() {
   const title = (document.getElementById("dz-title").value || "").trim() || "Sans titre", author = (document.getElementById("dz-author").value || "").trim() || prAuthorDefault();
   const data = dzClone(DZ.st); for (const d of data.decos) if (d.src && d.src.img) delete d.src.img;
   if (JSON.stringify(data).length > 390000) { wToast("Trop lourd : retire une image importée"); return; }
-  const cv = document.getElementById("dz-3d"); DZ.V3 && DZ.V3.r.render(DZ.V3.sc, DZ.V3.cam); const t = document.createElement("canvas"), k = 360 / Math.max(cv.width, cv.height); t.width = Math.round(cv.width * k); t.height = Math.round(cv.height * k); const tx = t.getContext("2d"); tx.fillStyle = "#eceef2"; tx.fillRect(0, 0, t.width, t.height); tx.drawImage(cv, 0, 0, t.width, t.height);
+  const t = dzShot(360 / Math.max(document.getElementById("dz-3d").width, document.getElementById("dz-3d").height));
   const { error } = await db.from("atelier_designs").insert({ user_id: me, author, title, asset: DZ.st.asset, data, thumb: t.toDataURL("image/jpeg", 0.8), parent: DZ.parent || null });
   if (error) { console.warn(error); wToast("Publication impossible"); return; }
   uisYes(); wToast("Publié ✓"); store.set("atelier-pseudo", author); dzGallery();
@@ -11463,13 +11459,13 @@ async function dzGallery() {
 function dzUndo(redo) { const from = redo ? DZ.redo : DZ.undo, to = redo ? DZ.undo : DZ.redo; if (!from.length) return; to.push(JSON.stringify(DZ.st)); DZ.st = JSON.parse(from.pop()); dzPieceChips(); dzCommit(); dzTabsRender(); }
 
 function wPDesign(p) {
-  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS + DZ_CSS2; document.head.append(c); }
+  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS + DZ_CSS2 + DZ_CSS3; document.head.append(c); }
   if (!DZ.st) dzLoad();
   p.innerHTML = wHead("Design · dessine un vêtement", `<button class="w-pill w-glass-ui w-live" data-a="undo" title="Annuler">↶</button><button class="w-pill w-glass-ui w-live" data-a="redo" title="Rétablir">↷</button>`)
     + `<div class="w-scroll w-live"><div class="dz">
       <div class="dz-stages">
         <div class="dz-st dz-2d"><span class="dz-lab">Patron · 2D</span><canvas id="dz-2d"></canvas><div class="dz-drawbar" id="dz-drawbar" hidden><button class="w-chip" data-a="fin">Terminer</button><button class="w-chip" data-a="annul">Annuler</button></div></div>
-        <div class="dz-st dz-3d"><span class="dz-lab">Vêtement · 3D</span><canvas id="dz-3d"></canvas></div>
+        <div class="dz-st dz-3d"><canvas id="dz-bg" class="dz-bg"></canvas><span class="dz-lab">Vêtement · 3D</span><canvas id="dz-3d"></canvas><span class="dz-simlab" id="dz-simlab" hidden>Le tissu se pose…</span><div class="dz-photo" id="dz-photo"></div></div>
       </div>
       <div class="dz-bar"><div class="dz-views"><button class="w-chip" data-view="sheet">Patron complet</button><button class="w-chip" data-view="piece">Une pièce</button></div><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="false">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
       <div class="dz-ctl sp-card"><div class="dz-tabs">${DZ_TABS.map(([k, l]) => `<button class="w-chip" data-tab="${k}">${l}</button>`).join("")}</div><div id="dz-tab"></div></div>
@@ -11483,7 +11479,7 @@ function wPDesign(p) {
   dzPieceChips(); dzTabsRender(); dzToolHint(); dz2dPointer(p.querySelector("#dz-2d")); dzSetView(DZ.view);
   requestAnimationFrame(() => { dzDraw2d(); ensureThree().then(() => { const cv = document.getElementById("dz-3d"); if (cv) dz3dMount(cv); }).catch(err => console.warn(err)); });
   const ro = new ResizeObserver(() => { if (!document.getElementById("dz-2d")) return ro.disconnect(); dzDraw2d(); }); ro.observe(p.querySelector(".dz-2d"));
-  dzGallery();
+  dzPhotoUI(); dzGallery();
 }
 const DZ_CSS = `
 .dz { max-width: 1320px; margin: 0 auto; padding: 84px 18px 160px; display: grid; grid-template-columns: 1fr 400px; gap: 16px; align-items: start; color: #1b1d22; }
@@ -11717,6 +11713,219 @@ const DZ_CSS2 = `
   .dz.sheet .dz-stages { grid-template-columns: 1fr; position: static; }
   .dz.sheet .dz-2d { aspect-ratio: 1 / 1.05; } .dz.sheet .dz-3d { aspect-ratio: 4 / 3; }
 }`;
+/* ---------- Simulation de tissu : le vêtement tombe vraiment sur un mannequin invisible ----------
+   Comme dans les logiciels de prototypage 3D (CLO, blankbuilder) : chaque pièce garde ses vraies longueurs de tissu
+   (mesurées sur le patron, en cm), les bords qui se touchent sont cousus ensemble, puis la gravité fait tomber le
+   tout sur un mannequin invisible (torse, bras, jambes, tête) avec frottement. Méthode « position based dynamics » :
+   à chaque pas, on déplace les points (inertie + gravité), puis on rétablit plusieurs fois les longueurs de tissu,
+   les coutures et les contacts avec le corps. Les plis apparaissent tout seuls là où il y a trop de tissu. */
+function dzMannequin(st, eff) {
+  const pants = st.asset === "pantalon";
+  // sections du torse (repère des hauts : base du cou à y = 0) : [y, demi-largeur, demi-profondeur]
+  const T = [[9, 5.6, 5.6], [0, 6.6, 6.6], [-1.5, 12, 8.4], [-4, 18, 9], [-8, 19.2, 9.8], [-16, 17.5, 10.4], [-24, 16.4, 10.4], [-35, 14.5, 9.5], [-45, 13.8, 9], [-58, 16.2, 10.6], [-68, 16.6, 10.6]];
+  const off = pants ? 39 : 0, yTop = pants ? T[7][0] : T[0][0], yBot = pants ? -68 : -80, NX = 2.25;
+  const sec = y => { if (y >= T[0][0]) return T[0]; for (let i = 0; i < T.length - 1; i++) if (y <= T[i][0] && y >= T[i + 1][0]) { const k = (y - T[i][0]) / (T[i + 1][0] - T[i][0]); return [y, T[i][1] + k * (T[i + 1][1] - T[i][1]), T[i][2] + k * (T[i + 1][2] - T[i][2])]; } return T[T.length - 1]; };
+  const seat = y => 1 + 0.32 * Math.exp(-Math.pow((y + 61) / 6, 2));   // fessier : plus de profondeur derrière, au niveau du bassin
+  const F = (x, y, z) => { const [, a, b0] = sec(y), b = z < 0 ? b0 * seat(y) : b0; return Math.pow(Math.pow(Math.abs(x) / a, NX) + Math.pow(Math.abs(z) / b, NX), 1 / NX) - 1; };
+  const caps = [];   // capsules [ax, ay, az, bx, by, bz, ra, rb]
+  if (!pants) for (const e of eff) if (e.arm) { const { o, d, rA, len } = e.arm, L = len + 12; caps.push([o[0], o[1], o[2], o[0] + d[0] * L, o[1] + d[1] * L, o[2] + d[2] * L, rA * 0.74, rA * 0.5]); }
+  if (pants) for (const s of [1, -1]) caps.push([s * 7.6, -22, 0.6, s * 10.8, -112, 0.4, 8.2, 4.6]);
+  const head = st.asset === "sweat" && st.params.hood ? [0, 11.5, -1.8, 10.4] : null;
+  return (P, i) => {   // pousse le point i hors du corps ; renvoie vrai s'il y a eu contact
+    let x = P[i], y = P[i + 1] - off, z = P[i + 2], hit = false; const m = 0.45;
+    if (y < yTop + 0.01 && y > yBot) { const f = F(x, y, z); if (f < m / 10) { const h = 0.25, gx = (F(x + h, y, z) - F(x - h, y, z)) / (2 * h), gy = (F(x, y + h, z) - F(x, y - h, z)) / (2 * h), gz = (F(x, y, z + h) - F(x, y, z - h)) / (2 * h), g2 = gx * gx + gy * gy + gz * gz || 1, k = (m / 10 - f) / g2;
+      x += gx * k; y += gy * k; z += gz * k; hit = true; } }
+    for (const c of caps) { const abx = c[3] - c[0], aby = c[4] - c[1], abz = c[5] - c[2], t = Math.max(0, Math.min(1, ((x - c[0]) * abx + (y + off - c[1]) * aby + (z - c[2]) * abz) / (abx * abx + aby * aby + abz * abz))), r = c[6] + (c[7] - c[6]) * t + m;
+      const qx = x - (c[0] + abx * t), qy = y + off - (c[1] + aby * t), qz = z - (c[2] + abz * t), dd = Math.hypot(qx, qy, qz); if (dd < r && dd > 1e-6) { const s = r / dd; x = c[0] + abx * t + qx * s; y = c[1] + aby * t + qy * s - off; z = c[2] + abz * t + qz * s; hit = true; } }
+    if (head) { const qx = x - head[0], qy = y + off - head[1], qz = z - head[2], dd = Math.hypot(qx, qy, qz), r = head[3] + m; if (dd < r && dd > 1e-6) { const s = r / dd; x = head[0] + qx * s; y = head[1] + qy * s - off; z = head[2] + qz * s; hit = true; } }
+    P[i] = x; P[i + 1] = y + off; P[i + 2] = z; return hit;
+  };
+}
+// prépare les points, longueurs de tissu et coutures pour l'ensemble des pièces
+function dzSimSetup(parts, st, eff) {
+  let n = 0; for (const p of parts) { p.off = n; n += p.g.attributes.position.count; }
+  const X = new Float32Array(n * 3), used = new Uint8Array(n), bnd = new Uint8Array(n), owner = new Int16Array(n), top = new Uint8Array(n);
+  const A = [], B = [], R = [], K = [];
+  const BEND = { cuir: 0.5, denim: 0.42, toile: 0.38, nylon: 0.2, satin: 0.06, cote: 0.25, mesh: 0.15, molleton: 0.3, jersey: 0.14, velours: 0.22 };
+  parts.forEach((p, pi) => {
+    const pos = p.g.attributes.position.array, idx = p.g.index.array, { rows, NC, pu, pv } = p.g.userData0, o = p.off, kb = BEND[st.matAll || p.e.pc.mat] ?? 0.15;
+    X.set(pos, o * 3); const edges = new Map(), ek = (a, b) => a < b ? a * 1e6 + b : b * 1e6 + a;
+    for (let t = 0; t < idx.length; t += 3) for (const [a, b] of [[idx[t], idx[t + 1]], [idx[t + 1], idx[t + 2]], [idx[t + 2], idx[t]]]) { used[o + a] = used[o + b] = 1; const k = ek(a, b); edges.set(k, (edges.get(k) || 0) + 1); }
+    for (const [k, c] of edges) if (c === 1) { bnd[o + Math.floor(k / 1e6)] = 1; bnd[o + k % 1e6] = 1; }
+    const y0 = rows[0].v, W = NC + 1, add = (a, b, k) => { if (!used[o + a] || !used[o + b]) return; A.push(o + a); B.push(o + b); R.push(Math.hypot(pu[a] - pu[b], pv[a] - pv[b])); K.push(k); };
+    for (let i = 0; i < rows.length; i++) for (let j = 0; j <= NC; j++) { const a = i * W + j; owner[o + a] = pi; if (pv[a] - y0 < 2.2) top[o + a] = 1;
+      if (j < NC) add(a, a + 1, 1); if (i < rows.length - 1) { add(a, a + W, 1); if (j < NC) add(a, a + W + 1, 0.6); if (j > 0) add(a, a + W - 1, 0.6); }
+      if (j < NC - 1) add(a, a + 2, kb); if (i < rows.length - 2) add(a, a + 2 * W, kb); }
+  });
+  // coutures explicites, comme sur un vrai patron : chaque bord est cousu à son bord jumeau, point par point le long de sa longueur
+  const byId = id => parts.find(p => p.e.pc.id === id), bndOf = new Map();
+  const vtx = (p, q) => { let L = bndOf.get(p); if (!L) { L = []; const U = p.g.userData0; for (let k = 0; k < p.g.attributes.position.count; k++) if (used[p.off + k] && bnd[p.off + k]) L.push(k); bndOf.set(p, L); }
+    const U = p.g.userData0; let b = -1, bd = 1e9; for (const k of L) { const d = (U.pu[k] - q.x) ** 2 + (U.pv[k] - q.y) ** 2; if (d < bd) { bd = d; b = k; } } return b < 0 ? -1 : p.off + b; };
+  const sewn = new Set(), sew = (i, j) => { if (i < 0 || j < 0 || i === j) return; const k = i < j ? i + ":" + j : j + ":" + i; if (sewn.has(k)) return; sewn.add(k); A.push(i); B.push(j); R.push(0); K.push(1); };
+  for (const [ia, arcA, ib, arcB] of dzSeams(st, eff)) { const pa = byId(ia), pb = byId(ib); if (!pa || !pb || !arcA || !arcB || arcA.length < 2 || arcB.length < 2) continue;
+    const la = dzArcLen(arcA), lb = dzArcLen(arcB), M = Math.max(3, Math.ceil(Math.max(la, lb) / 0.6));
+    for (let k = 0; k <= M; k++) sew(vtx(pa, dzArcAt(arcA, k / M * la)), vtx(pb, dzArcAt(arcB, k / M * lb))); }
+  const pin = new Uint8Array(n); parts.forEach(p => { if (p.e.pc.role === "hood") pin.fill(1, p.off, p.off + p.g.attributes.position.count); });
+  return { n, pin, X, P: X.slice(), used, A: Int32Array.from(A), B: Int32Array.from(B), R: Float32Array.from(R), K: Float32Array.from(K), collide: dzMannequin(st, eff) };
+}
+function dzSimStep(S, iters) {
+  const { X, P, used, A, B, R, K, n, collide, pin } = S, g = 0.022, damp = 0.985;
+  for (let i = 0; i < n; i++) { if (!used[i] || pin[i]) continue; const k = 3 * i, vx = (X[k] - P[k]) * damp, vy = (X[k + 1] - P[k + 1]) * damp, vz = (X[k + 2] - P[k + 2]) * damp; P[k] = X[k]; P[k + 1] = X[k + 1]; P[k + 2] = X[k + 2]; X[k] += vx; X[k + 1] += vy - g; X[k + 2] += vz; }
+  for (let it = 0; it < iters; it++) {
+    for (let c = 0; c < A.length; c++) { const a = 3 * A[c], b = 3 * B[c], dx = X[b] - X[a], dy = X[b + 1] - X[a + 1], dz = X[b + 2] - X[a + 2], d = Math.hypot(dx, dy, dz) || 1e-9;
+      const r = R[c]; if (K[c] < 0.9 && d < r) continue;   // le tissu ne résiste pas à la compression : il plisse
+      const pa = pin[A[c]], pb = pin[B[c]]; if (pa && pb) continue; const s = (d - r) / d * K[c] * (pa || pb ? 1 : 0.5), wa = pa ? 0 : 1, wb = pb ? 0 : 1; X[a] += dx * s * wa; X[a + 1] += dy * s * wa; X[a + 2] += dz * s * wa; X[b] -= dx * s * wb; X[b + 1] -= dy * s * wb; X[b + 2] -= dz * s * wb; }
+    if (it % 2 === 1 || it === iters - 1) for (let i = 0; i < n; i++) if (used[i] && !pin[i] && collide(X, 3 * i)) { const k = 3 * i; P[k] += (X[k] - P[k]) * 0.7; P[k + 1] += (X[k + 1] - P[k + 1]) * 0.7; P[k + 2] += (X[k + 2] - P[k + 2]) * 0.7; }   // frottement
+  }
+}
+// occlusion des creux à partir de la forme simulée (un point plus « enfoncé » que ses voisins est plus sombre)
+function dzCavityAO(g) {
+  const P = g.attributes.position, N = g.attributes.normal, idx = g.index.array, n = P.count, sx = new Float32Array(n * 3), cnt = new Uint16Array(n);
+  for (let t = 0; t < idx.length; t += 3) for (let q = 0; q < 3; q++) { const a = idx[t + q]; for (let r = 1; r < 3; r++) { const b = idx[t + (q + r) % 3]; sx[3 * a] += P.getX(b); sx[3 * a + 1] += P.getY(b); sx[3 * a + 2] += P.getZ(b); cnt[a]++; } }
+  const C = g.attributes.color; if (!C) return; let dot = 0; for (let k = 0; k < n; k += 7) dot += P.getX(k) * N.getX(k) + P.getZ(k) * N.getZ(k); const out = dot >= 0 ? 1 : -1;
+  for (let k = 0; k < n; k++) { if (!cnt[k]) continue; const ax = sx[3 * k] / cnt[k] - P.getX(k), ay = sx[3 * k + 1] / cnt[k] - P.getY(k), az = sx[3 * k + 2] / cnt[k] - P.getZ(k), c = (ax * N.getX(k) + ay * N.getY(k) + az * N.getZ(k)) * out;
+    const f = Math.max(0.55, Math.min(1.05, 1 - c * 1.6)); C.setX(k, C.getX(k) * f); C.setY(k, C.getY(k) * f); C.setZ(k, C.getZ(k) * f); }
+  C.needsUpdate = true;
+}
+
+/* --- construction de la scène 3D : textures seules si la forme n'a pas changé, sinon nouvelle simulation --- */
+function dzGeoKey(st) { return JSON.stringify([st.asset, st.params, st.matAll, st.pieces.map(p => [p.id, p.path, p.mat]), st.ops.filter(o => o.t === "decoupe")]); }
+function dzMakeMats(e, st) {
+  const T = dzPieceTexture(e, st), tex = new THREE.CanvasTexture(T.c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4; const M = DZ_MATS[st.matAll || e.pc.mat] || DZ_MATS.jersey;
+  return [new THREE.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 0.3, vertexColors: true, roughness: M.rough, metalness: 0, side: THREE.FrontSide, alphaTest: M.alpha ? 0.5 : 0 }),
+    new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 1, metalness: 0, side: THREE.BackSide, color: 0x6e6e74, alphaTest: M.alpha ? 0.5 : 0 })];
+}
+function dzBuild3d(V, st, eff) {
+  const key = dzGeoKey(st);
+  if (V.geoKey === key && V.parts && V.parts.length) {   // même forme : on ne refait que les textures (imprimés, couleurs, coutures…)
+    for (const p of V.parts) { const e = eff.find(q => q.pc.id === p.e.pc.id) || p.e, [fm, bm] = dzMakeMats(e, st); for (const m of p.meshes) { const old = m.material; m.material = m.userData.ownMap ? fm : bm; if (old.map && m.userData.ownMap) old.map.dispose(); old.dispose(); } }
+    if (V.neck) V.neck.material.color.set((st.pieces.find(p => p.id === "devant") || {}).color || st.color).convertSRGBToLinear();
+    return;
+  }
+  V.geoKey = key; V.simTok = (V.simTok || 0) + 1;
+  for (const m of V.meshes) { V.root.remove(m); m.geometry.dispose(); if (m.material.map && m.userData.ownMap) m.material.map.dispose(); m.material.dispose(); } V.meshes = []; V.parts = []; V.neck = null;
+  const sim = ["tshirt", "sweat"].includes(st.asset);   // pantalon : simulation pas encore au niveau (fourche), on garde le drapé calculé
+  for (const e of eff) {
+    let g; try { g = dzGeometry(e, st, eff, sim ? 0.3 : 1); } catch (err) { console.warn(err); g = null; } if (!g) continue;
+    const [fm, bm] = dzMakeMats(e, st), part = { e, g, meshes: [] };
+    for (const mat of [fm, bm]) { const m = new THREE.Mesh(g, mat); m.userData = { pid: e.pc.id, box: g.userData, ownMap: mat === fm }; m.castShadow = mat === fm; m.receiveShadow = true; V.root.add(m); V.meshes.push(m); part.meshes.push(m); }
+    V.parts.push(part);
+  }
+  const ng = dzNeckRib(st, eff); if (ng) { const m = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({ color: new THREE.Color((st.pieces.find(p => p.id === "devant") || {}).color || st.color).convertSRGBToLinear(), roughness: 0.95 })); m.castShadow = m.receiveShadow = true; m.userData = { pid: "devant", box: { x0: 0, x1: 1, y0: 0, y1: 1 } }; V.root.add(m); V.meshes.push(m); V.neck = m; }
+  dzFrame(V, st);
+  if (!sim || !V.parts.length) return;
+  // simulation progressive : on voit le vêtement se poser (≈ 1 s)
+  let S; try { S = dzSimSetup(V.parts, st, eff); } catch (err) { console.warn(err); return; }
+  const tok = V.simTok, total = 90; let step = 0;
+  // encolure en bord-côte : un boudin reconstruit sur le bord du col après la simulation
+  const neckLoop = (() => { const dv = eff.find(q => q.pc.id === "devant"), ds = eff.find(q => q.pc.id === "dos"), pd = V.parts.find(p => p.e === dv), pb = V.parts.find(p => p.e === ds); if (!V.neck || !dv || !ds || !pd || !pb) return null;
+    const K0 = e => e.pc.path.segs[0].p, M = p => dzP(-p.x, p.y), out = [];
+    for (const [e, p] of [[dv, pd], [ds, pb]]) { const arc = dzArc(e, [M(K0(e)), e.pc.path.start, K0(e)]), L = dzArcLen(arc), U = p.g.userData0, cand = []; for (let k = 0; k < U.pu.length; k++) if (S.used[p.off + k]) cand.push(k);
+      for (let t = 0; t <= 40; t++) { const q = dzArcAt(arc, t / 40 * L); let b = -1, bd = 1e9; for (const k of cand) { const d = (U.pu[k] - q.x) ** 2 + (U.pv[k] - q.y) ** 2; if (d < bd) { bd = d; b = k; } } if (b >= 0 && out[out.length - 1] !== p.off + b) out.push(p.off + b); } }
+    return out; })();
+  if (V.neck && neckLoop) V.neck.visible = false;
+
+  const neckIdx = []; for (let i = 0; i < S.n; i++) { if (!S.used[i]) continue; const p = V.parts.find(q => i >= q.off && i < q.off + q.g.attributes.position.count); if (p.e.pc.role === "body" && S.X[3 * i + 1] > -7 && Math.abs(S.X[3 * i]) < 11) neckIdx.push(i); }
+  const neck0 = neckIdx.reduce((a, i) => [a[0] + S.X[3 * i], a[1] + S.X[3 * i + 1], a[2] + S.X[3 * i + 2]], [0, 0, 0]).map(v => v / Math.max(1, neckIdx.length));
+  const hoodParts = V.parts.filter(p => p.e.pc.role === "hood").map(p => ({ p, base: S.X.slice(p.off * 3, (p.off + p.g.attributes.position.count) * 3) }));
+  const push = final => { if (hoodParts.length && neckIdx.length) { const c = neckIdx.reduce((a, i) => [a[0] + S.X[3 * i], a[1] + S.X[3 * i + 1], a[2] + S.X[3 * i + 2]], [0, 0, 0]).map(v => v / neckIdx.length), dx = c[0] - neck0[0], dy = c[1] - neck0[1], dz = c[2] - neck0[2];
+      for (const h of hoodParts) for (let k = 0; k < h.base.length; k += 3) { S.X[h.p.off * 3 + k] = h.base[k] + dx; S.X[h.p.off * 3 + k + 1] = h.base[k + 1] + dy; S.X[h.p.off * 3 + k + 2] = h.base[k + 2] + dz; } }
+    for (const p of V.parts) { const pos = p.g.attributes.position; pos.array.set(S.X.subarray(p.off * 3, (p.off + pos.count) * 3)); pos.needsUpdate = true; p.g.computeVertexNormals(); if (final) { dzCavityAO(p.g); p.g.computeBoundingSphere(); } }
+    if (final && V.neck && neckLoop && neckLoop.length > 8) { const pts = neckLoop.map(i => new THREE.Vector3(S.X[3 * i], S.X[3 * i + 1] + 0.25, S.X[3 * i + 2])); V.neck.geometry.dispose(); V.neck.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, "centripetal"), 180, 0.8, 10, true); V.neck.visible = true; } };
+  const tick = () => { if (V.simTok !== tok) return; const t0 = performance.now(); while (step < total && performance.now() - t0 < 24) { dzSimStep(S, 8); step++; } push(step >= total); if (step < total) requestAnimationFrame(tick); else { dzFrame(V, st); const l = document.getElementById("dz-simlab"); if (l) l.hidden = true; } };
+  const lab = document.getElementById("dz-simlab"); if (lab) lab.hidden = false;
+  requestAnimationFrame(tick);
+}
+function dzFrame(V, st) {
+  const box = new THREE.Box3().setFromObject(V.root); if (box.isEmpty()) return; const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  V.shadow.position.set(c.x, box.min.y - 1, c.z); V.shadow.scale.setScalar(Math.max(s.x, s.z) * 0.62);
+  if (V.fitted !== st.asset) { V.fitted = st.asset; V.ctl.target.copy(c); V.ctl.target.y -= s.y * 0.04; const d = Math.max(s.x, s.y) * 2.4 + 20; V.cam.position.set(c.x + d * 0.35, c.y + d * 0.12, c.z + d * 0.93); V.ctl.update(); }
+}
+
+/* --- les bords du patron et quelles paires se cousent --- */
+function dzArc(e, anchors) {
+  const P = e.poly, n = P.length, near = q => { const t = e.T.tf(dzP(q.x, q.y)); let b = 0, bd = 1e9; P.forEach((p, i) => { const d = (p.x - t.x) ** 2 + (p.y - t.y) ** 2; if (d < bd) { bd = d; b = i; } }); return b; };
+  const ids = anchors.map(near), out = [P[ids[0]]];
+  for (let k = 0; k < ids.length - 1; k++) { const a = ids[k], b = ids[k + 1], fw = (b - a + n) % n, bw = (a - b + n) % n, dir = fw <= bw ? 1 : -1, c = Math.min(fw, bw); for (let s = 1; s <= c; s++) out.push(P[(a + dir * s + n * 4) % n]); }
+  return out;
+}
+const dzArcLen = A => { let L = 0; for (let i = 1; i < A.length; i++) L += Math.hypot(A[i].x - A[i - 1].x, A[i].y - A[i - 1].y); return L; };
+function dzArcAt(A, d) { for (let i = 1; i < A.length; i++) { const l = Math.hypot(A[i].x - A[i - 1].x, A[i].y - A[i - 1].y); if (d <= l || i === A.length - 1) { const t = l ? Math.min(1, d / l) : 0; return dzP(A[i - 1].x + (A[i].x - A[i - 1].x) * t, A[i - 1].y + (A[i].y - A[i - 1].y) * t); } d -= l; } return A[A.length - 1]; }
+function dzSeams(st, eff) {
+  const E = id => eff.find(e => e.pc.id === id), out = [], M = p => dzP(-p.x, p.y), K = (e, i) => i < 0 ? e.pc.path.start : e.pc.path.segs[i].p;
+  const seam = (ia, A, ib, B) => { const ea = E(ia), eb = E(ib); if (ea && eb) out.push([ia, dzArc(ea, A(ea)), ib, dzArc(eb, B(eb))]); };
+  const cat = (...arcs) => arcs.flat();
+  if (st.asset === "tshirt" || st.asset === "sweat") {
+    for (const s of [1, -1]) { const f = p => s > 0 ? p : M(p), g = p => s > 0 ? M(p) : p, sl = s > 0 ? "mancheD" : "mancheG", cu = s > 0 ? "poignetD" : "poignetG";
+      seam("devant", e => [f(K(e, 0)), f(K(e, 1))], "dos", e => [g(K(e, 0)), g(K(e, 1))]);                 // épaule
+      seam("devant", e => [f(K(e, 2)), f(K(e, 3))], "dos", e => [g(K(e, 2)), g(K(e, 3))]);                 // côté
+      seam(sl, e => [K(e, -1), K(e, 0)], "devant", e => [f(K(e, 1)), f(K(e, 2))]);                        // tête de manche, moitié devant
+      seam(sl, e => [K(e, -1), M(K(e, 0))], "dos", e => [g(K(e, 1)), g(K(e, 2))]);                        // tête de manche, moitié dos
+      seam(sl, e => [K(e, 0), K(e, 1)], sl, e => [M(K(e, 0)), M(K(e, 1))]);                                 // dessous de manche
+      seam(cu, e => [M(K(e, 0)), K(e, -1), K(e, 0)], sl, e => [M(K(e, 1)), K(e, 2), K(e, 1)]);            // poignet
+      seam(cu, e => [K(e, 0), K(e, 1)], cu, e => [M(K(e, 0)), M(K(e, 1))]);
+    }
+    seam("bordbas", e => [M(K(e, 0)), K(e, -1)], "devant", e => [M(K(e, 3)), K(e, 4), K(e, 3)]);
+    seam("bordbas", e => [K(e, -1), K(e, 0)], "dos", e => [M(K(e, 3)), K(e, 4), K(e, 3)]);
+    seam("bordbas", e => [K(e, 0), K(e, 1)], "bordbas", e => [M(K(e, 0)), M(K(e, 1))]);
+    // la capuche n'est pas simulée : elle garde sa forme et suit l'encolure (voir dzBuild3d)
+  } else if (st.asset === "pantalon") {
+    for (const l of ["D", "G"]) { const av = "jambeAv" + l, ds = "jambeDos" + l;
+      seam(av, e => [K(e, 0), K(e, 1), K(e, 2)], ds, e => [K(e, 0), K(e, 1), K(e, 2)]);                   // côté
+      seam(av, e => [K(e, 3), K(e, 4), K(e, 5)], ds, e => [K(e, 3), K(e, 4), K(e, 5)]);                   // entrejambe
+    }
+    seam("jambeAvD", e => [K(e, 5), K(e, 6)], "jambeAvG", e => [K(e, 5), K(e, 6)]);                         // fourche devant
+    seam("jambeDosD", e => [K(e, 5), K(e, 6)], "jambeDosG", e => [K(e, 5), K(e, 6)]);                       // fourche dos
+    const cb = E("ceinture"); if (cb) { const W = K(cb, 0).x, y = K(cb, 1).y, b = (a, z) => [dzP(a, y), dzP(z, y)];
+      seam("ceinture", () => b(-W, -W / 2), "jambeAvD", e => [K(e, 6), K(e, -1), K(e, 0)]);
+      seam("ceinture", () => b(-W / 2, 0), "jambeDosD", e => [K(e, 0), K(e, -1), K(e, 6)]);
+      seam("ceinture", () => b(0, W / 2), "jambeDosG", e => [K(e, 6), K(e, -1), K(e, 0)]);
+      seam("ceinture", () => b(W / 2, W), "jambeAvG", e => [K(e, 0), K(e, -1), K(e, 6)]);
+      seam("ceinture", () => [dzP(-W, 0), dzP(-W, y)], "ceinture", () => [dzP(W, 0), dzP(W, y)]); }
+  }
+  return out;
+}
+
+/* --- photo produit : fond de studio coloré + ombre projetée (fenêtre, store, feuillage), comme une vraie prise de vue --- */
+DZ.photo = (() => { try { return JSON.parse(localStorage.getItem("atelier-dz-photo")) || null; } catch { return null; } })() || { bg: "#e7e4dd", gobo: "feuillage" };
+const DZ_BGS = ["#e7e4dd", "#d9e2d3", "#cfd8e3", "#ead7d1", "#2b2d33"];
+function dzBackdrop() {
+  const cv = document.getElementById("dz-bg"); if (!cv) return; const r = cv.getBoundingClientRect(), d = Math.min(2, devicePixelRatio || 1), W = Math.max(50, Math.round(r.width * d)), H = Math.max(50, Math.round(r.height * d));
+  cv.width = W; cv.height = H; const x = cv.getContext("2d"), bg = DZ.photo.bg, dark = parseInt(bg.slice(1, 3), 16) < 90;
+  const g = x.createRadialGradient(W * 0.5, H * 0.42, 0, W * 0.5, H * 0.5, Math.max(W, H) * 0.75); g.addColorStop(0, dzMix(bg, "#ffffff", dark ? 0.08 : 0.35)); g.addColorStop(1, dzMix(bg, "#000000", dark ? 0.35 : 0.12)); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  const gb = DZ.photo.gobo; if (gb === "studio") return; let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  x.save(); x.filter = `blur(${Math.round(W / 70)}px)`; x.fillStyle = dark ? "rgba(0,0,0,.35)" : "rgba(40,36,30,.22)";
+  if (gb === "fenetre") { x.translate(W * 0.5, H * 0.5); x.rotate(-0.42); const s = H * 0.07; for (let k = -14; k < 14; k++) x.fillRect(-W, k * s * 1.9, W * 2, s); x.fillRect(-W * 0.02, -H, W * 0.035, H * 2); }
+  else { for (let c = 0; c < 9; c++) { const cx = rnd() * W, cy = rnd() * H * 0.9, R = (0.08 + rnd() * 0.12) * W; for (let k = 0; k < 14; k++) { const a = rnd() * 6.28, rr = rnd() * R; x.save(); x.translate(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); x.rotate(rnd() * 6.28); x.beginPath(); x.ellipse(0, 0, R * (0.16 + rnd() * 0.12), R * (0.06 + rnd() * 0.04), 0, 0, 6.29); x.fill(); x.restore(); } } }
+  x.restore();
+}
+function dzMix(a, b, t) { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), A = p(a), B = p(b); return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join(""); }
+function dzPhotoUI() {
+  const box = document.getElementById("dz-photo"); if (!box) return;
+  box.innerHTML = [["studio", "Studio"], ["fenetre", "Store"], ["feuillage", "Feuillage"]].map(([k, l]) => `<button class="dz-ph" data-gobo="${k}" aria-pressed="${DZ.photo.gobo === k}">${l}</button>`).join("") + DZ_BGS.map(c => `<button class="dz-phc" data-bg="${c}" style="background:${c}" aria-label="Fond ${c}" aria-pressed="${DZ.photo.bg === c}"></button>`).join("");
+  const save = () => { try { localStorage.setItem("atelier-dz-photo", JSON.stringify(DZ.photo)); } catch {} dzBackdrop(); dzPhotoUI(); };
+  box.querySelectorAll("[data-gobo]").forEach(b => b.onclick = () => { DZ.photo.gobo = b.dataset.gobo; save(); });
+  box.querySelectorAll("[data-bg]").forEach(b => b.onclick = () => { DZ.photo.bg = b.dataset.bg; save(); });
+  dzBackdrop(); const st = box.closest(".dz-3d"); if (st && !st._ro) { st._ro = new ResizeObserver(() => document.getElementById("dz-bg") ? dzBackdrop() : st._ro.disconnect()); st._ro.observe(st); }
+}
+function dzShot(k = 1) {   // image = fond de studio + vêtement 3D
+  const cv = document.getElementById("dz-3d"), bg = document.getElementById("dz-bg"); if (DZ.V3) DZ.V3.r.render(DZ.V3.sc, DZ.V3.cam);
+  const t = document.createElement("canvas"); t.width = Math.round(cv.width * k); t.height = Math.round(cv.height * k); const x = t.getContext("2d");
+  if (bg) x.drawImage(bg, 0, 0, t.width, t.height); else { x.fillStyle = "#eceef2"; x.fillRect(0, 0, t.width, t.height); } x.drawImage(cv, 0, 0, t.width, t.height); return t;
+}
+const DZ_CSS3 = `
+.dz-3d { background: #e7e4dd; }
+.dz-bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.dz-3d #dz-3d { position: relative; z-index: 1; }
+.dz-3d .dz-lab { z-index: 2; }
+.dz-simlab { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2; font: 600 12px Inter, sans-serif; color: #1b1d22; background: rgba(255,255,255,.85); padding: 6px 12px; border-radius: 999px; pointer-events: none; }
+.dz-simlab[hidden] { display: none; }
+.dz-photo { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2; display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; justify-content: center; overflow-x: auto; scrollbar-width: none; }
+.dz-ph { flex: none; font: 600 11.5px Inter, sans-serif; color: #1b1d22; background: rgba(255,255,255,.88); border: 1px solid rgba(27,29,34,.15); border-radius: 999px; padding: 5px 9px; cursor: pointer; }
+.dz-ph[aria-pressed="true"] { background: #1b1d22; color: #fff; }
+.dz-phc { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.9); box-shadow: 0 0 0 1px rgba(27,29,34,.25); cursor: pointer; }
+.dz-phc[aria-pressed="true"] { box-shadow: 0 0 0 2px #1b1d22; }
+`;
 
 </script>
 
