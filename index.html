@@ -4490,6 +4490,7 @@ const W_ISLANDS = [
   { k: "pavage", lab: "Pavages", r: 240, note: 67, a: [0.42, 1.35], p: [0.36, 2.75] },
   { k: "design", lab: "Design", r: 270, note: 70, a: [0, 1.78], p: [0, 3.5] },
   { k: "studio", lab: "Studio pub", r: 250, note: 74, a: [0.58, 2.12], p: [0.36, 4.15] },
+  { k: "reels", lab: "Reels IA", r: 250, note: 77, a: [-0.58, 2.12], p: [-0.36, 4.15] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4708,7 +4709,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".st, .dz, .ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".rl, .st, .dz, .ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5093,6 +5094,9 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "reels") {                       // un écran vertical avec lecture
+    x.strokeRect(cx - 0.36 * s, cy - 0.66 * s, 0.72 * s, 1.32 * s); x.beginPath(); x.moveTo(cx - 0.12 * s, cy - 0.22 * s); x.lineTo(cx + 0.2 * s, cy); x.lineTo(cx - 0.12 * s, cy + 0.22 * s); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(cx - 0.22 * s, cy + 0.5 * s); x.lineTo(cx + 0.22 * s, cy + 0.5 * s); x.stroke();
   } else if (k === "studio") {                      // un clap de cinéma
     x.strokeRect(cx - 0.62 * s, cy - 0.2 * s, 1.24 * s, 0.78 * s); x.beginPath(); x.moveTo(cx - 0.62 * s, cy - 0.2 * s); x.lineTo(cx - 0.5 * s, cy - 0.55 * s); x.lineTo(cx + 0.66 * s, cy - 0.45 * s); x.lineTo(cx + 0.62 * s, cy - 0.2 * s); x.stroke();
     for (const k of [-0.2, 0.15, 0.45]) { x.beginPath(); x.moveTo(cx + k * s, cy - 0.5 * s); x.lineTo(cx + (k - 0.12) * s, cy - 0.22 * s); x.stroke(); }
@@ -5209,7 +5213,7 @@ function wPanel(k) {
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile, design: wPDesign, studio: wPStudio }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile, design: wPDesign, studio: wPStudio, reels: wPReels }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -5293,10 +5297,11 @@ const wMyFavs = (n = 24) => favScenes().slice(0, n);
 function wPProduction(p) {
   p.innerHTML = wHead("Production · du dessin au vêtement") + `<div class="w-center"><div class="w-box w-glass-ui w-live">
   <h3>Choisis une forme</h3><p>Elle s'ouvre dans le studio : plan à gauche, vêtement en 3D à droite. Longsleeve ou bonnet, couleur, technique d'impression, placement.</p>
-  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button><button class="w-pill w-glass-ui" id="w-p-jw">💎 En bijou 3D</button><button class="w-pill w-glass-ui" id="w-p-dz">✂ Dessiner un vêtement</button></div>
+  <div class="w-row"><button class="w-pill dark" id="w-p-cur">Forme en cours de la série</button><button class="w-pill w-glass-ui" id="w-p-jw">💎 En bijou 3D</button><button class="w-pill w-glass-ui" id="w-p-dz">✂ Dessiner un vêtement</button><button class="w-pill w-glass-ui" id="w-p-rl">▶ Reels IA</button></div>
   <p class="sp-hint">Bijou 3D : la forme devient un pendentif (chrome, or, argent, acrylique, émail irisé), porté sur une chaîne, une bague, une tirette de zip ou un porte-clés.</p><div id="w-p-list"></div></div></div>`;
   p.querySelector("#w-p-cur").onclick = () => { uisClick(); openMockup(current.find(s => votes[s.id]?.v > 0) || current[0]); };
   p.querySelector("#w-p-dz").onclick = () => { uisClick(); wFlyIsland(W_ISLANDS.find(i => i.k === "design")); };
+  p.querySelector("#w-p-rl").onclick = () => { uisClick(); wFlyIsland(W_ISLANDS.find(i => i.k === "reels")); };
   p.querySelector("#w-p-jw").onclick = () => { uisClick(); jwOpen(current.find(s => votes[s.id]?.v > 0) || current[0] || (wMyFavs(1)[0])); };
   const favs = wMyFavs(18), host = p.querySelector("#w-p-list");
   if (favs.length) { const l = document.createElement("p"); l.textContent = "Ou une de tes favorites :"; host.append(l); wThumbs(host, favs, sc => openMockup(sc)); }
@@ -12180,7 +12185,7 @@ function wPStudio(p) {
     + `<div class="w-scroll w-live"><div class="st">
       <div class="st-player"><div class="st-frame" id="st-frame"><canvas id="st-out"></canvas><canvas id="st-gl" hidden></canvas><span class="st-wait" id="st-wait">Le tissu se pose…</span></div>
         <div class="st-ctl"><button class="w-pill dark" id="st-play">▶ Lire</button><input type="range" id="st-scrub" min="0" max="1" step="0.001" value="0" class="w-range"><span id="st-tc" class="st-tc">0 s</span></div>
-        <div class="st-ctl"><button class="w-pill" id="st-export">Exporter la vidéo (MP4)</button><span id="st-note" class="st-note"></span></div></div>
+        <div class="st-ctl"><button class="w-pill" id="st-export">Exporter la vidéo (MP4)</button><button class="w-pill" id="st-reels">→ Reels IA</button><span id="st-note" class="st-note"></span></div></div>
       <div class="st-side sp-card">
         <div class="w-sec">Film <span id="st-total"></span></div>
         <div class="ir-chips">${Object.entries(ST_TEMPLATES).map(([k, T]) => `<button class="w-chip" data-tpl="${k}">${T.name}</button>`).join("")}</div>
@@ -12194,6 +12199,7 @@ function wPStudio(p) {
   p.querySelector("#st-play").onclick = () => { ST.play = !ST.play; ST.last = performance.now(); stPlayBtn(); };
   p.querySelector("#st-scrub").oninput = e => { ST.t = +e.target.value * stTotal(); ST.play = false; stPlayBtn(); };
   p.querySelector("#st-export").onclick = () => stExport();
+  p.querySelector("#st-reels").onclick = () => { uisClick(); wFlyIsland(W_ISLANDS.find(i => i.k === "reels")); };
   p.querySelectorAll("[data-tpl]").forEach(b => b.onclick = () => { ST.film = stFromTemplate(b.dataset.tpl); stSave(); ST.t = 0; wPStudio(p); });
   p.querySelectorAll("[data-fmt]").forEach(b => b.onclick = () => { ST.film.format = b.dataset.fmt; stSave(); p.querySelectorAll("[data-fmt]").forEach(z => z.setAttribute("aria-pressed", z === b)); stAspect(); });
   p.querySelector("[data-snd]").onclick = e => { ST.film.sound = ST.film.sound === "prod" ? "aucun" : "prod"; stSave(); e.currentTarget.setAttribute("aria-pressed", ST.film.sound === "prod"); };
@@ -12225,6 +12231,178 @@ const ST_CSS = `
 .st-tags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; } .st-tags span { font: 600 11px Inter, sans-serif; background: #eef0f4; color: #2c2f37; padding: 3px 8px; border-radius: 999px; } .st-tags i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
 .st-add { align-self: flex-start; }
 @media (max-width: 900px) { .st { grid-template-columns: 1fr; padding: 74px 10px 140px; } .st-player { position: static; } }`;
+/* =====================================================================
+   Îlot REELS IA : production de vidéos courtes pour les réseaux, comme un studio de pub IA.
+   Méthode des studios (Versus, Silverside…) : une bible de DA verrouillée + des références (tes formes, ton
+   vêtement de l'atelier, tes images), une liste de plans écrite très précisément ; pour chaque plan on génère
+   d'abord des IMAGES CLÉS (on choisit la meilleure), puis on ANIME l'image choisie en vidéo (Kling 2.5 / Veo 3.1,
+   via fal.ai, comme l'ancienne app TNB Studio) ; enfin MONTAGE automatique (ordre des plans, texte, son : ta prod
+   du sampler ou le son des clips) et export MP4 9:16. Les appels passent par la fonction serveur « reel » :
+   la clé ne quitte jamais le serveur, réservé à l'admin, plafond de dépense par jour.
+   ===================================================================== */
+const RL = { film: null, cfg: null, jobs: {}, poll: 0, play: null, exporting: false };
+const RL_VID = { vid_kling: { lab: "Kling 2.5 Pro", durs: ["5", "10"], cost: d => (d === "10" ? 0.7 : 0.35) }, vid_veo_son: { lab: "Veo 3.1 + son", durs: ["4s", "6s", "8s"], cost: d => 0.4 * parseInt(d) }, vid_veo: { lab: "Veo 3.1 muet", durs: ["4s", "6s", "8s"], cost: d => 0.2 * parseInt(d) } };
+const RL_BIBLE = "Direction artistique TwoNightBaby : épurée, hopecore / ethereal, lumière douce et naturelle, verre clair, plastique transparent et couleurs vibrantes posées sur des matières brutes (béton, aluminium brossé), très fin. Règle : un élément brut, un détail lumineux, une nuance. Photographie de publicité haut de gamme, grain argentique léger, pas de texte incrusté, pas de logo inventé.";
+const RL_DEMO = [
+  { txt: "Gros plan sur une main qui pose un t-shirt blanc plié sur une table en aluminium brossé, une petite LED magenta s'allume à côté", cam: "Lent travelling avant, la mise au point glisse du tissu vers la LED", text: "" },
+  { txt: "Une jeune femme en t-shirt blanc oversize marche dans une rue de Paris au petit matin, lumière dorée rasante, pavés mouillés", cam: "Caméra à l'épaule qui la suit de dos puis la dépasse, ralenti léger", text: "TWO NIGHT BABY" },
+  { txt: "Silhouette assise sur un bloc de béton brut, drapé de tissu clair, ballons mats reliés par des câbles colorés brillants", cam: "Plan fixe, seul le drapé bouge avec le vent", text: "DROP 02 — BIENTÔT" },
+];
+function rlLoad() { let f = null; try { f = JSON.parse(localStorage.getItem("atelier-reels") || "null"); } catch {} RL.film = f && f.shots ? f : { name: "Reel", format: "9:16", bible: RL_BIBLE, refs: [], sound: "prod", shots: RL_DEMO.map(s => ({ ...s, refs: [], keys: [], key: null, clip: null, model: "vid_kling", dur: "5" })) }; }
+function rlSave() { try { localStorage.setItem("atelier-reels", JSON.stringify(RL.film)); } catch {} }
+async function rlCall(body) {
+  const db = prDb(); if (!db || !me) throw new Error("connecte-toi d'abord");
+  const { data, error } = await db.functions.invoke("reel", { body }); if (error) { let m = error.message; try { const j = await error.context.json(); m = j.error || m; } catch {} throw new Error(m); } if (data && data.error) throw new Error(data.error); return data;
+}
+const rlPrompt = (S, kind) => kind === "image"
+  ? `${S.txt}. ${S.cam ? "Cadrage et intention caméra : " + S.cam + ". " : ""}Format vertical ${RL.film.format}. ${RL.film.bible}${S.refs.length ? " Reprends fidèlement les sujets des images de référence (forme, vêtement, logo) sans les déformer." : ""}`
+  : `${S.cam || "Mouvement de caméra lent et maîtrisé"}. ${S.txt}. Mouvement réaliste, physique crédible, rendu publicitaire haut de gamme, pas de texte.`;
+const rlMoney = n => n.toFixed(2).replace(".", ",") + " $";
+
+async function rlSubmit(i, kind) {
+  const S = RL.film.shots[i], note = document.getElementById("rl-note"), say = t => { if (note) note.textContent = t; };
+  try {
+    let body;
+    if (kind === "image") { const refs = S.refs.map(k => RL.film.refs[k] && RL.film.refs[k].url).filter(Boolean);
+      body = { action: "submit", film: RL.film.name, shot: i, model: refs.length ? "img_ref" : "img_pro", opts: { prompt: S.promptImg || rlPrompt(S, "image"), refs, n: 2, aspect: RL.film.format } }; }
+    else { if (!S.key) return say("Choisis d'abord une image clé pour ce plan.");
+      const m = S.model === "vid_kling" ? "vid_kling" : "vid_veo"; body = { action: "submit", film: RL.film.name, shot: i, model: m, opts: { prompt: S.promptVid || rlPrompt(S, "video"), image: S.key, duration: S.dur, aspect: RL.film.format, audio: S.model === "vid_veo_son" } }; }
+    say(kind === "image" ? `Plan ${i + 1} : images clés demandées…` : `Plan ${i + 1} : animation demandée (1 à 4 min)…`);
+    const { job } = await rlCall(body); RL.jobs[job.id] = job; (S.jobs = S.jobs || []).push(job.id); rlSave(); rlRender(); rlPollSoon(); rlConfig();
+  } catch (e) { say("Impossible : " + e.message); }
+}
+function rlPollSoon() { clearTimeout(RL.poll); RL.poll = setTimeout(rlPoll, 4000); }
+async function rlPoll() {
+  if (!document.getElementById("rl-shots")) return; const ids = Object.values(RL.jobs).filter(j => j.status === "running").map(j => j.id); if (!ids.length) return;
+  try { const { jobs } = await rlCall({ action: "poll", ids }); let changed = false;
+    for (const j of jobs) { const old = RL.jobs[j.id]; RL.jobs[j.id] = j; if (old && old.status !== j.status) changed = true;
+      if (j.status === "done" && old && old.status !== "done") { const S = RL.film.shots[j.shot]; if (!S) continue; const urls = (j.result_url || "").split("\n").filter(Boolean);
+        if (j.kind === "image") { S.keys = [...urls, ...(S.keys || [])].slice(0, 8); if (!S.key) S.key = urls[0]; } else { S.clips = [...urls, ...(S.clips || [])].slice(0, 6); S.clip = urls[0]; } rlSave(); uisYes && uisYes(); } }
+    if (changed) rlRender(); } catch (e) { console.warn(e); }
+  if (Object.values(RL.jobs).some(j => j.status === "running")) rlPollSoon();
+}
+async function rlConfig() { const box = document.getElementById("rl-cfg"); try { RL.cfg = await rlCall({ action: "config" }); } catch (e) { RL.cfg = { error: e.message }; }
+  if (!box) return; const c = RL.cfg; box.innerHTML = c.error ? `<span class="rl-warn">${dzEsc(c.error)}</span>` : !c.ready ? `<span class="rl-warn">La clé fal.ai n'est pas encore branchée (secret FAL_KEY dans Supabase → Edge Functions → Secrets).</span>` : `Dépensé sur 24 h : <b>${rlMoney(c.spent)}</b> / ${rlMoney(c.cap)}`; }
+
+/* --- références : formes, vêtement de l'atelier, images importées → stockées en ligne pour les modèles --- */
+async function rlAddRef(dataUrl, label) { const note = document.getElementById("rl-note"); try { if (note) note.textContent = "Envoi de la référence…"; const { url } = await rlCall({ action: "upload", data: dataUrl }); RL.film.refs.push({ url, label }); rlSave(); rlRender(); if (note) note.textContent = "Référence ajoutée ✓"; } catch (e) { if (note) note.textContent = "Référence refusée : " + e.message; } }
+function rlFormRef(sc) { const c = document.createElement("canvas"); c.width = c.height = 768; const x = c.getContext("2d"); x.fillStyle = "#f4f3f0"; x.fillRect(0, 0, 768, 768); x.drawImage(tlSprite(sc, "#121214", 640), 64, 64); rlAddRef(c.toDataURL("image/jpeg", 0.92), "Forme"); }
+function rlGarmentRef() { const V = DZ.V3 || ST.V; if (!V) { const n = document.getElementById("rl-note"); if (n) n.textContent = "Ouvre d'abord l'atelier Design (ou le Studio) pour photographier ton vêtement."; return; }
+  V.render(); const src = V.r.domElement, c = document.createElement("canvas"), k = 1024 / Math.max(src.width, src.height); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); rlAddRef(c.toDataURL("image/jpeg", 0.92), "Vêtement"); }
+
+/* --- interface --- */
+function rlRender() {
+  const box = document.getElementById("rl-shots"); if (!box) return; const F = RL.film;
+  const refs = document.getElementById("rl-refs"); if (refs) refs.innerHTML = F.refs.length ? F.refs.map((r, k) => `<figure class="rl-ref"><img alt="" src="${r.url}"><figcaption>${k + 1}. ${dzEsc(r.label)}</figcaption><button class="w-chip" data-rdel="${k}">✕</button></figure>`).join("") : `<p class="sp-hint">Aucune référence. Ajoute ton vêtement, une forme ou une image : les images clés les reprendront fidèlement.</p>`;
+  box.innerHTML = F.shots.map((S, i) => { const run = (S.jobs || []).map(id => RL.jobs[id]).filter(j => j && j.status === "running"), fail = (S.jobs || []).map(id => RL.jobs[id]).filter(j => j && j.status === "failed").slice(-1)[0], V = RL_VID[S.model] || RL_VID.vid_kling;
+    return `<div class="rl-shot"><div class="st-sh-top"><b>Plan ${i + 1}</b><span class="st-sp"></span><button class="w-chip" data-up="${i}">↑</button><button class="w-chip" data-down="${i}">↓</button><button class="w-chip" data-del="${i}">✕</button></div>
+      <label class="rl-l">À l'image <span>sujet, action, lieu, lumière, matières — très précis</span></label><textarea class="st-txt" data-f="txt" data-i="${i}" rows="3">${dzEsc(S.txt)}</textarea>
+      <label class="rl-l">Caméra et mouvement</label><input class="dz-in wide" data-f="cam" data-i="${i}" value="${dzEsc(S.cam || "")}" placeholder="ex. lent travelling avant, ralenti, mise au point qui glisse">
+      <label class="rl-l">Texte à l'écran <span>facultatif, ajouté au montage</span></label><input class="dz-in wide" data-f="text" data-i="${i}" value="${dzEsc(S.text || "")}" maxlength="40">
+      ${F.refs.length ? `<div class="ir-chips">${F.refs.map((r, k) => `<button class="w-chip" data-sref="${i}:${k}" aria-pressed="${S.refs.includes(k)}">Réf. ${k + 1} ${dzEsc(r.label)}</button>`).join("")}</div>` : ""}
+      <div class="rl-row"><button class="w-pill" data-img="${i}">Images clés ×2 · ${rlMoney(S.refs.length ? 0.078 : 0.12)}</button>${run.length ? `<span class="rl-run">⏳ ${run.map(j => j.kind === "image" ? "images" : "vidéo").join(", ")} en cours…</span>` : ""}${fail ? `<span class="rl-warn" title="${dzEsc(fail.error || "")}">Échec, réessaie</span>` : ""}</div>
+      ${S.keys && S.keys.length ? `<div class="rl-keys">${S.keys.map(u => `<button class="rl-key" data-key="${i}" data-u="${u}" aria-pressed="${S.key === u}"><img alt="" src="${u}"></button>`).join("")}</div>` : ""}
+      <div class="rl-row"><select class="dz-in" data-f="model" data-i="${i}">${Object.entries(RL_VID).map(([k, m]) => `<option value="${k}" ${S.model === k ? "selected" : ""}>${m.lab}</option>`).join("")}</select>
+        <select class="dz-in" data-f="dur" data-i="${i}">${V.durs.map(d => `<option value="${d}" ${S.dur === d ? "selected" : ""}>${parseInt(d)} s</option>`).join("")}</select>
+        <button class="w-pill dark" data-vid="${i}" ${S.key ? "" : "disabled"}>Animer · ${rlMoney(V.cost(V.durs.includes(S.dur) ? S.dur : V.durs[0]))}</button></div>
+      ${S.clips && S.clips.length ? `<div class="rl-keys">${S.clips.map(u => `<button class="rl-key vid" data-clip="${i}" data-u="${u}" aria-pressed="${S.clip === u}"><video src="${u}" muted loop playsinline preload="metadata"></video></button>`).join("")}</div>` : ""}
+      <details class="rl-pr"><summary>Prompts envoyés (modifiables)</summary><textarea class="st-txt" data-f="promptImg" data-i="${i}" rows="4" placeholder="${dzEsc(rlPrompt(S, "image"))}">${dzEsc(S.promptImg || "")}</textarea><textarea class="st-txt" data-f="promptVid" data-i="${i}" rows="3" placeholder="${dzEsc(rlPrompt(S, "video"))}">${dzEsc(S.promptVid || "")}</textarea></details></div>`; }).join("") + `<button class="w-chip st-add" data-a="add">+ Ajouter un plan</button>`;
+  const shots = F.shots;
+  box.querySelectorAll("[data-f]").forEach(el => el[el.tagName === "SELECT" ? "onchange" : "oninput"] = () => { const S = shots[+el.dataset.i]; S[el.dataset.f] = el.value; if (el.dataset.f === "model") { const V = RL_VID[el.value]; if (!V.durs.includes(S.dur)) S.dur = V.durs[V.durs.length > 2 ? 1 : 0]; rlSave(); rlRender(); } else rlSave(); if (el.dataset.f === "dur") rlRender(); });
+  const mv = (i, k) => { const j = i + k; if (j < 0 || j >= shots.length) return; [shots[i], shots[j]] = [shots[j], shots[i]]; rlSave(); rlRender(); };
+  box.querySelectorAll("[data-up]").forEach(b => b.onclick = () => mv(+b.dataset.up, -1)); box.querySelectorAll("[data-down]").forEach(b => b.onclick = () => mv(+b.dataset.down, 1));
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { if (shots.length < 2) return; shots.splice(+b.dataset.del, 1); rlSave(); rlRender(); });
+  box.querySelector('[data-a="add"]').onclick = () => { shots.push({ txt: "", cam: "", text: "", refs: [], keys: [], key: null, clip: null, model: "vid_kling", dur: "5" }); rlSave(); rlRender(); };
+  box.querySelectorAll("[data-sref]").forEach(b => b.onclick = () => { const [i, k] = b.dataset.sref.split(":").map(Number), S = shots[i]; S.refs = S.refs.includes(k) ? S.refs.filter(z => z !== k) : [...S.refs, k]; rlSave(); rlRender(); });
+  box.querySelectorAll("[data-img]").forEach(b => b.onclick = () => rlSubmit(+b.dataset.img, "image")); box.querySelectorAll("[data-vid]").forEach(b => b.onclick = () => rlSubmit(+b.dataset.vid, "video"));
+  box.querySelectorAll("[data-key]").forEach(b => b.onclick = () => { shots[+b.dataset.key].key = b.dataset.u; rlSave(); rlRender(); });
+  box.querySelectorAll("[data-clip]").forEach(b => { b.onclick = () => { shots[+b.dataset.clip].clip = b.dataset.u; rlSave(); rlRender(); }; const v = b.querySelector("video"); b.onmouseenter = () => v.play().catch(() => {}); b.onmouseleave = () => v.pause(); });
+  document.querySelectorAll("[data-rdel]").forEach(b => b.onclick = () => { const k = +b.dataset.rdel; F.refs.splice(k, 1); shots.forEach(S => S.refs = S.refs.filter(z => z !== k).map(z => z > k ? z - 1 : z)); rlSave(); rlRender(); });
+  const ok = shots.filter(S => S.clip).length, m = document.getElementById("rl-mtot"); if (m) m.textContent = `${ok} / ${shots.length} plans animés`;
+}
+/* --- montage : les clips choisis bout à bout, texte, son, export MP4 --- */
+function rlTimeline() { return RL.film.shots.filter(S => S.clip).map(S => ({ url: S.clip, text: S.text || "" })); }
+async function rlLoadVideos(list) { return Promise.all(list.map(c => new Promise((res, rej) => { const v = document.createElement("video"); v.crossOrigin = "anonymous"; v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = c.url; v.onloadeddata = () => res(Object.assign(c, { v, dur: v.duration })); v.onerror = () => rej(new Error("clip illisible")); }))); }
+function rlDrawText(x, W, H, text, tin, tout) { if (!text) return; const a = Math.max(0, Math.min(1, tin / 0.4, tout / 0.3)), fs = Math.min(W, H) * (text.length > 14 ? 0.07 : 0.095);
+  x.save(); x.globalAlpha = a; x.font = `800 ${fs}px Inter, "Helvetica Neue", Arial, sans-serif`; try { x.letterSpacing = `${fs * 0.04}px`; } catch {} x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = "#f4f3f0"; x.shadowColor = "rgba(0,0,0,.45)"; x.shadowBlur = fs * 0.3; x.fillText(text.toUpperCase(), W / 2, H * 0.82); x.restore(); }
+async function rlPreview() {
+  const cv = document.getElementById("rl-out"), note = document.getElementById("rl-note"); const list = rlTimeline(); if (!list.length) { if (note) note.textContent = "Aucun plan animé pour l'instant."; return; }
+  if (RL.play) { RL.play.stop = true; RL.play = null; return; } const P = RL.play = { stop: false }; let vids; try { vids = await rlLoadVideos(list); } catch (e) { if (note) note.textContent = e.message; return; }
+  const x = cv.getContext("2d"); for (const c of vids) { if (P.stop) break; c.v.currentTime = 0; await c.v.play().catch(() => {}); await new Promise(res => { const tick = () => { if (P.stop || c.v.ended) return res(); x.drawImage(c.v, 0, 0, cv.width, cv.height); rlDrawText(x, cv.width, cv.height, c.text, c.v.currentTime, c.dur - c.v.currentTime); requestAnimationFrame(tick); }; tick(); }); c.v.pause(); }
+  RL.play = null;
+}
+async function rlExport() {
+  if (RL.exporting) return; const note = document.getElementById("rl-note"), say = t => { if (note) note.textContent = t; }, list = rlTimeline(); if (!list.length) return say("Anime au moins un plan avant le montage.");
+  if (window.VideoEncoder) await ensureMuxer(); if (!window.VideoEncoder || !window.Mp4Muxer) return say("L'export vidéo demande Chrome, Edge ou un Safari récent.");
+  RL.exporting = true;
+  try {
+    say("Chargement des clips…"); const vids = await rlLoadVideos(list), total = vids.reduce((a, c) => a + c.dur, 0), [W, H] = RL.film.format === "16:9" ? [1920, 1080] : RL.film.format === "1:1" ? [1080, 1080] : [1080, 1920], fps = 30, N = Math.floor(total * fps);
+    let vcfg = null, vmux = "avc"; for (const [codec, m] of [["avc1.640028", "avc"], ["avc1.4d0028", "avc"], ["vp09.00.40.08", "vp9"]]) { const c = { codec, width: W, height: H, bitrate: 12_000_000, framerate: fps }; try { if ((await VideoEncoder.isConfigSupported(c)).supported) { vcfg = c; vmux = m; break; } } catch {} }
+    if (!vcfg) throw new Error("aucun encodeur");
+    // son : la prod du sampler, ou le son des clips (Veo), mixé à la bonne place
+    let buf = null; const sr = 48000;
+    if (RL.film.sound === "prod") { try { const Fz = syFinished(syRecipe(), 16), r = prValid(Fz.recipe); if (r) buf = (await syOffline(Fz.recipe, Math.ceil(total / (60 / r.bpm * 4)))).buf; } catch (e) { console.warn(e); } }
+    else if (RL.film.sound === "clips") { const oc = new OfflineAudioContext(2, Math.ceil(total * sr), sr); let t0 = 0; for (const c of vids) { try { const ab = await (await fetch(c.url)).arrayBuffer(), ad = await oc.decodeAudioData(ab), s = oc.createBufferSource(); s.buffer = ad; s.connect(oc.destination); s.start(t0); } catch {} t0 += c.dur; } buf = await oc.startRendering(); }
+    let acodec = null, mcodec = null; if (buf && window.AudioEncoder) for (const [c, m] of [["mp4a.40.2", "aac"], ["opus", "opus"]]) { try { if ((await AudioEncoder.isConfigSupported({ codec: c, sampleRate: m === "opus" ? 48000 : buf.sampleRate, numberOfChannels: 2, bitrate: 192000 })).supported) { acodec = c; mcodec = m; break; } } catch {} }
+    if (buf && mcodec === "opus" && buf.sampleRate !== 48000) { const oc = new OfflineAudioContext(2, Math.ceil(buf.duration * 48000), 48000), s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start(0); buf = await oc.startRendering(); }
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: vmux, width: W, height: H, frameRate: fps }, ...(acodec ? { audio: { codec: mcodec, numberOfChannels: 2, sampleRate: buf.sampleRate } } : {}), fastStart: "in-memory" });
+    let err = null; const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => err = e }); venc.configure(vcfg);
+    if (acodec) { const s2 = buf.sampleRate, aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => err = e }); aenc.configure({ codec: acodec, sampleRate: s2, numberOfChannels: 2, bitrate: 192000 }); const tot = Math.min(buf.length, Math.ceil(total * s2)), L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L, fade = Math.round(0.5 * s2);
+      for (let o = 0; o < tot; o += 1024) { const n = Math.min(1024, tot - o), d = new Float32Array(n * 2); for (let j = 0; j < n; j++) { const f = Math.min(1, (tot - o - j) / fade); d[j] = L[o + j] * f; d[n + j] = R[o + j] * f; } aenc.encode(new AudioData({ format: "f32-planar", sampleRate: s2, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(o / s2 * 1e6), data: d })); } await aenc.flush(); }
+    const out = document.createElement("canvas"); out.width = W; out.height = H; const x = out.getContext("2d"), prev = document.getElementById("rl-out");
+    let ci = 0, base = 0;
+    for (let f = 0; f < N && !err; f++) { const t = f / fps; while (ci < vids.length - 1 && t >= base + vids[ci].dur) { base += vids[ci].dur; ci++; } const c = vids[ci], lt = Math.min(c.dur - 0.01, t - base);
+      if (Math.abs(c.v.currentTime - lt) > 0.001) { c.v.currentTime = lt; await new Promise(r => { c.v.onseeked = r; setTimeout(r, 1500); }); }
+      const vw = c.v.videoWidth, vh = c.v.videoHeight, k = Math.max(W / vw, H / vh); x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.drawImage(c.v, (W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k); rlDrawText(x, W, H, c.text, lt, c.dur - lt);
+      const vf = new VideoFrame(out, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % fps === 0 }); vf.close();
+      if (f % 5 === 0) { if (prev) prev.getContext("2d").drawImage(out, 0, 0, prev.width, prev.height); say(`Montage : ${Math.round(100 * f / N)} %`); await new Promise(r => setTimeout(r, 0)); } }
+    await venc.flush(); if (err) throw err; muxer.finalize(); offerBlob(new Blob([muxer.target.buffer], { type: "video/mp4" }), `tnb_reel_${RL.film.format.replace(":", "x")}.mp4`); say("Reel prêt ✓"); uisYes();
+  } catch (e) { console.warn(e); say("Le montage a échoué : " + (e.message || e)); } finally { RL.exporting = false; }
+}
+function wPReels(p) {
+  if (!document.getElementById("st-css")) { const c = document.createElement("style"); c.id = "st-css"; c.textContent = ST_CSS; document.head.append(c); }
+  if (!document.getElementById("rl-css")) { const c = document.createElement("style"); c.id = "rl-css"; c.textContent = RL_CSS; document.head.append(c); }
+  if (!RL.film) rlLoad(); const F = RL.film;
+  p.innerHTML = wHead("Reels IA · production vidéo pour les réseaux")
+    + `<div class="w-scroll w-live"><div class="st rl">
+      <div class="st-player"><div class="st-frame" style="aspect-ratio:${F.format === "16:9" ? "16 / 9" : F.format === "1:1" ? "1 / 1" : "9 / 16"};width:min(100%, calc((100vh - 260px) * ${F.format === "16:9" ? 1.7778 : F.format === "1:1" ? 1 : 0.5625}))"><canvas id="rl-out" width="${F.format === "16:9" ? 640 : 360}" height="${F.format === "9:16" ? 640 : 360}"></canvas></div>
+        <div class="st-ctl"><button class="w-pill dark" id="rl-play">▶ Aperçu du montage</button><span id="rl-mtot" class="st-tc"></span></div>
+        <div class="st-ctl"><button class="w-pill" id="rl-export">Monter et exporter (MP4)</button></div>
+        <div class="ir-chips">${[["prod", "Son : ma prod"], ["clips", "Son : celui des clips"], ["aucun", "Muet"]].map(([k, l]) => `<button class="w-chip" data-snd="${k}" aria-pressed="${F.sound === k}">${l}</button>`).join("")}</div>
+        <p class="st-note" id="rl-note"></p><p class="rl-cfg" id="rl-cfg">Connexion…</p></div>
+      <div class="st-side sp-card">
+        <div class="ir-chips">${["9:16", "1:1", "16:9"].map(f => `<button class="w-chip" data-fmt="${f}" aria-pressed="${F.format === f}">${f}</button>`).join("")}</div>
+        <div class="w-sec">Bible de DA <span>verrouillée, ajoutée à chaque image</span></div><textarea class="st-txt" id="rl-bible" rows="4">${dzEsc(F.bible)}</textarea>
+        <div class="w-sec">Références <span>ce qui doit rester fidèle d'un plan à l'autre</span></div><div class="rl-refs" id="rl-refs"></div>
+        <div class="ir-chips"><button class="w-chip" id="rl-r-dz">+ Mon vêtement (atelier)</button><label class="w-chip dz-up">+ Importer une image<input type="file" accept="image/*" id="rl-r-up"></label></div><div class="dz-src" id="rl-r-forms"></div>
+        <div class="w-sec">Plans <span>image clé → animation → montage</span></div><div id="rl-shots" class="st-shots"></div>
+      </div></div></div>`;
+  p.querySelector("#rl-play").onclick = () => rlPreview(); p.querySelector("#rl-export").onclick = () => rlExport();
+  p.querySelectorAll("[data-snd]").forEach(b => b.onclick = () => { F.sound = b.dataset.snd; rlSave(); p.querySelectorAll("[data-snd]").forEach(z => z.setAttribute("aria-pressed", z === b)); });
+  p.querySelectorAll("[data-fmt]").forEach(b => b.onclick = () => { F.format = b.dataset.fmt; rlSave(); wPReels(p); });
+  p.querySelector("#rl-bible").oninput = e => { F.bible = e.target.value; rlSave(); };
+  p.querySelector("#rl-r-dz").onclick = () => rlGarmentRef();
+  p.querySelector("#rl-r-up").onchange = e => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const k = Math.min(1, 1280 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(im.src); rlAddRef(c.toDataURL("image/jpeg", 0.9), (f.name || "Image").replace(/\.[a-z0-9]+$/i, "").slice(0, 20)); }; im.src = URL.createObjectURL(f); };
+  const fb = p.querySelector("#rl-r-forms"); let pool = []; try { pool = wMyFavs(10); } catch {} for (const sc of (current || [])) if (pool.length < 12 && !pool.includes(sc)) pool.push(sc);
+  for (const sc of pool) { const b = document.createElement("button"); b.className = "tl-f"; b.title = "Ajouter cette forme en référence"; const c = document.createElement("canvas"); c.width = c.height = 80; c.getContext("2d").drawImage(tlSprite(sc, "#1b1d22", 80), 0, 0); b.append(c); b.onclick = () => rlFormRef(sc); fb.append(b); }
+  rlRender(); rlConfig();
+  // reprendre les tâches encore en cours (si on revient sur l'îlot)
+  rlCall({ action: "list" }).then(({ jobs }) => { for (const j of jobs) if (!RL.jobs[j.id]) RL.jobs[j.id] = j; for (const S of F.shots) S.jobs = (S.jobs || []).filter(id => RL.jobs[id]); rlRender(); rlPoll(); }).catch(() => {});
+}
+const RL_CSS = `
+.rl .rl-l { font: 600 11.5px Inter, sans-serif; color: #3c3f48; } .rl .rl-l span { font-weight: 400; color: #6a6e79; }
+.rl-shot { background: #fff; border: 1px solid rgba(27,29,34,.12); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+.rl-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .rl-row .dz-in { width: auto; }
+.rl-run { font: 600 12px Inter, sans-serif; color: #5b5f6b; } .rl-warn { font: 600 12px Inter, sans-serif; color: #b3221c; }
+.rl-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; } .rl-key { padding: 0; border: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: #eceef2; aspect-ratio: 9 / 16; }
+.rl-key img, .rl-key video { width: 100%; height: 100%; object-fit: cover; display: block; } .rl-key[aria-pressed="true"] { box-shadow: 0 0 0 3px #1b1d22; }
+.rl-refs { display: flex; flex-wrap: wrap; gap: 8px; } .rl-ref { margin: 0; width: 86px; position: relative; } .rl-ref img { width: 86px; height: 86px; object-fit: cover; border-radius: 10px; display: block; background: #eceef2; }
+.rl-ref figcaption { font: 600 11px Inter, sans-serif; color: #3c3f48; margin-top: 3px; } .rl-ref .w-chip { position: absolute; top: 4px; right: 4px; padding: 1px 7px; }
+.rl-pr summary { cursor: pointer; font: 600 12px Inter, sans-serif; color: #5b5f6b; } .rl-pr textarea { margin-top: 6px; font-size: 12.5px; }
+.rl-cfg { margin: 0; font: 500 12px Inter, sans-serif; color: #3c3f48; } .rl .w-pill[disabled] { opacity: .45; }
+.rl .w-pill { font-size: 12.5px; } .rl .dz-up { position: relative; overflow: hidden; } .rl .dz-up input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.rl .dz-src { display: flex; flex-wrap: wrap; gap: 5px; } .rl .tl-f { width: 52px; height: 52px; padding: 4px; border-radius: 10px; border: 1px solid rgba(27,29,34,.12); background: #fff; cursor: pointer; } .rl .tl-f canvas { width: 100%; height: 100%; display: block; }
+.rl .dz-in { border: 1px solid rgba(27,29,34,.16); border-radius: 10px; padding: 7px 10px; font: 500 13px Inter, sans-serif; background: #fff; color: #1b1d22; box-sizing: border-box; } .rl .dz-in.wide { width: 100%; } .rl .w-pill.dark { background: #1b1d22; color: #fff; }`;
 
 </script>
 
