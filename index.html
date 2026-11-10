@@ -12254,7 +12254,9 @@ async function rlCall(body) {
   const db = prDb(); if (!db || !me) throw new Error("connecte-toi d'abord");
   const { data, error } = await db.functions.invoke("reel", { body }); if (error) { let m = error.message; try { const j = await error.context.json(); m = j.error || m; } catch {} throw new Error(m); } if (data && data.error) throw new Error(data.error); return data;
 }
-const rlPrompt = (S, kind) => kind === "image"
+const rlPrompt = (S, kind, trig) => kind === "image" && trig
+  ? `${S.txt}, ${trig} garment. ${S.cam ? "Cadrage et intention caméra : " + S.cam + ". " : ""}Format vertical ${RL.film.format}. ${RL.film.bible}`
+  : kind === "image"
   ? `${S.txt}. ${S.cam ? "Cadrage et intention caméra : " + S.cam + ". " : ""}Format vertical ${RL.film.format}. ${RL.film.bible}${S.refs.length ? " Reprends fidèlement les sujets des images de référence (forme, vêtement, logo) sans les déformer." : ""}`
   : `${S.cam || "Mouvement de caméra lent et maîtrisé"}. ${S.txt}. Mouvement réaliste, physique crédible, rendu publicitaire haut de gamme, pas de texte.`;
 const rlMoney = n => n.toFixed(2).replace(".", ",") + " $";
@@ -12263,8 +12265,9 @@ async function rlSubmit(i, kind) {
   const S = RL.film.shots[i], note = document.getElementById("rl-note"), say = t => { if (note) note.textContent = t; };
   try {
     let body;
-    if (kind === "image") { const refs = S.refs.map(k => RL.film.refs[k] && RL.film.refs[k].url).filter(Boolean);
-      body = { action: "submit", film: RL.film.name, shot: i, model: refs.length ? "img_ref" : "img_pro", opts: { prompt: S.promptImg || rlPrompt(S, "image"), refs, n: 2, aspect: RL.film.format } }; }
+    if (kind === "image") { const refs = S.refs.map(k => RL.film.refs[k] && RL.film.refs[k].url).filter(Boolean), L = S.lora && RL.jobs[S.lora];
+      if (L && L.status === "done") body = { action: "submit", film: RL.film.name, shot: i, model: "img_lora", opts: { prompt: S.promptImg || rlPrompt(S, "image", L.prompt), lora: L.result_url, n: 2, aspect: RL.film.format } };
+      else body = { action: "submit", film: RL.film.name, shot: i, model: refs.length ? "img_ref" : "img_pro", opts: { prompt: S.promptImg || rlPrompt(S, "image"), refs, n: 2, aspect: RL.film.format } }; }
     else { if (!S.key) return say("Choisis d'abord une image clé pour ce plan.");
       const m = S.model === "vid_kling" ? "vid_kling" : "vid_veo"; body = { action: "submit", film: RL.film.name, shot: i, model: m, opts: { prompt: S.promptVid || rlPrompt(S, "video"), image: S.key, duration: S.dur, aspect: RL.film.format, audio: S.model === "vid_veo_son" } }; }
     say(kind === "image" ? `Plan ${i + 1} : images clés demandées…` : `Plan ${i + 1} : animation demandée (1 à 4 min)…`);
@@ -12276,7 +12279,7 @@ async function rlPoll() {
   if (!document.getElementById("rl-shots")) return; const ids = Object.values(RL.jobs).filter(j => j.status === "running").map(j => j.id); if (!ids.length) return;
   try { const { jobs } = await rlCall({ action: "poll", ids }); let changed = false;
     for (const j of jobs) { const old = RL.jobs[j.id]; RL.jobs[j.id] = j; if (old && old.status !== j.status) changed = true;
-      if (j.status === "done" && old && old.status !== "done") { const S = RL.film.shots[j.shot]; if (!S) continue; const urls = (j.result_url || "").split("\n").filter(Boolean);
+      if (j.status === "done" && old && old.status !== "done") { if (j.kind === "lora") { const n = document.getElementById("rl-note"); if (n) n.textContent = `Modèle maison « ${j.film} » prêt ✓ : choisis-le dans un plan.`; continue; } const S = RL.film.shots[j.shot]; if (!S) continue; const urls = (j.result_url || "").split("\n").filter(Boolean);
         if (j.kind === "image") { S.keys = [...urls, ...(S.keys || [])].slice(0, 8); if (!S.key) S.key = urls[0]; } else { S.clips = [...urls, ...(S.clips || [])].slice(0, 6); S.clip = urls[0]; } rlSave(); uisYes && uisYes(); } }
     if (changed) rlRender(); } catch (e) { console.warn(e); }
   if (Object.values(RL.jobs).some(j => j.status === "running")) rlPollSoon();
@@ -12290,25 +12293,38 @@ function rlFormRef(sc) { const c = document.createElement("canvas"); c.width = c
 function rlGarmentRef() { const V = DZ.V3 || ST.V; if (!V) { const n = document.getElementById("rl-note"); if (n) n.textContent = "Ouvre d'abord l'atelier Design (ou le Studio) pour photographier ton vêtement."; return; }
   V.render(); const src = V.r.domElement, c = document.createElement("canvas"), k = 1024 / Math.max(src.width, src.height); c.width = Math.round(src.width * k); c.height = Math.round(src.height * k); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); rlAddRef(c.toDataURL("image/jpeg", 0.92), "Vêtement"); }
 
+/* --- modèle maison (LoRA) : un petit modèle entraîné sur nos images, qui reproduit fidèlement nos vêtements --- */
+const rlLoras = () => Object.values(RL.jobs).filter(j => j.kind === "lora").sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+async function rlTrain() {
+  const note = document.getElementById("rl-note"), say = t => { if (note) note.textContent = t; }, F = RL.film, imgs = F.refs.map(r => r.url);
+  if (imgs.length < 4) return say("Il faut au moins 4 images en références (idéalement 10 à 20 : le vêtement sous plusieurs angles, sur fonds différents).");
+  const name = (document.getElementById("rl-lname").value || "Drop").trim().slice(0, 24), trigger = "TNB" + name.normalize("NFD").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
+  try { say("Préparation de l'entraînement…"); const { job } = await rlCall({ action: "submit", film: name, model: "lora_train", opts: { images: imgs, trigger, steps: 1000, style: document.getElementById("rl-lstyle").getAttribute("aria-pressed") === "true" } });
+    RL.jobs[job.id] = job; say(`Entraînement de « ${name} » lancé : 5 à 15 min. Tu peux continuer à travailler.`); rlRender(); rlPollSoon(); rlConfig(); } catch (e) { say("Impossible : " + e.message); }
+}
+
 /* --- interface --- */
 function rlRender() {
   const box = document.getElementById("rl-shots"); if (!box) return; const F = RL.film;
   const refs = document.getElementById("rl-refs"); if (refs) refs.innerHTML = F.refs.length ? F.refs.map((r, k) => `<figure class="rl-ref"><img alt="" src="${r.url}"><figcaption>${k + 1}. ${dzEsc(r.label)}</figcaption><button class="w-chip" data-rdel="${k}">✕</button></figure>`).join("") : `<p class="sp-hint">Aucune référence. Ajoute ton vêtement, une forme ou une image : les images clés les reprendront fidèlement.</p>`;
+  const lb = document.getElementById("rl-loras"), LS = rlLoras(); if (lb) lb.innerHTML = LS.length ? LS.map(j => `<div class="rl-lora"><b>${dzEsc(j.film || "Modèle")}</b><span>${j.status === "done" ? "prêt · mot clé " + dzEsc(j.prompt) : j.status === "failed" ? `<span class="rl-warn" title="${dzEsc(j.error || "")}">échec</span>` : "⏳ entraînement en cours…"}</span></div>`).join("") : `<p class="sp-hint">Aucun pour l'instant. Mets 10 à 20 photos de ton vêtement en références (angles et fonds variés), puis entraîne : ensuite chaque image clé le reproduit fidèlement.</p>`;
+  const ready = LS.filter(j => j.status === "done");
   box.innerHTML = F.shots.map((S, i) => { const run = (S.jobs || []).map(id => RL.jobs[id]).filter(j => j && j.status === "running"), fail = (S.jobs || []).map(id => RL.jobs[id]).filter(j => j && j.status === "failed").slice(-1)[0], V = RL_VID[S.model] || RL_VID.vid_kling;
     return `<div class="rl-shot"><div class="st-sh-top"><b>Plan ${i + 1}</b><span class="st-sp"></span><button class="w-chip" data-up="${i}">↑</button><button class="w-chip" data-down="${i}">↓</button><button class="w-chip" data-del="${i}">✕</button></div>
       <label class="rl-l">À l'image <span>sujet, action, lieu, lumière, matières — très précis</span></label><textarea class="st-txt" data-f="txt" data-i="${i}" rows="3">${dzEsc(S.txt)}</textarea>
       <label class="rl-l">Caméra et mouvement</label><input class="dz-in wide" data-f="cam" data-i="${i}" value="${dzEsc(S.cam || "")}" placeholder="ex. lent travelling avant, ralenti, mise au point qui glisse">
       <label class="rl-l">Texte à l'écran <span>facultatif, ajouté au montage</span></label><input class="dz-in wide" data-f="text" data-i="${i}" value="${dzEsc(S.text || "")}" maxlength="40">
       ${F.refs.length ? `<div class="ir-chips">${F.refs.map((r, k) => `<button class="w-chip" data-sref="${i}:${k}" aria-pressed="${S.refs.includes(k)}">Réf. ${k + 1} ${dzEsc(r.label)}</button>`).join("")}</div>` : ""}
-      <div class="rl-row"><button class="w-pill" data-img="${i}">Images clés ×2 · ${rlMoney(S.refs.length ? 0.078 : 0.12)}</button>${run.length ? `<span class="rl-run">⏳ ${run.map(j => j.kind === "image" ? "images" : "vidéo").join(", ")} en cours…</span>` : ""}${fail ? `<span class="rl-warn" title="${dzEsc(fail.error || "")}">Échec, réessaie</span>` : ""}</div>
+      ${ready.length ? `<div class="rl-row"><span class="rl-l">Modèle d'image</span><select class="dz-in" data-f="lora" data-i="${i}"><option value="">Références (Nano Banana)</option>${ready.map(j => `<option value="${j.id}" ${S.lora === j.id ? "selected" : ""}>Maison : ${dzEsc(j.film || "")}</option>`).join("")}</select></div>` : ""}
+      <div class="rl-row"><button class="w-pill" data-img="${i}">Images clés ×2 · ${rlMoney(S.lora && RL.jobs[S.lora] ? 0.07 : S.refs.length ? 0.078 : 0.12)}</button>${run.length ? `<span class="rl-run">⏳ ${run.map(j => j.kind === "image" ? "images" : "vidéo").join(", ")} en cours…</span>` : ""}${fail ? `<span class="rl-warn" title="${dzEsc(fail.error || "")}">Échec, réessaie</span>` : ""}</div>
       ${S.keys && S.keys.length ? `<div class="rl-keys">${S.keys.map(u => `<button class="rl-key" data-key="${i}" data-u="${u}" aria-pressed="${S.key === u}"><img alt="" src="${u}"></button>`).join("")}</div>` : ""}
       <div class="rl-row"><select class="dz-in" data-f="model" data-i="${i}">${Object.entries(RL_VID).map(([k, m]) => `<option value="${k}" ${S.model === k ? "selected" : ""}>${m.lab}</option>`).join("")}</select>
         <select class="dz-in" data-f="dur" data-i="${i}">${V.durs.map(d => `<option value="${d}" ${S.dur === d ? "selected" : ""}>${parseInt(d)} s</option>`).join("")}</select>
         <button class="w-pill dark" data-vid="${i}" ${S.key ? "" : "disabled"}>Animer · ${rlMoney(V.cost(V.durs.includes(S.dur) ? S.dur : V.durs[0]))}</button></div>
       ${S.clips && S.clips.length ? `<div class="rl-keys">${S.clips.map(u => `<button class="rl-key vid" data-clip="${i}" data-u="${u}" aria-pressed="${S.clip === u}"><video src="${u}" muted loop playsinline preload="metadata"></video></button>`).join("")}</div>` : ""}
-      <details class="rl-pr"><summary>Prompts envoyés (modifiables)</summary><textarea class="st-txt" data-f="promptImg" data-i="${i}" rows="4" placeholder="${dzEsc(rlPrompt(S, "image"))}">${dzEsc(S.promptImg || "")}</textarea><textarea class="st-txt" data-f="promptVid" data-i="${i}" rows="3" placeholder="${dzEsc(rlPrompt(S, "video"))}">${dzEsc(S.promptVid || "")}</textarea></details></div>`; }).join("") + `<button class="w-chip st-add" data-a="add">+ Ajouter un plan</button>`;
+      <details class="rl-pr"><summary>Prompts envoyés (modifiables)</summary><textarea class="st-txt" data-f="promptImg" data-i="${i}" rows="4" placeholder="${dzEsc(rlPrompt(S, "image", S.lora && RL.jobs[S.lora] ? RL.jobs[S.lora].prompt : ""))}">${dzEsc(S.promptImg || "")}</textarea><textarea class="st-txt" data-f="promptVid" data-i="${i}" rows="3" placeholder="${dzEsc(rlPrompt(S, "video"))}">${dzEsc(S.promptVid || "")}</textarea></details></div>`; }).join("") + `<button class="w-chip st-add" data-a="add">+ Ajouter un plan</button>`;
   const shots = F.shots;
-  box.querySelectorAll("[data-f]").forEach(el => el[el.tagName === "SELECT" ? "onchange" : "oninput"] = () => { const S = shots[+el.dataset.i]; S[el.dataset.f] = el.value; if (el.dataset.f === "model") { const V = RL_VID[el.value]; if (!V.durs.includes(S.dur)) S.dur = V.durs[V.durs.length > 2 ? 1 : 0]; rlSave(); rlRender(); } else rlSave(); if (el.dataset.f === "dur") rlRender(); });
+  box.querySelectorAll("[data-f]").forEach(el => el[el.tagName === "SELECT" ? "onchange" : "oninput"] = () => { const S = shots[+el.dataset.i]; S[el.dataset.f] = el.value; if (el.dataset.f === "lora") { rlSave(); rlRender(); } else if (el.dataset.f === "model") { const V = RL_VID[el.value]; if (!V.durs.includes(S.dur)) S.dur = V.durs[V.durs.length > 2 ? 1 : 0]; rlSave(); rlRender(); } else rlSave(); if (el.dataset.f === "dur") rlRender(); });
   const mv = (i, k) => { const j = i + k; if (j < 0 || j >= shots.length) return; [shots[i], shots[j]] = [shots[j], shots[i]]; rlSave(); rlRender(); };
   box.querySelectorAll("[data-up]").forEach(b => b.onclick = () => mv(+b.dataset.up, -1)); box.querySelectorAll("[data-down]").forEach(b => b.onclick = () => mv(+b.dataset.down, 1));
   box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { if (shots.length < 2) return; shots.splice(+b.dataset.del, 1); rlSave(); rlRender(); });
@@ -12375,6 +12391,8 @@ function wPReels(p) {
         <div class="w-sec">Bible de DA <span>verrouillée, ajoutée à chaque image</span></div><textarea class="st-txt" id="rl-bible" rows="4">${dzEsc(F.bible)}</textarea>
         <div class="w-sec">Références <span>ce qui doit rester fidèle d'un plan à l'autre</span></div><div class="rl-refs" id="rl-refs"></div>
         <div class="ir-chips"><button class="w-chip" id="rl-r-dz">+ Mon vêtement (atelier)</button><label class="w-chip dz-up">+ Importer une image<input type="file" accept="image/*" id="rl-r-up"></label></div><div class="dz-src" id="rl-r-forms"></div>
+        <div class="w-sec">Modèle maison <span>entraîné sur tes références · ≈ 2 $ une fois</span></div><div id="rl-loras"></div>
+        <div class="rl-row"><input class="dz-in" id="rl-lname" placeholder="Nom (ex. Hoodie R-Ball)" maxlength="24"><button class="w-chip" id="rl-lstyle" aria-pressed="false" title="Apprendre une ambiance plutôt qu'un objet">Style</button><button class="w-pill" id="rl-ltrain">Entraîner</button></div>
         <div class="w-sec">Plans <span>image clé → animation → montage</span></div><div id="rl-shots" class="st-shots"></div>
       </div></div></div>`;
   p.querySelector("#rl-play").onclick = () => rlPreview(); p.querySelector("#rl-export").onclick = () => rlExport();
@@ -12382,6 +12400,8 @@ function wPReels(p) {
   p.querySelectorAll("[data-fmt]").forEach(b => b.onclick = () => { F.format = b.dataset.fmt; rlSave(); wPReels(p); });
   p.querySelector("#rl-bible").oninput = e => { F.bible = e.target.value; rlSave(); };
   p.querySelector("#rl-r-dz").onclick = () => rlGarmentRef();
+  p.querySelector("#rl-ltrain").onclick = () => rlTrain();
+  p.querySelector("#rl-lstyle").onclick = e => e.currentTarget.setAttribute("aria-pressed", e.currentTarget.getAttribute("aria-pressed") !== "true");
   p.querySelector("#rl-r-up").onchange = e => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const k = Math.min(1, 1280 / Math.max(im.width, im.height)), c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(im.src); rlAddRef(c.toDataURL("image/jpeg", 0.9), (f.name || "Image").replace(/\.[a-z0-9]+$/i, "").slice(0, 20)); }; im.src = URL.createObjectURL(f); };
   const fb = p.querySelector("#rl-r-forms"); let pool = []; try { pool = wMyFavs(10); } catch {} for (const sc of (current || [])) if (pool.length < 12 && !pool.includes(sc)) pool.push(sc);
   for (const sc of pool) { const b = document.createElement("button"); b.className = "tl-f"; b.title = "Ajouter cette forme en référence"; const c = document.createElement("canvas"); c.width = c.height = 80; c.getContext("2d").drawImage(tlSprite(sc, "#1b1d22", 80), 0, 0); b.append(c); b.onclick = () => rlFormRef(sc); fb.append(b); }
@@ -12399,6 +12419,7 @@ const RL_CSS = `
 .rl-refs { display: flex; flex-wrap: wrap; gap: 8px; } .rl-ref { margin: 0; width: 86px; position: relative; } .rl-ref img { width: 86px; height: 86px; object-fit: cover; border-radius: 10px; display: block; background: #eceef2; }
 .rl-ref figcaption { font: 600 11px Inter, sans-serif; color: #3c3f48; margin-top: 3px; } .rl-ref .w-chip { position: absolute; top: 4px; right: 4px; padding: 1px 7px; }
 .rl-pr summary { cursor: pointer; font: 600 12px Inter, sans-serif; color: #5b5f6b; } .rl-pr textarea { margin-top: 6px; font-size: 12.5px; }
+.rl-lora { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; background: #fff; border: 1px solid rgba(27,29,34,.12); border-radius: 10px; font: 500 12.5px Inter, sans-serif; margin-bottom: 5px; } .rl-lora span { color: #5b5f6b; }
 .rl-cfg { margin: 0; font: 500 12px Inter, sans-serif; color: #3c3f48; } .rl .w-pill[disabled] { opacity: .45; }
 .rl .w-pill { font-size: 12.5px; } .rl .dz-up { position: relative; overflow: hidden; } .rl .dz-up input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .rl .dz-src { display: flex; flex-wrap: wrap; gap: 5px; } .rl .tl-f { width: 52px; height: 52px; padding: 4px; border-radius: 10px; border: 1px solid rgba(27,29,34,.12); background: #fff; cursor: pointer; } .rl .tl-f canvas { width: 100%; height: 100%; display: block; }
