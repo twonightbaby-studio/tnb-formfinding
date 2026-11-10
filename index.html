@@ -4489,6 +4489,7 @@ const W_ISLANDS = [
   { k: "iris", lab: "Couleurs", r: 240, note: 64, a: [-0.42, 1.35], p: [-0.36, 2.75] },
   { k: "pavage", lab: "Pavages", r: 240, note: 67, a: [0.42, 1.35], p: [0.36, 2.75] },
   { k: "design", lab: "Design", r: 270, note: 70, a: [0, 1.78], p: [0, 3.5] },
+  { k: "studio", lab: "Studio pub", r: 250, note: 74, a: [0.58, 2.12], p: [0.36, 4.15] },
   { k: "admin", lab: "Observatoire", r: 240, note: 48, a: [0, -1.05], p: [0, -1.75], admin: true },
 ];
 const W_FAMS = [...new Set(GENES.map(G => G.fam))];
@@ -4707,7 +4708,7 @@ function wCheckActive() {
 function worldEvents() {
   const el = WORLD.el;
   addEventListener("resize", () => { if (!WORLD.on) return; const was = WORLD.H > WORLD.W * 1.05; wResize(); wPlaceIslands(); if (was !== WORLD.H > WORLD.W * 1.05 && !WORLD.active) wFitAll(false); wCheckActive(); });
-  const blocked = t => t.closest(".dz, .ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
+  const blocked = t => t.closest(".st, .dz, .ir, .tl, #ch, #jw, .sy-pick, .lrn, .sm, .dj, .sy, .sp, .w-obs, .o-side, button, input, a, .w-card, .w-thumb, .w-sheet, .w-box, .w-fx-ctl, .w-fx-stage, .w-fx-side, #w-node, label, select, textarea");
   el.addEventListener("pointerdown", e => {
     if (blocked(e.target)) return;
     WORLD.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -5092,6 +5093,9 @@ function wGlyph(x, k, cx, cy, s) {
   } else if (k === "dj") {
     [-0.48, 0.48].forEach(dx => { x.moveTo(cx + (dx + 0.36) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.36 * s, 0, Math.PI * 2); x.moveTo(cx + (dx + 0.08) * s, cy - 0.1 * s); x.arc(cx + dx * s, cy - 0.1 * s, 0.08 * s, 0, Math.PI * 2); });
     x.stroke(); x.beginPath(); x.moveTo(cx - 0.3 * s, cy + 0.55 * s); x.lineTo(cx + 0.3 * s, cy + 0.55 * s); x.stroke(); x.beginPath(); x.rect(cx - 0.06 * s, cy + 0.47 * s, 0.12 * s, 0.16 * s); x.fill();
+  } else if (k === "studio") {                      // un clap de cinéma
+    x.strokeRect(cx - 0.62 * s, cy - 0.2 * s, 1.24 * s, 0.78 * s); x.beginPath(); x.moveTo(cx - 0.62 * s, cy - 0.2 * s); x.lineTo(cx - 0.5 * s, cy - 0.55 * s); x.lineTo(cx + 0.66 * s, cy - 0.45 * s); x.lineTo(cx + 0.62 * s, cy - 0.2 * s); x.stroke();
+    for (const k of [-0.2, 0.15, 0.45]) { x.beginPath(); x.moveTo(cx + k * s, cy - 0.5 * s); x.lineTo(cx + (k - 0.12) * s, cy - 0.22 * s); x.stroke(); }
   } else if (k === "design") {                      // un t-shirt à plat
     const T = [[-0.2, -0.6], [-0.62, -0.42], [-0.85, -0.05], [-0.6, 0.08], [-0.48, -0.12], [-0.48, 0.66], [0.48, 0.66], [0.48, -0.12], [0.6, 0.08], [0.85, -0.05], [0.62, -0.42], [0.2, -0.6]];
     T.forEach(([u, v], i) => i ? x.lineTo(cx + u * s, cy + v * s) : x.moveTo(cx + u * s, cy + v * s)); x.quadraticCurveTo(cx, cy - 0.38 * s, cx - 0.2 * s, cy - 0.6 * s); x.stroke();
@@ -5205,7 +5209,7 @@ function wPanel(k) {
   if (typeof lnHide === "function") lnHide();
   WORLD.panelKey = k; WORLD.cards.clear(); WORLD.curSig = ""; WORLD.curHead = "";
   if (!k) { setTimeout(() => { if (!WORLD.panelKey) p.replaceChildren(); }, 450); return; }
-  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile, design: wPDesign }[k];
+  const fn = { connexions: wPConnexions, production: wPProduction, sampler: wPSampler, labo: wPLabo, diffusion: wPDiffusion, admin: wPAdmin, dj: wPDJ, learn: wPLearn, iris: wPIris, pavage: wPTile, design: wPDesign, studio: wPStudio }[k];
   p.innerHTML = ""; fn(p);
   p.querySelectorAll("[data-act=back]").forEach(b => b.onclick = () => { uisClick(); uisSwoosh(false); wFitAll(); });
   p.querySelectorAll("button").forEach(b => { if (!b.dataset.snd) { b.addEventListener("pointerenter", () => uisPlop()); b.dataset.snd = 1; } });
@@ -11452,7 +11456,7 @@ function wPDesign(p) {
         <div class="dz-st dz-2d"><span class="dz-lab">Patron · 2D</span><canvas id="dz-2d"></canvas><div class="dz-drawbar" id="dz-drawbar" hidden><button class="w-chip" data-a="fin">Terminer</button><button class="w-chip" data-a="annul">Annuler</button></div></div>
         <div class="dz-st dz-3d"><canvas id="dz-bg" class="dz-bg"></canvas><span class="dz-lab">Vêtement · 3D</span><canvas id="dz-3d"></canvas><span class="dz-simlab" id="dz-simlab" hidden>Le tissu se pose…</span><div class="dz-photo" id="dz-photo"></div></div>
       </div>
-      <div class="dz-bar"><div class="dz-views"><button class="w-chip" data-view="sheet">Patron complet</button><button class="w-chip" data-view="piece">Une pièce</button></div><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="false">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
+      <div class="dz-bar"><div class="dz-views"><button class="w-chip" data-view="sheet">Patron complet</button><button class="w-chip" data-view="piece">Une pièce</button></div><div class="ir-chips" id="dz-pieces"></div><div class="ir-chips"><button class="w-chip" data-tool="edit" aria-pressed="false">✎ Courbes</button><button class="w-chip" data-tool="deco">Poser un motif</button><button class="w-chip" id="dz-film">▶ En faire un film</button></div><p class="dz-hint" id="dz-hint"></p><p class="dz-how" id="dz-how" hidden></p></div>
       <div class="dz-ctl sp-card"><div class="dz-tabs">${DZ_TABS.map(([k, l]) => `<button class="w-chip" data-tab="${k}">${l}</button>`).join("")}</div><div id="dz-tab"></div></div>
       <div class="dz-galw"><div class="w-sec">Designs publiés <span>touche pour en faire ta version</span></div><div class="dz-gal" id="dz-gal"><p class="sp-hint">Chargement…</p></div></div>
     </div></div>`;
@@ -11464,6 +11468,7 @@ function wPDesign(p) {
   dzPieceChips(); dzTabsRender(); dzToolHint(); dz2dPointer(p.querySelector("#dz-2d")); dzSetView(DZ.view);
   requestAnimationFrame(() => { dzDraw2d(); dzThree().then(() => { const cv = document.getElementById("dz-3d"); if (cv) dz3dMount(cv); }).catch(err => console.warn(err)); });
   const ro = new ResizeObserver(() => { if (!document.getElementById("dz-2d")) return ro.disconnect(); dzDraw2d(); }); ro.observe(p.querySelector(".dz-2d"));
+  p.querySelector("#dz-film").onclick = () => { uisClick(); wFlyIsland(W_ISLANDS.find(i => i.k === "studio")); };
   dzPhotoUI(); dzGallery();
 }
 const DZ_CSS = `
@@ -11829,7 +11834,7 @@ function dzBuild3d(V, st, eff) {
       for (const h of hoodParts) for (let k = 0; k < h.base.length; k += 3) { S.X[h.p.off * 3 + k] = h.base[k] + dx; S.X[h.p.off * 3 + k + 1] = h.base[k + 1] + dy; S.X[h.p.off * 3 + k + 2] = h.base[k + 2] + dz; } }
     if (final) dzSmooth(S, 3); for (const p of V.parts) { const pos = p.g.attributes.position; pos.array.set(S.X.subarray(p.off * 3, (p.off + pos.count) * 3)); pos.needsUpdate = true; p.g.computeVertexNormals(); if (final) { dzCavityAO(p.g); p.g.computeBoundingSphere(); } }
     if (final) dzSeamNormals(S, V.parts);
-    if (final && V.neck && neckLoop && neckLoop.length > 8) { const pts = neckLoop.map(i => new T3.Vector3(S.X[3 * i], S.X[3 * i + 1] + 0.25, S.X[3 * i + 2])); V.neck.geometry.dispose(); V.neck.geometry = new T3.TubeGeometry(new T3.CatmullRomCurve3(pts, true, "centripetal"), 180, 0.8, 10, true); V.neck.visible = true; } };
+    if (final && V.neck && neckLoop && neckLoop.length > 8) { const pts = neckLoop.map(i => new T3.Vector3(S.X[3 * i], S.X[3 * i + 1] + 0.25, S.X[3 * i + 2])); V.neck.geometry.dispose(); V.neck.geometry = new T3.TubeGeometry(new T3.CatmullRomCurve3(pts, true, "centripetal"), 180, 1.05, 12, true); V.neck.visible = true; } };
   V.simming = true; const tick = () => { if (V.simTok !== tok) return; const t0 = performance.now(); while (step < total && performance.now() - t0 < 30) { dzSimStep(S, 8); step++; } push(step >= total); if (step < total) requestAnimationFrame(tick); else { V.simming = false; dzFrame(V, st); const l = document.getElementById("dz-simlab"); if (l) l.hidden = true; } };
   const lab = document.getElementById("dz-simlab"); if (lab) lab.hidden = false;
   requestAnimationFrame(tick);
@@ -12010,6 +12015,216 @@ function dzMakeMats(e, st) {
   const bm = new T3.MeshPhysicalMaterial({ map: tex, normalMap: nm, vertexColors: true, color: 0xd9d9dc, roughness: 0.95, sheen: 0.6, sheenRoughness: 0.6, envMapIntensity: 0.4, side: T3.BackSide, alphaTest: M.alpha ? 0.5 : 0 });
   return [fm, bm];
 }
+/* =====================================================================
+   Îlot STUDIO : un film écrit plan par plan, comme une agence de pub.
+   Chaque plan est une phrase précise (« 3 s, gros plan de face, travelling lent vers la droite, lumière store,
+   fond rose, texte « DROP 02 » en bas, fondu ») : on la lit, on en tire le cadre, le mouvement de caméra, la
+   lumière, le fond, le texte et la transition, puis notre propre moteur 3D rend chaque image (le vêtement de
+   l'atelier, simulé), avec étalonnage (grain, vignette) et la prod du sampler en son. Export MP4 image par image.
+   ===================================================================== */
+const ST = { film: null, V: null, t: 0, play: false, raf: 0, exporting: false };
+const ST_COLORS = { noir: "#121214", blanc: "#f4f3f0", rouge: "#b3221c", "rouge vif": "#d62a1e", bordeaux: "#5c1420", vert: "#3f5a3a", sauge: "#b7c4ad", bleu: "#2b3a5c", "bleu ciel": "#cfdbea", rose: "#ead2cc", beige: "#e7e0d2", crème: "#efe9dd", gris: "#9a9ca3", "gris clair": "#dcdcde", jaune: "#e8c547", orange: "#d9772b", violet: "#5a3f73" };
+const ST_TEMPLATES = {
+  drop: { name: "Short du drop", format: "9:16", grade: { grain: 0.35, vignette: 0.45 }, shots: [
+    "1,5 s, très gros plan de face sur la poitrine, fixe, lumière nuit, fond noir, texte « TWO NIGHT BABY » au centre, flash",
+    "2,5 s, plan large de trois quarts, travelling lent vers la droite, lumière store, fond crème",
+    "2 s, gros plan de profil, zoom avant, lumière store, fond crème, coupe",
+    "3 s, plan large de dos, orbite lente, lumière feuillage, fond sauge, texte « DROP 02 » en bas, fondu",
+    "2 s, plan poitrine de face, montée, lumière studio, fond rose",
+    "3 s, plan large de face, recule lentement, lumière nuit, fond noir, texte « BIENTÔT » au centre, fondu",
+  ] },
+  boucle: { name: "Boucle produit", format: "1:1", grade: { grain: 0.15, vignette: 0.25 }, shots: [
+    "8 s, plan large de face, le vêtement tourne sur lui-même, fixe, lumière studio, fond beige",
+  ] },
+};
+// lecture d'une phrase de plan → paramètres
+function stParse(txt) {
+  const s = " " + txt.toLowerCase().replace(/’/g, "'") + " ", has = (...w) => w.some(x => s.includes(x)), P = { txt };
+  const d = s.match(/(\d+(?:[.,]\d+)?)\s*(?:s\b|sec|secondes?)/); P.dur = d ? Math.max(0.4, Math.min(20, parseFloat(d[1].replace(",", ".")))) : 2.5;
+  P.cadre = has("très gros plan", "tres gros plan", "détail", "macro") ? "tgp" : has("gros plan") ? "gp" : has("plan poitrine", "plan rapproché", "plan taille", "plan moyen") ? "pp" : "pl";
+  P.angle = has("contre-plongée", "contre plongée") ? "contre" : has("plongée") ? "plongee" : has("de dos", "dos ") ? "dos" : has("profil") ? "profil" : has("trois quarts", "3/4", "trois-quarts") ? "34" : "face";
+  P.move = has("orbite", "tourne autour", "autour du") ? "orbite" : has("travelling vers la gauche", "travelling gauche", "glisse vers la gauche", "vers la gauche") ? "gauche" : has("travelling", "glisse", "vers la droite") ? "droite"
+    : has("zoom avant", "avance", "s'approche", "approche") ? "avant" : has("zoom arrière", "recule", "s'éloigne", "dézoom") ? "arriere" : has("monte", "montée", "remonte") ? "monte" : has("descend") ? "descend" : "fixe";
+  P.speed = has("très lent") ? 0.45 : has("lent") ? 0.7 : has("très rapide") ? 1.8 : has("rapide", "vite", "nerveux") ? 1.35 : 1;
+  P.light = has("nuit", "néon", "neon") ? "nuit" : has("store", "persienne") ? "store" : has("feuillage", "feuilles", "arbre") ? "feuillage" : has("contre-jour", "contre jour") ? "contrejour" : "studio";
+  let bg = null; const fm = s.match(/fond ([a-zéèêû ]+?)(?:[,.;]| texte| lumière| puis| et |$)/); if (fm) { const k = fm[1].trim(); bg = ST_COLORS[k] || ST_COLORS[k.split(" ")[0]] || null; }
+  P.bg = bg || (P.light === "nuit" ? ST_COLORS.noir : "#e7e4dd");
+  P.spin = has("tourne sur lui", "pivote", "rotation du vêtement");
+  const q = txt.match(/[«"“]\s*([^»"”]+?)\s*[»"”]/); P.text = q ? q[1] : "";
+  P.textPos = has("en haut") ? "haut" : has("en bas") ? "bas" : "centre";
+  P.tr = has("fondu") ? "fondu" : has("flash") ? "flash" : "coupe";
+  return P;
+}
+const stLab = { cadre: { tgp: "Très gros plan", gp: "Gros plan", pp: "Plan poitrine", pl: "Plan large" }, angle: { face: "Face", "34": "Trois quarts", profil: "Profil", dos: "Dos", plongee: "Plongée", contre: "Contre-plongée" },
+  move: { fixe: "Fixe", gauche: "Travelling ←", droite: "Travelling →", avant: "Zoom avant", arriere: "Recule", orbite: "Orbite", monte: "Monte", descend: "Descend" }, light: { studio: "Studio", store: "Store", feuillage: "Feuillage", nuit: "Nuit", contrejour: "Contre-jour" }, tr: { coupe: "Coupe", fondu: "Fondu", flash: "Flash" } };
+function stLoad() { let f = null; try { f = JSON.parse(localStorage.getItem("atelier-studio") || "null"); } catch {} ST.film = f && f.shots ? f : stFromTemplate("drop"); }
+function stSave() { try { localStorage.setItem("atelier-studio", JSON.stringify(ST.film)); } catch {} }
+function stFromTemplate(k) { const T = ST_TEMPLATES[k]; return { name: T.name, format: T.format, grade: { ...T.grade }, sound: "aucun", shots: T.shots.map(t => ({ txt: t })) }; }
+function stShots() { let t0 = 0; return ST.film.shots.map(s => { const P = stParse(s.txt); P.t0 = t0; t0 += P.dur; return P; }); }
+const stTotal = () => stShots().reduce((a, p) => a + p.dur, 0);
+const stEase = x => x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+
+// fond de studio d'un plan (dégradé + ombre projetée) — mis en cache par plan
+const stBgCache = new Map();
+function stBackdrop(bg, light, W = 512, H = 512) {
+  const key = bg + light + W + "x" + H; if (stBgCache.has(key)) return stBgCache.get(key);
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d"), dark = parseInt(bg.slice(1, 3), 16) < 90;
+  const g = x.createRadialGradient(W * 0.5, H * 0.42, 0, W * 0.5, H * 0.5, Math.max(W, H) * 0.75); g.addColorStop(0, dzMix(bg, "#ffffff", dark ? 0.05 : 0.14)); g.addColorStop(1, dzMix(bg, "#000000", dark ? 0.4 : 0.14)); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  x.save(); x.filter = `blur(${Math.round(W / 60)}px)`; x.fillStyle = dark ? "rgba(0,0,0,.4)" : "rgba(40,36,30,.24)";
+  if (light === "store") { x.translate(W * 0.5, H * 0.5); x.rotate(-0.42); const s = H * 0.06; for (let k = -16; k < 16; k++) x.fillRect(-W, k * s * 1.9, W * 2, s); }
+  else if (light === "feuillage") { for (let cc = 0; cc < 9; cc++) { const cx = rnd() * W, cy = rnd() * H * 0.9, R = (0.08 + rnd() * 0.12) * W; for (let k = 0; k < 14; k++) { const a = rnd() * 6.28, rr = rnd() * R; x.save(); x.translate(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); x.rotate(rnd() * 6.28); x.beginPath(); x.ellipse(0, 0, R * (0.16 + rnd() * 0.12), R * (0.06 + rnd() * 0.04), 0, 0, 6.29); x.fill(); x.restore(); } } }
+  else if (light === "nuit") { x.filter = `blur(${Math.round(W / 8)}px)`; x.fillStyle = "rgba(255,40,110,.22)"; x.beginPath(); x.arc(W * 0.85, H * 0.25, W * 0.3, 0, 7); x.fill(); x.fillStyle = "rgba(40,140,255,.18)"; x.beginPath(); x.arc(W * 0.1, H * 0.8, W * 0.35, 0, 7); x.fill(); }
+  else if (light === "contrejour") { x.filter = `blur(${Math.round(W / 10)}px)`; x.fillStyle = "rgba(255,250,240,.7)"; x.beginPath(); x.arc(W * 0.5, H * 0.45, W * 0.32, 0, 7); x.fill(); }
+  x.restore(); stBgCache.set(key, c); if (stBgCache.size > 30) stBgCache.delete(stBgCache.keys().next().value); return c;
+}
+// lumières d'un plan
+function stLights(V, light) {
+  const L = []; V.sc.traverse(o => { if (o.isDirectionalLight) L.push(o); }); const [key, fill, rim] = L; if (!key) return;
+  const set = (l, c, i, p) => { l.color.set(c); l.intensity = i; if (p) l.position.set(...p); };
+  if (light === "nuit") { set(key, 0xfff0f5, 1.6, [110, 90, 90]); set(fill, 0x3a7bff, 1.6, [-120, 20, 40]); set(rim, 0xff2f8a, 4, [40, 60, -120]); V.sc.environmentIntensity = 0.25; }
+  else if (light === "contrejour") { set(key, 0xfff4e8, 1.2, [60, 60, 120]); set(fill, 0xe4e9ff, 0.3, [-90, 30, 60]); set(rim, 0xffffff, 6, [0, 50, -140]); V.sc.environmentIntensity = 0.55; }
+  else if (light === "store" || light === "feuillage") { set(key, 0xffecd2, 3.6, [140, 110, 60]); set(fill, 0xdfe6ff, 0.3, [-90, 30, 60]); set(rim, 0xffffff, 1.2, [-30, 60, -120]); V.sc.environmentIntensity = 0.6; }
+  else { set(key, 0xfff4e8, 3.2, [130, 95, 70]); set(fill, 0xe4e9ff, 0.35, [-90, 30, 60]); set(rim, 0xffffff, 1.1, [-30, 60, -120]); V.sc.environmentIntensity = 0.75; }
+}
+// caméra d'un plan à l'instant u (0..1)
+function stCamera(V, P, u, aspect) {
+  const box = V.box || (V.box = new T3.Box3().setFromObject(V.root)), c = box.getCenter(new T3.Vector3()), sz = box.getSize(new T3.Vector3()), H = sz.y;
+  const fr = { tgp: [0.34, 0.1], gp: [0.56, 0.16], pp: [0.85, 0.12], pl: [1.25, 0] }[P.cadre], k = stEase(Math.min(1, Math.max(0, u))) * P.speed;
+  let az = { face: 0, "34": 35, profil: 62, dos: 180, plongee: 15, contre: 10 }[P.angle], el = P.angle === "plongee" ? 32 : P.angle === "contre" ? -22 : 6, dist = fr[0], ty = fr[1];
+  if (P.move === "gauche") az += 22 - 44 * k; else if (P.move === "droite") az += -22 + 44 * k; else if (P.move === "orbite") az += -60 + 120 * k;
+  else if (P.move === "avant") dist *= 1.22 - 0.38 * k; else if (P.move === "arriere") dist *= 0.82 + 0.45 * k; else if (P.move === "monte") { el += -18 + 30 * k; ty += -0.1 + 0.2 * k; } else if (P.move === "descend") { el += 14 - 28 * k; ty += 0.1 - 0.2 * k; }
+  az += Math.sin(u * 2.1) * 1.2; el += Math.sin(u * 1.7 + 1) * 0.8;   // respiration de caméra à l'épaule, très légère
+  const fit = H * 1.15 / (2 * Math.tan(V.cam.fov * Math.PI / 360)) / Math.min(1, aspect * 1.6), D = fit * dist, a = az * Math.PI / 180, e = el * Math.PI / 180, tgt = new T3.Vector3(c.x, c.y + H * ty, c.z);
+  V.cam.position.set(tgt.x + D * Math.sin(a) * Math.cos(e), tgt.y + D * Math.sin(e), tgt.z + D * Math.cos(a) * Math.cos(e)); V.cam.lookAt(tgt);
+  V.root.rotation.y = P.spin ? u * Math.PI * 2 * 0.5 * P.speed : 0;
+}
+// image complète à l'instant t : 3D + texte + transitions + étalonnage, dans le canvas 2D « out »
+function stFrame(t, out, shots) {
+  const V = ST.V, x = out.getContext("2d"), W = out.width, H = out.height, total = shots.reduce((a, p) => a + p.dur, 0); t = Math.max(0, Math.min(total - 1e-4, t));
+  const i = Math.max(0, shots.findIndex(p => t >= p.t0 && t < p.t0 + p.dur)), P = shots[i], u = (t - P.t0) / P.dur;
+  if (V.curShot !== i) { V.curShot = i; V.setBackdrop(stBackdrop(P.bg, P.light)); stLights(V, P.light); }
+  stCamera(V, P, u, W / H); V.render(); x.drawImage(V.r.domElement, 0, 0, W, H);
+  // transitions (sortie du plan) : fondu au noir / éclair blanc sur les 0,35 dernières secondes, entrée symétrique
+  const prev = shots[i - 1], tin = t - P.t0, tout = P.t0 + P.dur - t, T = 0.35;
+  const dip = (tr, k) => { if (tr === "fondu") { x.fillStyle = `rgba(0,0,0,${k})`; x.fillRect(0, 0, W, H); } else if (tr === "flash") { x.fillStyle = `rgba(255,255,255,${k})`; x.fillRect(0, 0, W, H); } };
+  if (tout < T && P.tr !== "coupe" && i < shots.length - 1) dip(P.tr, 1 - tout / T); if (prev && tin < T && prev.tr !== "coupe") dip(prev.tr, 1 - tin / T);
+  // texte
+  if (P.text) { const a = Math.min(1, tin / 0.4, tout / 0.3), S = Math.min(W, H), fs = S * (P.text.length > 14 ? 0.07 : 0.1), y = P.textPos === "haut" ? H * 0.13 : P.textPos === "bas" ? H * 0.86 : H * 0.5;
+    x.save(); x.globalAlpha = Math.max(0, a); x.font = `800 ${fs}px Inter, "Helvetica Neue", Arial, sans-serif`; try { x.letterSpacing = `${fs * 0.04}px`; } catch {} x.textAlign = "center"; x.textBaseline = "middle";
+    const dark = parseInt(P.bg.slice(1, 3), 16) < 110; x.fillStyle = dark ? "#f4f3f0" : "#121214"; x.shadowColor = dark ? "rgba(0,0,0,.4)" : "rgba(255,255,255,.25)"; x.shadowBlur = fs * 0.2; x.fillText(P.text.toUpperCase(), W / 2, y + (1 - Math.max(0, Math.min(1, tin / 0.5))) * fs * 0.3); x.restore(); }
+  // étalonnage : vignette + grain argentique (différent à chaque image)
+  const G = ST.film.grade || {};
+  if (G.vignette) { const g = x.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) * 0.55); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${0.6 * G.vignette})`); x.fillStyle = g; x.fillRect(0, 0, W, H); }
+  if (G.grain) { const n = stGrain(); x.save(); x.globalAlpha = 0.5 * G.grain; x.globalCompositeOperation = "overlay"; const ox = Math.random() * 128, oy = Math.random() * 128; x.fillStyle = x.createPattern(n, "repeat"); x.translate(-ox, -oy); x.fillRect(0, 0, W + 128, H + 128); x.restore(); }
+  return { i, P };
+}
+let stGrainC = null;
+function stGrain() { if (stGrainC) return stGrainC; const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d"), d = x.createImageData(256, 256); for (let i = 0; i < d.data.length; i += 4) { const v = 128 + (Math.random() - 0.5) * 140; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } x.putImageData(d, 0, 0); return (stGrainC = c); }
+const stDims = (f, big) => { const b = big ? 1080 : 360; return f === "9:16" ? [b, Math.round(b * 16 / 9)] : f === "16:9" ? [Math.round(b * 16 / 9), b] : [b, b]; };
+
+/* --- l'interface --- */
+function stRenderShots() {
+  const box = document.getElementById("st-shots"); if (!box) return; const shots = stShots();
+  box.innerHTML = shots.map((P, i) => `<div class="st-shot" data-i="${i}"><div class="st-sh-top"><b>Plan ${i + 1}</b><small>${P.t0.toFixed(1).replace(".", ",")} → ${(P.t0 + P.dur).toFixed(1).replace(".", ",")} s</small><span class="st-sp"></span><button class="w-chip" data-up="${i}" title="Monter">↑</button><button class="w-chip" data-down="${i}" title="Descendre">↓</button><button class="w-chip" data-del="${i}" title="Supprimer">✕</button></div>
+    <textarea class="st-txt" data-i="${i}" rows="3" spellcheck="true">${dzEsc(ST.film.shots[i].txt)}</textarea>
+    <div class="st-tags">${[`${P.dur.toString().replace(".", ",")} s`, stLab.cadre[P.cadre], stLab.angle[P.angle], stLab.move[P.move] + (P.speed < 1 ? " lent" : P.speed > 1 ? " rapide" : ""), "Lumière " + stLab.light[P.light], P.spin ? "Vêtement qui tourne" : "", P.text ? `« ${dzEsc(P.text)} » ${P.textPos}` : "", stLab.tr[P.tr]].filter(Boolean).map(t => `<span>${t}</span>`).join("")}<i style="background:${P.bg}"></i></div></div>`).join("")
+    + `<button class="w-chip st-add" data-a="add">+ Ajouter un plan</button>`;
+  box.querySelectorAll(".st-txt").forEach(ta => { ta.oninput = () => { ST.film.shots[+ta.dataset.i].txt = ta.value; stSave(); clearTimeout(ta._t); ta._t = setTimeout(() => { const pos = ta.selectionStart, i = ta.dataset.i; stRenderShots(); const n = document.querySelector(`.st-txt[data-i="${i}"]`); if (n) { n.focus(); n.setSelectionRange(pos, pos); } stSeekShot(+i); }, 700); }; ta.onfocus = () => stSeekShot(+ta.dataset.i); });
+  const mv = (i, k) => { const a = ST.film.shots, j = i + k; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; stSave(); stRenderShots(); };
+  box.querySelectorAll("[data-up]").forEach(b => b.onclick = () => mv(+b.dataset.up, -1)); box.querySelectorAll("[data-down]").forEach(b => b.onclick = () => mv(+b.dataset.down, 1));
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { if (ST.film.shots.length < 2) return; ST.film.shots.splice(+b.dataset.del, 1); stSave(); stRenderShots(); });
+  box.querySelector('[data-a="add"]').onclick = () => { ST.film.shots.push({ txt: "2 s, gros plan de trois quarts, travelling lent vers la droite, lumière studio, fond crème" }); stSave(); stRenderShots(); stSeekShot(ST.film.shots.length - 1); };
+  const tot = document.getElementById("st-total"); if (tot) tot.textContent = `${stTotal().toFixed(1).replace(".", ",")} s · ${shots.length} plans`;
+}
+function stSeekShot(i) { const P = stShots()[i]; if (P) { ST.t = P.t0 + Math.min(P.dur * 0.5, 0.6); ST.play = false; stPlayBtn(); } }
+function stPlayBtn() { const b = document.getElementById("st-play"); if (b) b.textContent = ST.play ? "❚❚ Pause" : "▶ Lire"; }
+function stLoop() {
+  const out = document.getElementById("st-out"); if (!out) { cancelAnimationFrame(ST.raf); return; }
+  const shots = stShots(), total = shots.reduce((a, p) => a + p.dur, 0), now = performance.now();
+  if (ST.play && !ST.exporting) { ST.t += (now - (ST.last || now)) / 1000; if (ST.t >= total) ST.t = 0; } ST.last = now;
+  if (ST.V && !ST.exporting && !ST.V.simming) { const [w, h] = stDims(ST.film.format, false); if (out.width !== w || out.height !== h) { out.width = w; out.height = h; } if (ST.V.w !== w || ST.V.h !== h) { ST.V.w = w; ST.V.h = h; ST.V.r.setSize(w, h, false); ST.V.resize(w, h); ST.V.cam.aspect = w / h; ST.V.cam.updateProjectionMatrix(); }
+    stFrame(ST.t, out, shots); const sc = document.getElementById("st-scrub"); if (sc && document.activeElement !== sc) sc.value = String(ST.t / total); const tc = document.getElementById("st-tc"); if (tc) tc.textContent = `${ST.t.toFixed(1).replace(".", ",")} / ${total.toFixed(1).replace(".", ",")} s`; }
+  ST.raf = requestAnimationFrame(stLoop);
+}
+async function stExport() {
+  if (ST.exporting || !ST.V) return; const note = document.getElementById("st-note"), say = s => { if (note) note.textContent = s; };
+  if (window.VideoEncoder) await ensureMuxer(); if (!window.VideoEncoder || !window.Mp4Muxer) { say("L'export vidéo demande Chrome, Edge ou un Safari récent."); return; }
+  ST.exporting = true; ST.play = false; stPlayBtn(); const shots = stShots(), total = shots.reduce((a, p) => a + p.dur, 0), [W, H] = stDims(ST.film.format, true), fps = 30, N = Math.ceil(total * fps), V = ST.V;
+  try {
+    let vcfg = null, vmux = "avc"; for (const [codec, m] of [["avc1.640028", "avc"], ["avc1.4d0028", "avc"], ["vp09.00.40.08", "vp9"]]) { const c = { codec, width: W, height: H, bitrate: 12_000_000, framerate: fps }; try { if ((await VideoEncoder.isConfigSupported(c)).supported) { vcfg = c; vmux = m; break; } } catch {} }
+    if (!vcfg) throw new Error("aucun encodeur");
+    let buf = null, acodec = null, mcodec = null;
+    if (ST.film.sound === "prod") { say("Rendu du son…"); try { const F = syFinished(syRecipe(), 16), r = prValid(F.recipe); if (r) { const bars = Math.ceil(total / (60 / r.bpm * 4)); buf = (await syOffline(F.recipe, bars)).buf; } } catch (e) { console.warn(e); }
+      if (buf && window.AudioEncoder) for (const [c, m] of [["mp4a.40.2", "aac"], ["opus", "opus"]]) { try { if ((await AudioEncoder.isConfigSupported({ codec: c, sampleRate: m === "opus" ? 48000 : buf.sampleRate, numberOfChannels: 2, bitrate: 192000 })).supported) { acodec = c; mcodec = m; break; } } catch {} }
+      if (buf && mcodec === "opus" && buf.sampleRate !== 48000) { const oc = new OfflineAudioContext(2, Math.ceil(buf.duration * 48000), 48000), s = oc.createBufferSource(); s.buffer = buf; s.connect(oc.destination); s.start(0); buf = await oc.startRendering(); } }
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: vmux, width: W, height: H, frameRate: fps }, ...(acodec ? { audio: { codec: mcodec, numberOfChannels: 2, sampleRate: buf.sampleRate } } : {}), fastStart: "in-memory" });
+    let err = null; const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => err = e }); venc.configure(vcfg);
+    if (acodec) { const sr = buf.sampleRate, aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => err = e }); aenc.configure({ codec: acodec, sampleRate: sr, numberOfChannels: 2, bitrate: 192000 });
+      const tot = Math.min(buf.length, Math.ceil(total * sr)), L = buf.getChannelData(0), R = buf.getChannelData(1), fade = Math.round(0.4 * sr);
+      for (let o = 0; o < tot; o += 1024) { const n = Math.min(1024, tot - o), d = new Float32Array(n * 2); for (let j = 0; j < n; j++) { const f = Math.min(1, (tot - o - j) / fade); d[j] = L[o + j] * f; d[n + j] = R[o + j] * f; } aenc.encode(new AudioData({ format: "f32-planar", sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(o / sr * 1e6), data: d })); }
+      await aenc.flush(); }
+    V.r.setPixelRatio(1); V.r.setSize(W, H, false); V.resize(W, H); V.cam.aspect = W / H; V.cam.updateProjectionMatrix(); V.curShot = -1;
+    const out = document.createElement("canvas"); out.width = W; out.height = H; const prev = document.getElementById("st-out");
+    for (let f = 0; f < N && !err; f++) { const t = f / fps; stFrame(t, out, shots); const vf = new VideoFrame(out, { timestamp: Math.round(t * 1e6), duration: Math.round(1e6 / fps) }); venc.encode(vf, { keyFrame: f % fps === 0 }); vf.close();
+      if (f % 3 === 0) { if (prev) prev.getContext("2d").drawImage(out, 0, 0, prev.width, prev.height); say(`Rendu : ${Math.round(100 * f / N)} %`); await new Promise(r => setTimeout(r, 0)); } }
+    await venc.flush(); if (err) throw err; muxer.finalize();
+    offerBlob(new Blob([muxer.target.buffer], { type: "video/mp4" }), `tnb_${(ST.film.name || "film").toLowerCase().replace(/[^a-z0-9]+/g, "-")}_${ST.film.format.replace(":", "x")}.mp4`); say("Vidéo prête ✓"); uisYes();
+  } catch (e) { console.warn(e); say("L'export a échoué : " + (e.message || e)); }
+  finally { ST.exporting = false; V.r.setPixelRatio(Math.min(2, devicePixelRatio || 1)); V.w = 0; V.curShot = -1; }
+}
+function wPStudio(p) {
+  if (!document.getElementById("st-css")) { const c = document.createElement("style"); c.id = "st-css"; c.textContent = ST_CSS; document.head.append(c); }
+  if (!ST.film) stLoad(); if (!DZ.st) dzLoad();
+  p.innerHTML = wHead("Studio · un film écrit plan par plan")
+    + `<div class="w-scroll w-live"><div class="st">
+      <div class="st-player"><div class="st-frame" id="st-frame"><canvas id="st-out"></canvas><canvas id="st-gl" hidden></canvas><span class="st-wait" id="st-wait">Le tissu se pose…</span></div>
+        <div class="st-ctl"><button class="w-pill dark" id="st-play">▶ Lire</button><input type="range" id="st-scrub" min="0" max="1" step="0.001" value="0" class="w-range"><span id="st-tc" class="st-tc">0 s</span></div>
+        <div class="st-ctl"><button class="w-pill" id="st-export">Exporter la vidéo (MP4)</button><span id="st-note" class="st-note"></span></div></div>
+      <div class="st-side sp-card">
+        <div class="w-sec">Film <span id="st-total"></span></div>
+        <div class="ir-chips">${Object.entries(ST_TEMPLATES).map(([k, T]) => `<button class="w-chip" data-tpl="${k}">${T.name}</button>`).join("")}</div>
+        <div class="ir-chips">${["9:16", "1:1", "16:9"].map(f => `<button class="w-chip" data-fmt="${f}" aria-pressed="${ST.film.format === f}">${f}</button>`).join("")}<button class="w-chip" data-snd aria-pressed="${ST.film.sound === "prod"}">Son : ma prod du sampler</button></div>
+        <label class="w-fx-tr"><small>Grain</small><output>${Math.round(ST.film.grade.grain * 100)} %</output><input class="w-range" type="range" min="0" max="1" step="0.05" value="${ST.film.grade.grain}" data-g="grain"></label>
+        <label class="w-fx-tr"><small>Vignette</small><output>${Math.round(ST.film.grade.vignette * 100)} %</output><input class="w-range" type="range" min="0" max="1" step="0.05" value="${ST.film.grade.vignette}" data-g="vignette"></label>
+        <p class="st-help">Écris chaque plan comme sur une liste de plans d'agence : <b>durée</b> (« 2 s »), <b>cadre</b> (très gros plan, gros plan, plan poitrine, plan large), <b>angle</b> (face, trois quarts, profil, dos, plongée, contre-plongée), <b>mouvement</b> (fixe, travelling vers la gauche/droite, zoom avant, recule, orbite, monte, descend, lent/rapide), <b>lumière</b> (studio, store, feuillage, nuit, contre-jour), <b>fond</b> (fond rouge, fond noir…), <b>texte</b> entre « guillemets » (en haut, au centre, en bas), <b>transition</b> (coupe, fondu, flash). Le vêtement est celui de l'atelier Design.</p>
+        <div id="st-shots" class="st-shots"></div>
+      </div></div></div>`;
+  stRenderShots();
+  p.querySelector("#st-play").onclick = () => { ST.play = !ST.play; ST.last = performance.now(); stPlayBtn(); };
+  p.querySelector("#st-scrub").oninput = e => { ST.t = +e.target.value * stTotal(); ST.play = false; stPlayBtn(); };
+  p.querySelector("#st-export").onclick = () => stExport();
+  p.querySelectorAll("[data-tpl]").forEach(b => b.onclick = () => { ST.film = stFromTemplate(b.dataset.tpl); stSave(); ST.t = 0; wPStudio(p); });
+  p.querySelectorAll("[data-fmt]").forEach(b => b.onclick = () => { ST.film.format = b.dataset.fmt; stSave(); p.querySelectorAll("[data-fmt]").forEach(z => z.setAttribute("aria-pressed", z === b)); stAspect(); });
+  p.querySelector("[data-snd]").onclick = e => { ST.film.sound = ST.film.sound === "prod" ? "aucun" : "prod"; stSave(); e.currentTarget.setAttribute("aria-pressed", ST.film.sound === "prod"); };
+  p.querySelectorAll("[data-g]").forEach(r => r.oninput = () => { ST.film.grade[r.dataset.g] = +r.value; r.parentElement.querySelector("output").textContent = Math.round(r.value * 100) + " %"; stSave(); });
+  stAspect();
+  dzThree().then(() => { const gl = document.getElementById("st-gl"); if (!gl) return; if (ST.V) { try { ST.V.r.dispose(); } catch {} } const V = dz3dInit(gl); ST.V = V; V.box = null; V.curShot = -1;
+    const st = DZ.st, eff = dzEffective(st); dzBuild3d(V, st, eff); const wait = document.getElementById("st-wait");
+    const chk = () => { if (!document.getElementById("st-out")) return; if (V.simming) return requestAnimationFrame(chk); V.box = null; if (wait) wait.hidden = true; }; requestAnimationFrame(chk);
+    cancelAnimationFrame(ST.raf); ST.last = performance.now(); stLoop(); }).catch(e => console.warn(e));
+}
+function stAspect() { const f = document.getElementById("st-frame"); if (!f) return; const [w, h] = stDims(ST.film.format, false); f.style.aspectRatio = `${w} / ${h}`; f.style.width = `min(100%, calc((100vh - 240px) * ${(w / h).toFixed(4)}))`; }
+const ST_CSS = `
+.st { max-width: 1320px; margin: 0 auto; padding: 84px 18px 160px; display: grid; grid-template-columns: minmax(280px, 440px) 1fr; gap: 18px; align-items: start; color: #1b1d22; }
+.st-player { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 10px; }
+.st-frame { position: relative; width: 100%; margin: 0 auto; border-radius: 18px; overflow: hidden; background: #121214; box-shadow: 0 30px 80px rgba(20,20,40,.25); }
+.st-frame canvas#st-out { width: 100%; height: 100%; display: block; }
+.st-wait { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 600 13px Inter, sans-serif; color: #fff; background: rgba(0,0,0,.5); padding: 8px 14px; border-radius: 999px; } .st-wait[hidden] { display: none; }
+.st-ctl { display: flex; align-items: center; gap: 10px; } .st-ctl .w-range { flex: 1; } .st-tc, .st-note { font: 600 12px "JetBrains Mono", monospace; color: #3c3f48; }
+.st-side { font-size: 13px; background: rgba(252,252,254,.97) !important; display: flex; flex-direction: column; gap: 10px; }
+.st .w-chip { font-size: 12.5px; color: #1b1d22; background: #fff; border: 1px solid rgba(27,29,34,.2); } .st .w-chip[aria-pressed="true"] { background: #1b1d22; color: #fff; }
+.st .w-sec { opacity: 1; color: #5b5f6b; font-weight: 600; font-size: 11px; } .st .w-sec span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.st .w-fx-tr small, .st .w-fx-tr output { opacity: 1; color: #3c3f48; font-size: 12px; }
+.st-help { margin: 0; font-size: 12.5px; line-height: 1.5; color: #3c3f48; background: #f3f3f7; padding: 10px 12px; border-radius: 12px; }
+.st-shots { display: flex; flex-direction: column; gap: 10px; }
+.st-shot { background: #fff; border: 1px solid rgba(27,29,34,.12); border-radius: 16px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.st-sh-top { display: flex; align-items: center; gap: 6px; } .st-sh-top b { font: 700 13px Inter, sans-serif; } .st-sh-top small { font: 500 11.5px "JetBrains Mono", monospace; color: #5b5f6b; } .st-sp { flex: 1; } .st-sh-top .w-chip { padding: 3px 9px; }
+.st-txt { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid rgba(27,29,34,.18); border-radius: 12px; padding: 9px 10px; font: 500 14px/1.45 Inter, sans-serif; color: #1b1d22; background: #fbfbfc; }
+.st-txt:focus { outline: 2px solid #1b1d22; outline-offset: 1px; }
+.st-tags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; } .st-tags span { font: 600 11px Inter, sans-serif; background: #eef0f4; color: #2c2f37; padding: 3px 8px; border-radius: 999px; } .st-tags i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.st-add { align-self: flex-start; }
+@media (max-width: 900px) { .st { grid-template-columns: 1fr; padding: 74px 10px 140px; } .st-player { position: static; } }`;
 
 </script>
 
