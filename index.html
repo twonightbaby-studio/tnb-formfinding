@@ -10839,13 +10839,13 @@ function dzAsset(kind) {
   const piece = (id, name, path, o) => P.push(Object.assign({ id, name, sym: false, path: dzFixLines(path), mat: "jersey" }, o));
   if (kind === "tshirt" || kind === "sweat") {
     const sw = kind === "sweat", W = sw ? 29 : 26, L = sw ? 64 : 70, sl = sw ? 58 : 21, bw = sw ? 20 : 18.5;
-    piece("devant", "Devant", dzPath([0, sw ? 10 : 9], [5, sw ? 10 : 9, 8.5, 4, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", map: { t: "half", side: 1 } });
-    piece("dos", "Dos", dzPath([0, 2.5], [5, 2.5, 8.5, 1.5, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", map: { t: "half", side: -1 } });
-    for (const side of [1, -1]) piece("manche" + (side > 0 ? "D" : "G"), side > 0 ? "Manche droite" : "Manche gauche", dzPath([0, 0], [8, 0, bw - 3, 7, bw, 14], [bw - (sw ? 7 : 2), sl], [0, sl]), { sym: true, role: "sleeve", map: { t: "tube", sleeve: side } });
+    piece("devant", "Devant", dzPath([0, sw ? 10 : 9], [5, sw ? 10 : 9, 8.5, 4, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", mat: sw ? "molleton" : "jersey", map: { t: "half", side: 1 } });
+    piece("dos", "Dos", dzPath([0, 2.5], [5, 2.5, 8.5, 1.5, 8.5, 0], [sw ? 22 : 21, 4], [20, 11, 21, 23, W, 25], [W + 1, L], [W * 0.5, L + 0.6, 0, L + 0.6, 0, L + 0.6]), { sym: true, role: "body", mat: sw ? "molleton" : "jersey", map: { t: "half", side: -1 } });
+    for (const side of [1, -1]) piece("manche" + (side > 0 ? "D" : "G"), side > 0 ? "Manche droite" : "Manche gauche", dzPath([0, 0], [8, 0, bw - 3, 7, bw, 14], [bw - (sw ? 7 : 2), sl], [0, sl]), { sym: true, role: "sleeve", mat: sw ? "molleton" : "jersey", map: { t: "tube", sleeve: side } });
     if (sw) {
       piece("bordbas", "Bord-côte bas", dzPath([0, 0], [W * 1.8, 0], [W * 1.8, 7], [0, 7]), { sym: true, role: "hem", mat: "cote", map: { t: "tube", ring: "hem" } });
       for (const side of [1, -1]) piece("poignet" + (side > 0 ? "D" : "G"), side > 0 ? "Poignet droit" : "Poignet gauche", dzPath([0, 0], [9, 0], [9, 7], [0, 7]), { sym: true, role: "cuff", mat: "cote", map: { t: "tube", cuff: side } });
-      for (const side of [1, -1]) piece("capuche" + (side > 0 ? "D" : "G"), side > 0 ? "Capuche droite" : "Capuche gauche", dzPath([0, 2], [0, 12, 0, 26, 2, 34], [10, 36, 22, 34, 25, 30], [27, 20, 26, 6, 20, 0], [12, -1, 4, 0, 0, 2]), { role: "hood", map: { t: "hood", side } });
+      for (const side of [1, -1]) piece("capuche" + (side > 0 ? "D" : "G"), side > 0 ? "Capuche droite" : "Capuche gauche", dzPath([0, 2], [0, 12, 0, 26, 2, 34], [10, 36, 22, 34, 25, 30], [27, 20, 26, 6, 20, 0], [12, -1, 4, 0, 0, 2]), { role: "hood", mat: "molleton", map: { t: "hood", side } });
     }
   } else if (kind === "bonnet") {
     piece("corps", "Bonnet", dzPath([0, 0], [6, 0.5, 18, 2, 26, 9], [26, 30], [0, 30]), { sym: true, role: "crown", mat: "cote", map: { t: "tube", beanie: true } });
@@ -11360,7 +11360,7 @@ function dzTabsRender() {
       <div class="w-sec">Posés</div><div class="dz-list">${st.decos.length ? st.decos.map((d, i) => `<div class="dz-li"><span>${(DZ_TECH.find(t => t[0] === d.tech) || [0, d.tech])[1]}<small> · ${dzEsc(pieceName(d.piece))} · ${d.size} cm</small></span><button class="w-chip" data-dsz="${i}" title="Appliquer la taille, la rotation et la couleur choisies">Appliquer réglages</button><button class="w-chip" data-ddel="${i}">✕</button></div>`).join("") : `<p class="sp-hint">Aucun motif posé.</p>`}</div>`;
   } else if (DZ.tab === "fiche") {
     const eff = dzEff();
-    h = `<div class="w-sec">Pièces à couper</div><div class="dz-list">${eff.map(e => { const [w, hh] = dzDims(e.poly); return `<div class="dz-li"><span>${e.pc.name}<small> · ${DZ_MATS[e.pc.mat].lab} · ${w.toFixed(1)} × ${hh.toFixed(1)} cm${e.pc.sym ? " · au pli" : ""}</small></span></div>`; }).join("")}</div>
+    h = dzTpPanel(st) + `<div class="w-sec">Pièces à couper</div><div class="dz-list">${eff.map(e => { const [w, hh] = dzDims(e.poly); return `<div class="dz-li"><span>${e.pc.name}<small> · ${DZ_MATS[e.pc.mat].lab} · ${w.toFixed(1)} × ${hh.toFixed(1)} cm${e.pc.sym ? " · au pli" : ""}</small></span></div>`; }).join("")}</div>
       <div class="w-sec">Montage</div><ol class="dz-steps">${[...new Set(st.ops.map(o => o.t === "oeillet" ? "oeillets" : o.t))].map(k => `<li><b>${DZ_OPLAB[k] || DZ_OPLAB[k.replace(/s$/, "")] || k}</b> — ${DZ_HOW[k] || ""}</li>`).join("")}
         ${[...new Set(st.decos.map(d => d.tech))].map(k => `<li><b>${(DZ_TECH.find(t => t[0] === k) || [0, k])[1]}</b> — ${DZ_HOW[k]}</li>`).join("")}
         ${P.len < 0 ? `<li><b>Crop</b> — ${DZ_HOW.len_moins}</li>` : P.len > 0 ? `<li><b>Rallonge</b> — ${DZ_HOW.len_plus}</li>` : ""}<li><b>Assemblage</b> — épaules, montage des manches, côtés, puis finitions (bords, ourlets) ; surpiqûres en fil ${st.stitch}.</li></ol>
@@ -11371,7 +11371,7 @@ function dzTabsRender() {
       <button class="w-pill dark" data-a="pub">Publier</button><p class="sp-hint">Visible par tout le monde en bas de la page. Les autres peuvent l'ouvrir et en faire leur version.</p>
       <div class="w-sec">Recommencer</div><button class="w-chip" data-a="reset">Remettre ce modèle à zéro</button>`;
   }
-  host.innerHTML = h; dzTabsBind(host); if (DZ.tab === "arts") dzArtsBind(host);
+  host.innerHTML = h; dzTabsBind(host); if (DZ.tab === "arts") dzArtsBind(host); if (DZ.tab === "fiche") dzTpBind(host);
 }
 function dzTabsBind(host) {
   const st = DZ.st, P = st.params, on = (sel, fn) => host.querySelectorAll(sel).forEach(b => b.addEventListener(b.tagName === "INPUT" ? "input" : "click", ev => fn(b, ev)));
@@ -11453,7 +11453,7 @@ async function dzGallery() {
 function dzUndo(redo) { const from = redo ? DZ.redo : DZ.undo, to = redo ? DZ.undo : DZ.redo; if (!from.length) return; to.push(JSON.stringify(DZ.st)); DZ.st = JSON.parse(from.pop()); dzPieceChips(); dzCommit(); dzTabsRender(); }
 
 function wPDesign(p) {
-  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS + DZ_CSS2 + DZ_CSS3; document.head.append(c); }
+  if (!document.getElementById("dz-css")) { const c = document.createElement("style"); c.id = "dz-css"; c.textContent = DZ_CSS + DZ_CSS2 + DZ_CSS3 + DZ_CSS4; document.head.append(c); }
   if (!DZ.st) dzLoad();
   p.innerHTML = wHead("Design · dessine un vêtement", `<button class="w-pill w-glass-ui w-live" data-a="undo" title="Annuler">↶</button><button class="w-pill w-glass-ui w-live" data-a="redo" title="Rétablir">↷</button>`)
     + `<div class="w-scroll w-live"><div class="dz">
@@ -12020,6 +12020,241 @@ function dzMakeMats(e, st) {
   const bm = new T3.MeshPhysicalMaterial({ map: tex, normalMap: nm, vertexColors: true, color: 0xd9d9dc, roughness: 0.95, sheen: 0.6, sheenRoughness: 0.6, envMapIntensity: 0.4, side: T3.BackSide, alphaTest: M.alpha ? 0.5 : 0 });
   return [fm, bm];
 }
+/* ---------- Fiche technique (tech pack) : ce qu'on envoie à l'usine ----------
+   Calculée depuis le patron réel : mesures (points de mesure, gradation XS → XXL, tolérances), nomenclature
+   (matières, bord-côte, fils, étiquettes, fournitures), placements des imprimés (taille, distance au point
+   d'épaule-encolure et au milieu), pièces à couper, montage, suivi des versions. Export PDF A4 paysage. */
+const DZ_COMPO = {
+  jersey: ["100 % coton peigné", "180-220 g/m²"], molleton: ["80 % coton / 20 % polyester, envers gratté", "350-400 g/m²"], cote: ["95 % coton / 5 % élasthanne, côte 1×1", "260-300 g/m²"],
+  denim: ["100 % coton, sergé 3/1", "12-14 oz"], toile: ["100 % coton canvas", "280-340 g/m²"], nylon: ["100 % polyamide ripstop", "70-90 g/m²"], cuir: ["cuir de vachette pleine fleur", "1,0-1,2 mm"],
+  velours: ["100 % coton, velours 8 côtes", "300 g/m²"], satin: ["100 % polyester satin", "120 g/m²"], mesh: ["100 % polyester, filet", "90-120 g/m²"],
+};
+const DZ_SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
+const dzW = (poly, v) => { const ys = poly.map(p => p.y), r = dzRows(poly, Math.max(Math.min(...ys) + 0.01, Math.min(Math.max(...ys) - 0.01, v))); return r.length >= 2 ? r[r.length - 1] - r[0] : 0; };
+const dzBox = poly => { const xs = poly.map(p => p.x), ys = poly.map(p => p.y); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+function dzTopAt(poly, u) { const b = dzBox(poly); for (let v = b.y0; v <= b.y1; v += 0.05) if (dzInside(poly, u, v)) return v; return b.y0; }
+
+/* Points de mesure (POM), à plat, en cm, taille de base M ; inc = écart par taille ; tol = tolérance ± */
+function dzPOM(st) {
+  const eff = dzEffective(st), get = id => eff.find(e => e.pc.id === id), R = [], add = (code, lab, how, val, inc, tol) => { if (val > 0.2) R.push({ code, lab, how, val, inc, tol: tol ?? (val > 30 ? 1 : val > 10 ? 0.5 : 0.3) }); };
+  const f = get("devant"), b = get("dos");
+  if (f) {
+    const B = dzBox(f.poly), hps = f.poly.reduce((a, p) => p.y < a.y + 1e-6 && p.x > 0 ? p : a, { x: 0, y: 1e9 }), top = f.poly.filter(p => p.y < B.y0 + 8), sp = top.reduce((a, p) => p.x > a.x ? p : a, top[0]);
+    let wMax = 0; for (let v = B.y0; v <= B.y1; v += 0.5) wMax = Math.max(wMax, dzW(f.poly, v)); let vArm = B.y1; for (let v = B.y0; v <= B.y1; v += 0.5) if (dzW(f.poly, v) >= 0.96 * wMax) { vArm = v; break; }
+    const hem = st.pieces.some(p => p.role === "hem") && eff.find(e => e.pc.role === "hem"), hemH = hem ? dzBox(hem.poly).y1 - dzBox(hem.poly).y0 : 0;
+    add("A", "Longueur totale devant", "du point épaule-encolure (HPS) au bas" + (hem ? ", bord-côte compris" : ""), B.y1 - B.y0 + hemH, 2);
+    if (b) add("B", "Longueur totale dos", "du milieu dos encolure au bas", dzBox(b.poly).y1 - dzTopAt(b.poly, 0) + hemH, 2);
+    add("C", "1/2 tour de poitrine", "à plat, 2,5 cm sous l'emmanchure, d'un côté à l'autre", dzW(f.poly, vArm + 2.5), 2.5);
+    add("D", "1/2 bas", hem ? "à plat, bord-côte détendu" : "à plat, au bord du bas", hem ? (dzBox(hem.poly).x1 - dzBox(hem.poly).x0) / 2 : dzW(f.poly, B.y1 - 0.5), 2.5);
+    add("E", "Largeur d'épaules", "d'une couture d'épaule à l'autre", 2 * sp.x, 1.2);
+    add("F", "Emmanchure (droite)", "du point d'épaule au dessous de bras, en ligne droite", Math.hypot(wMax / 2 - sp.x, vArm - sp.y), 1);
+    if (!(st.asset === "sweat" && st.params.hood)) { add("G", "Largeur d'encolure", "couture à couture, au bord", 2 * Math.abs(hps.x), 0.5, 0.5);
+      add("H", "Descente d'encolure devant", "du HPS au milieu devant", dzTopAt(f.poly, 0) - B.y0, 0.3, 0.3);
+      if (b) add("I", "Descente d'encolure dos", "du HPS au milieu dos", dzTopAt(b.poly, 0) - dzBox(b.poly).y0, 0.2, 0.3); }
+    const sl = eff.find(e => e.pc.role === "sleeve");
+    if (sl) { const S = dzBox(sl.poly), cuff = eff.find(e => e.pc.role === "cuff"), cuffH = cuff ? dzBox(cuff.poly).y1 - dzBox(cuff.poly).y0 : 0; let bic = 0; for (let v = S.y0; v <= S.y1; v += 0.5) bic = Math.max(bic, dzW(sl.poly, v));
+      const long = st.params.sleeve !== "courtes";
+      add("J", "Longueur de manche", "du point d'épaule au bas de manche" + (cuff ? ", poignet compris" : ""), S.y1 - S.y0 + cuffH, long ? 1 : 0.5);
+      add("K", "1/2 biceps", "à plat, 2,5 cm sous l'emmanchure", bic / 2, 0.7);
+      add("L", "1/2 ouverture de manche", cuff ? "poignet détendu" : "à plat, au bord", cuff ? (dzBox(cuff.poly).x1 - dzBox(cuff.poly).x0) / 2 : dzW(sl.poly, S.y1 - 0.5) / 2, 0.5);
+      if (cuff) add("M", "Hauteur de poignet", "fini", cuffH, 0, 0.3); }
+    if (hem) add("N", "Hauteur de bord-côte bas", "fini", hemH, 0, 0.3);
+    const hd = eff.find(e => e.pc.role === "hood");
+    if (hd) { const H = dzBox(hd.poly); add("O", "Hauteur de capuche", "du point épaule-encolure au sommet", H.y1 - H.y0, 0.5); add("P", "Profondeur de capuche", "à plat, de l'ouverture à l'arrière", H.x1 - H.x0, 0.5); }
+  }
+  if (st.asset === "pantalon") {
+    const fr = get("jambeAvD"), bk = get("jambeDosD"), wb = get("ceinture"); if (fr && bk) {
+      const F = dzBox(fr.poly), Bk = dzBox(bk.poly), crF = fr.poly.reduce((a, p) => p.x < a.x ? p : a, fr.poly[0]), crB = bk.poly.reduce((a, p) => p.x < a.x ? p : a, bk.poly[0]), wbH = wb ? dzBox(wb.poly).y1 - dzBox(wb.poly).y0 : 0;
+      if (wb) add("A", "1/2 tour de taille", "à plat, ceinture fermée", (dzBox(wb.poly).x1 - dzBox(wb.poly).x0) / 2, 2);
+      add("B", "1/2 tour de hanches", "à plat, 18 cm sous la ceinture", dzW(fr.poly, F.y0 + 18) + dzW(bk.poly, Bk.y0 + 18), 2.5);
+      add("C", "Montant devant", "de l'entrejambe au haut de la ceinture", crF.y - F.y0 + wbH, 0.6);
+      add("D", "Montant dos", "de l'entrejambe au haut de la ceinture", crB.y - Bk.y0 + wbH, 0.8);
+      add("E", "Longueur d'entrejambe", "de l'entrejambe au bas", F.y1 - crF.y, 0, 1);
+      add("F", "Longueur côté", "du haut de la ceinture au bas", F.y1 - F.y0 + wbH, 1);
+      add("G", "1/2 cuisse", "à plat, 2,5 cm sous l'entrejambe", (dzW(fr.poly, crF.y + 2.5) + dzW(bk.poly, crB.y + 2.5)) / 2, 1.2);
+      add("H", "1/2 genou", "à plat, 33 cm sous l'entrejambe", (dzW(fr.poly, crF.y + 33) + dzW(bk.poly, crB.y + 33)) / 2, 0.7);
+      add("I", "1/2 bas de jambe", "à plat, au bord", (dzW(fr.poly, F.y1 - 0.5) + dzW(bk.poly, Bk.y1 - 0.5)) / 2, 0.5);
+      add("J", "Hauteur de ceinture", "finie", wbH, 0, 0.3); }
+  }
+  if (st.asset === "bonnet") { const c = get("corps"), t = get("revers"); if (c) { const C = dzBox(c.poly); add("A", "1/2 tour de tête (détendu)", "à plat, au bord", (C.x1 - C.x0) / 2, 1); add("B", "Hauteur totale", "revers déplié", C.y1 - C.y0, 0.5); }
+    if (t) add("C", "Hauteur de revers", "replié", dzBox(t.poly).y1 - dzBox(t.poly).y0, 0, 0.3); }
+  if (st.asset === "casquette") { const p = get("pan0"), v = get("visiere"); if (p) { const P = dzBox(p.poly); add("A", "Tour de tête", "à l'intérieur du bandeau", 6 * (P.x1 - P.x0) * 0.9, 1, 0.5); add("B", "Hauteur de calotte", "du bandeau au bouton", P.y1 - P.y0, 0, 0.3); }
+    if (v) { const V = dzBox(v.poly); add("C", "Longueur de visière", "du bandeau au bord", V.y1 - V.y0, 0, 0.3); add("D", "Largeur de visière", "d'un bout à l'autre", V.x1 - V.x0, 0, 0.5); } }
+  return R;
+}
+const dzFmt = n => (Math.round(n * 2) / 2).toFixed(1).replace(".0", "").replace(".", ","), dzFmtT = n => String(+n.toFixed(1)).replace(".", ",");
+
+/* Nomenclature : une ligne par composant */
+function dzBOM(st) {
+  const eff = dzEffective(st), rows = [], byMat = new Map();
+  for (const e of eff) { const k = (st.matAll || e.pc.mat) + "|" + (e.pc.color || st.color); if (!byMat.has(k)) byMat.set(k, []); byMat.get(k).push(e.pc.name); }
+  for (const [k, names] of byMat) { const [m, col] = k.split("|"), M = DZ_MATS[m] || DZ_MATS.jersey, c = DZ_COMPO[m] || ["à définir", ""];
+    rows.push(["Tissu", M.lab, `${c[0]} · ${c[1]}`, col.toUpperCase(), names.join(", ")]); }
+  const stc = st.stitch === "auto" ? "ton sur ton" : st.stitch;
+  rows.push(["Fil", "Fil polyester 120 (couture) / 80 (surpiqûre)", "100 % polyester", stc, "Toutes coutures, surpiqûres"]);
+  rows.push(["Étiquette", "Étiquette marque tissée", "damas, 5 × 2 cm, pliée", "à définir", "Milieu dos encolure"]);
+  rows.push(["Étiquette", "Étiquette composition / entretien / taille", "satin imprimé, mentions UE", "blanc", "Couture côté gauche, 10 cm du bas"]);
+  if (st.asset === "sweat" && st.params.hood) { rows.push(["Fourniture", "Cordon de capuche plat", "coton, 1 cm, embouts métal", "ton sur ton", "Coulisse capuche, 140 cm"]); rows.push(["Fourniture", "Œillets métal", "Ø 1 cm", "argent mat", "Capuche ×2"]); }
+  if (st.asset === "sweat" && st.params.kangourou) rows.push(["Pièce", "Poche kangourou", "même tissu que le corps", "ton sur ton", "Devant, 2 entrées biais"]);
+  if (st.asset === "pantalon") { rows.push(["Fourniture", "Bouton jean + rivets", "laiton, Ø 17 mm / Ø 9 mm", "laiton vieilli", "Ceinture ×1, poches ×6"]); rows.push(["Fourniture", "Fermeture braguette", "métal n°4, 18 cm", "ton sur ton", "Braguette"]); }
+  for (const o of st.ops) { const lab = { zip: ["Fermeture à glissière", "métal n°5"], zippoche: ["Fermeture de poche", "nylon n°3, invisible"], oeillet: ["Œillets", "métal Ø 1 cm"], boutons: ["Boutons", "4 trous, 15 mm"], etiquette: ["Étiquette tissée", "selon dessin"], poche: ["Poche plaquée", "même tissu"] }[o.t];
+    if (lab) rows.push(["Fourniture", lab[0], lab[1], "à définir", (st.pieces.find(p => p.id === o.piece) || {}).name || ""]); }
+  for (const t of new Set([...(st.decos || []).map(d => d.tech)])) rows.push(["Déco", (DZ_TECH.find(q => q[0] === t) || [0, t])[1], DZ_HOW[t] ? DZ_HOW[t].split(".")[0] : "", "voir placements", ""]);
+  if ((st.arts || []).length) rows.push(["Déco", "Impression des imprimés", "sérigraphie ou DTG selon le nombre de couleurs", "voir placements", ""]);
+  rows.push(["Emballage", "Sachet individuel + carton", "sachet recyclé, plié en 4 (étiquette visible)", "transparent", "Par pièce"]);
+  return rows;
+}
+/* Placements : imprimés (feuille) + motifs posés (déco), position mesurée depuis le HPS et le milieu */
+function dzPlaceRows(st) {
+  const eff = dzEffective(st), L = dzSlots(st.asset).slot, out = [];
+  for (const a of (st.arts || [])) { if (a.hide) continue; let hit = null; for (const e of eff) { const S = L[e.pc.id]; if (S && dzInside(e.poly, a.x - S.dx, a.y - S.dy)) { hit = { e, u: a.x - S.dx, v: a.y - S.dy }; break; } }
+    if (!hit) continue; const B = dzBox(hit.e.poly), top = hit.e.pc.role === "body" ? B.y0 : B.y0;
+    out.push({ piece: hit.e.pc.name, tech: "Imprimé : " + (a.name || "image"), w: a.w, h: dzArtH(a), fromTop: hit.v - dzArtH(a) / 2 - top, fromMid: hit.e.pc.sym ? hit.u : hit.u - (B.x0 + B.x1) / 2, rot: a.rot || 0, col: a.col || "", art: a, e: hit.e }); }
+  for (const d of (st.decos || [])) { const e = eff.find(q => q.pc.id === d.piece); if (!e) continue; const B = dzBox(e.poly);
+    out.push({ piece: e.pc.name, tech: (DZ_TECH.find(t => t[0] === d.tech) || [0, d.tech])[1], w: d.size, h: d.size, fromTop: d.v - d.size / 2 - B.y0, fromMid: e.pc.sym ? d.u : d.u - (B.x0 + B.x1) / 2, rot: d.rot || 0, col: d.color || "", deco: d, e }); }
+  return out;
+}
+function dzSteps(st) {
+  const P = st.params, s = [], has = r => dzEffective(st).some(e => e.pc.role === r);
+  if (st.asset === "tshirt" || st.asset === "sweat") {
+    s.push("Couper toutes les pièces dans le droit fil (flèche sur le patron), devant et dos au pli. Marges de couture 1 cm, ourlets 2,5 cm.");
+    if ((st.arts || []).length || (st.decos || []).length) s.push("Imprimer / broder les pièces à plat AVANT montage (voir page Placements).");
+    s.push("Assembler les épaules à la surjeteuse 4 fils, avec ruban de propreté au dos.");
+    if (P.hood && st.asset === "sweat") s.push("Assembler les deux moitiés de capuche (milieu), poser les œillets, monter la coulisse, puis monter la capuche sur l'encolure."); else s.push("Monter le bord-côte d'encolure (côte 1×1, 2 cm fini, 8 % plus court que l'encolure), recouvrir d'une bande de propreté au dos.");
+    if (P.kangourou && st.asset === "sweat") s.push("Poser la poche kangourou à plat sur le devant, surpiqûre 0,6 cm, renforts aux entrées.");
+    if (has("sleeve")) s.push("Monter les manches à plat sur l'emmanchure (tête de manche répartie, pas d'embu sur jersey).");
+    s.push("Fermer côtés et dessous de bras en une couture, poser l'étiquette composition dans la couture côté gauche.");
+    if (has("cuff")) s.push("Monter les poignets bord-côte (fermés en tube, posés étirés)."); else if (has("sleeve")) s.push("Ourlets de manche : recouvreuse 2 aiguilles, 2,5 cm.");
+    s.push(has("hem") ? "Monter le bord-côte bas, étiré régulièrement, couture au côté gauche." : "Ourlet du bas : recouvreuse 2 aiguilles, 2,5 cm.");
+  } else if (st.asset === "pantalon") {
+    s.push("Couper dans le droit fil, denim délavé/décati avant coupe (retrait à indiquer par le fournisseur).", "Poches, braguette, puis montant devant et dos.", "Côtés (surpiqûre double 0,6 cm), puis entrejambe en une couture.", "Poser la ceinture, passants, bouton et rivets.", "Ourlets de bas 2 cm, point de chaînette.");
+  } else if (st.asset === "casquette") s.push("Assembler les 6 pans, ruban de couture intérieur.", "Monter la visière renforcée (insert plastique), surpiqûres 8 rangs.", "Bandeau intérieur, bouton de sommet, attache réglable.");
+  else s.push("Tricoter / couper le corps en côte, fermer en tube, resserrer le sommet.", "Replier le revers, poser l'étiquette sur le revers.");
+  for (const o of st.ops) if (DZ_HOW[o.t]) s.push(`${DZ_OPLAB[o.t] || o.t} : ${DZ_HOW[o.t]}`);
+  if (P.len) s.push(P.len < 0 ? `Crop : ${DZ_HOW.len_moins}` : `Rallonge : ${DZ_HOW.len_plus}`);
+  s.push("Contrôle : mesures selon le tableau (tolérances), coutures, propreté des fils. Repassage, pliage, mise en sachet.");
+  return s;
+}
+
+/* --- dessins : vues 3D face / dos sur fond blanc, et pièces à plat --- */
+async function dzTpRenders() {
+  const V = DZ.V3; if (!V) return [];
+  for (let k = 0; k < 120 && V.simming; k++) await new Promise(r => setTimeout(r, 100));
+  const keep = V.cam.position.clone(), t = V.ctl.target, d = keep.distanceTo(t), out = [];
+  for (const [dx, dz] of [[0, 1], [0, -1]]) { V.cam.position.set(t.x + dx * d, t.y + d * 0.06, t.z + dz * d); V.ctl.update(); V.render(); out.push(dzShot(1).toDataURL("image/jpeg", 0.9)); }
+  V.cam.position.copy(keep); V.ctl.update(); V.render(); return out;
+}
+function dzPieceCanvas(st, e, px = 300, marks = []) {
+  const B = dzBox(e.poly), pad = 2, K = px / Math.max(B.x1 - B.x0 + 2 * pad, B.y1 - B.y0 + 2 * pad), c = document.createElement("canvas"); c.width = Math.ceil((B.x1 - B.x0 + 2 * pad) * K); c.height = Math.ceil((B.y1 - B.y0 + 2 * pad) * K);
+  const x = c.getContext("2d"), X = p => (p.x - B.x0 + pad) * K, Y = p => (p.y - B.y0 + pad) * K, path = pts => { x.beginPath(); pts.forEach((p, i) => i ? x.lineTo(X(p), Y(p)) : x.moveTo(X(p), Y(p))); x.closePath(); };
+  x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  path(e.poly); x.fillStyle = dzMix(e.pc.color || st.color, "#ffffff", 0.55); x.fill();
+  x.save(); path(e.poly); x.clip(); dzPaintArts(x, e, st, K, B.x0 - pad, B.y0 - pad); for (const d of (st.decos || [])) if (d.piece === e.pc.id) dzPaintDeco(x, d, K, B.x0 - pad, B.y0 - pad); x.restore();
+  x.setLineDash([3, 3]); x.strokeStyle = "#555"; x.lineWidth = 1; path(dzOffset(e.poly, -1)); x.stroke(); x.setLineDash([]);
+  x.strokeStyle = "#111"; x.lineWidth = 2; path(e.poly); x.stroke();
+  // droit fil
+  const gx = e.pc.sym ? X({ x: 0 }) + 0 : X({ x: (B.x0 + B.x1) / 2 }), g0 = Y({ y: B.y0 + (B.y1 - B.y0) * 0.2 }), g1 = Y({ y: B.y0 + (B.y1 - B.y0) * 0.8 });
+  x.strokeStyle = "#111"; x.lineWidth = 1.2; x.beginPath(); x.moveTo(gx, g0); x.lineTo(gx, g1); for (const [yy, s] of [[g0, 1], [g1, -1]]) { x.moveTo(gx - 5, yy + 8 * s); x.lineTo(gx, yy); x.lineTo(gx + 5, yy + 8 * s); } x.stroke();
+  for (const m of marks) { x.strokeStyle = "#d1241b"; x.lineWidth = 2; x.strokeRect(X({ x: m.x0 }), Y({ y: m.y0 }), (m.x1 - m.x0) * K, (m.y1 - m.y0) * K); x.fillStyle = "#d1241b"; x.font = `bold ${Math.max(14, K * 3.2)}px Arial`; x.fillText(m.n, X({ x: m.x0 }) + K * 0.6, Y({ y: m.y0 }) + K * 3.4); }
+  return c;
+}
+let dzPdfP = null;
+function dzLoadPdf() { if (window.jspdf) return Promise.resolve(true); if (!dzPdfP) dzPdfP = new Promise(res => { const el = document.createElement("script"); el.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"; el.onload = () => res(true); el.onerror = () => { dzPdfP = null; res(false); }; document.head.append(el); }); return dzPdfP; }
+const dzTp = st => st.tp || (st.tp = { name: "", ref: "", season: "", base: "M", ver: "V1 · proto", notes: "" });
+function dzTpRef(st) { const T = dzTp(st), code = { tshirt: "TS", sweat: st.params.hood ? "HD" : "SW", pantalon: "PT", bonnet: "BN", casquette: "CP" }[st.asset] || "XX", d = new Date(); return T.ref || `TNB-${d.getMonth() < 6 ? "SS" : "FW"}${String(d.getFullYear() + (d.getMonth() >= 6 ? 0 : 0)).slice(2)}-${code}01`; }
+
+async function dzTechPack() {
+  const note = t => wToast(t), st = DZ.st, T = dzTp(st), ref = dzTpRef(st);
+  note("Préparation de la fiche technique…"); if (!(await dzLoadPdf())) return note("Impossible de charger le module PDF (connexion ?)");
+  const { jsPDF } = window.jspdf, doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" }), PW = 297, PH = 210, M = 12;
+  const name = T.name || (DZ_ASSETS.find(a => a[0] === st.asset) || [0, st.asset])[1], date = new Date().toLocaleDateString("fr-FR"), base = T.base || "M", bi = Math.max(0, DZ_SIZES.indexOf(base));
+  let page = 0; const pages = [];
+  const head = title => { if (page++) doc.addPage(); doc.setFillColor(27, 29, 34); doc.rect(0, 0, PW, 14, "F"); doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("TNB · FICHE TECHNIQUE", M, 9.2);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`${name}  ·  ${ref}  ·  ${T.ver || "V1"}  ·  ${date}`, PW - M, 9.2, { align: "right" }); doc.setTextColor(27, 29, 34); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(title, M, 25); pages.push(title); };
+  const table = (x, y, cols, rows, opt = {}) => { const fs = opt.fs || 8.5, lh = fs * 0.42 + 1.6; doc.setFontSize(fs); let yy = y;
+    doc.setFillColor(236, 234, 228); doc.rect(x, yy, cols.reduce((a, c) => a + c[1], 0), lh + 1.5, "F"); doc.setFont("helvetica", "bold"); let xx = x; for (const [h, w, al] of cols) { doc.text(h, al === "c" ? xx + w / 2 : xx + 1.5, yy + lh - 0.3, { align: al === "c" ? "center" : "left" }); xx += w; } yy += lh + 1.5; doc.setFont("helvetica", "normal");
+    for (const [ri, r] of rows.entries()) { const cells = cols.map(([, w], i) => doc.splitTextToSize(String(r[i] ?? ""), w - 3)), n = Math.max(...cells.map(c => c.length)), h = n * (fs * 0.42) + 2.4;
+      if (yy + h > PH - 12) { doc.addPage(); yy = 20; }
+      if (opt.hl && opt.hl(ri)) { doc.setFillColor(248, 247, 243); doc.rect(x, yy, cols.reduce((a, c) => a + c[1], 0), h, "F"); }
+      xx = x; cols.forEach(([, w, al], i) => { if (opt.bold && opt.bold(i)) doc.setFont("helvetica", "bold"); doc.text(cells[i], al === "c" ? xx + w / 2 : xx + 1.5, yy + fs * 0.42 + 0.6, { align: al === "c" ? "center" : "left" }); doc.setFont("helvetica", "normal"); xx += w; });
+      yy += h; doc.setDrawColor(220); doc.line(x, yy, x + cols.reduce((a, c) => a + c[1], 0), yy); }
+    return yy; };
+  const fitImg = (src, x, y, w, h, fmt = "JPEG") => { const im = typeof src === "string" ? null : src, iw = im ? im.width : 1, ih = im ? im.height : 1; let k = Math.min(w / iw, h / ih); if (!im) { doc.addImage(src, fmt, x, y, w, h); return; } doc.addImage(im.toDataURL("image/jpeg", 0.88), "JPEG", x + (w - iw * k) / 2, y + (h - ih * k) / 2, iw * k, ih * k); return [x + (w - iw * k) / 2, y + (h - ih * k) / 2, iw * k, ih * k]; };
+
+  // 1 · couverture : vues face / dos + identité
+  head("Vue d'ensemble"); const shots = await dzTpRenders();
+  if (shots.length) { const im = new Image(); im.src = shots[0]; await im.decode().catch(() => {}); const ar = (im.naturalWidth || 4) / (im.naturalHeight || 3), h = 150, w = Math.min(95, h * ar);
+    shots.forEach((s, i) => { doc.addImage(s, "JPEG", M + i * (w + 6), 32, w, w / ar); doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.text(i ? "DOS" : "DEVANT", M + i * (w + 6) + w / 2, 32 + w / ar + 5, { align: "center" }); }); }
+  const info = [["Modèle", name], ["Référence", ref], ["Saison", T.season || "à définir"], ["Version", T.ver || "V1 · proto"], ["Taille de base", base], ["Gamme de tailles", DZ_SIZES.join(" · ")], ["Coupe", `${st.params.ample < 0.97 ? "ajustée" : st.params.ample > 1.08 ? "oversize" : "regular"} (${Math.round(st.params.ample * 100)} %)`], ["Couleur", (st.color || "").toUpperCase() + " (Pantone à confirmer sur standard tissu)"], ["Matière principale", (DZ_MATS[st.matAll || (st.pieces.find(p => ["body", "leg", "crown", "front"].includes(p.role)) || st.pieces[0]).mat] || DZ_MATS.jersey).lab], ["Date", date]];
+  let y = 34; const ix = 214; doc.setFontSize(9); for (const [k, v] of info) { const L = doc.splitTextToSize(v, 70); doc.setFont("helvetica", "bold"); doc.text(k, ix, y); doc.setFont("helvetica", "normal"); doc.text(L, ix, y + 4.2); y += 7.5 + L.length * 3.8; }
+  doc.setFillColor(...[1, 3, 5].map(i => parseInt((st.color || "#f2f0ea").slice(i, i + 2), 16))); doc.setDrawColor(150); doc.rect(ix, y, 20, 12, "FD");
+  if (T.notes) { doc.setFontSize(8.5); doc.text(doc.splitTextToSize("Notes : " + T.notes, 70), ix, y + 20); }
+
+  // 2 · mesures + gradation
+  head("Mesures et gradation (spec sheet), en cm, vêtement à plat"); const pom = dzPOM(st);
+  const cols = [["", 9, "c"], ["Point de mesure", 52], ["Comment mesurer", 72], ["Tol. ±", 14, "c"], ...DZ_SIZES.map(s => [s, 19, "c"])], b0 = 2;
+  table(M, 31, cols, pom.map(r => [r.code, r.lab, r.how, dzFmtT(r.tol), ...DZ_SIZES.map((s, i) => dzFmt(r.val + (i - bi) * r.inc))]), { bold: i => i === 4 + bi, hl: i => i % 2 });
+  doc.setFontSize(8); doc.setTextColor(90); doc.text(`Valeurs calculées depuis le patron (taille ${base}), écarts de gradation standards à valider sur prototype. Retrait tissu à ajouter par le fournisseur après test de lavage.`, M, PH - 8); doc.setTextColor(27, 29, 34);
+
+  // 3 · nomenclature
+  head("Nomenclature (BOM)"); table(M, 31, [["Type", 26], ["Composant", 62], ["Spécification", 92], ["Couleur", 34], ["Emplacement", 59]], dzBOM(st), { hl: i => i % 2 });
+
+  // 4 · placements
+  const pl = dzPlaceRows(st);
+  head("Placements des imprimés et décorations");
+  if (!pl.length) { doc.setFontSize(10); doc.text("Aucun imprimé ni décoration sur ce modèle.", M, 36); }
+  else { const yy = table(M, 31, [["N°", 10, "c"], ["Pièce", 34], ["Technique", 52], ["Taille (L × H)", 30, "c"], ["Du haut de la pièce", 34, "c"], ["Du milieu", 26, "c"], ["Rotation", 20, "c"], ["Couleur", 24, "c"]],
+      pl.map((p, i) => [i + 1, p.piece, p.tech, `${dzFmt(p.w)} × ${dzFmt(p.h)}`, dzFmt(Math.max(0, p.fromTop)), (p.fromMid > 0.25 ? "+" : "") + dzFmt(p.fromMid), `${Math.round(p.rot)}°`, (p.col || "").toUpperCase()]), { hl: i => i % 2 });
+    const byPiece = new Map(); pl.forEach((p, i) => { if (!byPiece.has(p.e.pc.id)) byPiece.set(p.e.pc.id, { e: p.e, marks: [] }); const cx = p.art ? p.art.x - dzSlots(st.asset).slot[p.e.pc.id].dx : p.deco.u, cy = p.art ? p.art.y - dzSlots(st.asset).slot[p.e.pc.id].dy : p.deco.v; byPiece.get(p.e.pc.id).marks.push({ n: String(i + 1), x0: cx - p.w / 2, x1: cx + p.w / 2, y0: cy - p.h / 2, y1: cy + p.h / 2 }); });
+    let x = M, top = yy + 6; const hh = PH - top - 20; for (const { e, marks } of byPiece.values()) { if (hh < 40) break; const c = dzPieceCanvas(st, e, 500, marks), w = Math.min(70, hh * c.width / c.height); if (x + w > PW - M) break; const r = fitImg(c, x, top, w, hh); doc.setFontSize(8); doc.setFont("helvetica", "bold"); doc.text(e.pc.name, x + w / 2, r[1] + r[3] + 4, { align: "center" }); doc.setFont("helvetica", "normal"); x += w + 6; }
+    doc.setFontSize(8); doc.setTextColor(90); doc.text("Positions mesurées en cm depuis le bord haut de la pièce (point épaule-encolure pour devant et dos) et depuis le milieu de la pièce (+ = vers la droite du dessin).", M, PH - 9); doc.setTextColor(27, 29, 34); }
+
+  // 5 · pièces à couper
+  head("Pièces à couper (patron)"); const eff = dzEffective(st);
+  { const L = dzSlots(st.asset), K = 14, pad = 6, c = document.createElement("canvas"); c.width = Math.ceil((L.W + 2 * pad) * K); c.height = Math.ceil((L.H + 2 * pad + 4) * K); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+    for (const e of eff) { const S = L.slot[e.pc.id]; if (!S) continue; const B = dzBox(e.poly), k2 = K, sub = dzPieceCanvas(st, e, Math.max(B.x1 - B.x0 + 4, B.y1 - B.y0 + 4) * k2);
+      x.drawImage(sub, (B.x0 - 2 + S.dx + pad) * K, (B.y0 - 2 + S.dy + pad) * K);
+      const [w, h] = dzDims(e.poly), qty = e.pc.sym ? "×1 au pli" : "×1", cx = ((B.x0 + B.x1) / 2 + S.dx + pad) * K, cy = (B.y1 + S.dy + pad) * K;
+      x.fillStyle = "#1b1d22"; x.textAlign = "center"; x.font = `bold ${K * 2.6}px Arial`; x.fillText(`${e.pc.name} (${qty})`, cx, cy + K * 3.6); x.font = `${K * 2.1}px Arial`; x.fillStyle = "#555"; x.fillText(`${(DZ_MATS[st.matAll || e.pc.mat] || DZ_MATS.jersey).lab} · ${dzFmt(w)} × ${dzFmt(h)} cm`, cx, cy + K * 6.3); }
+    const r = fitImg(c, M, 29, PW - 2 * M, PH - 29 - 16); const cm = (r[2] / c.width) * K;   // mm par cm sur la page
+    doc.setDrawColor(27, 29, 34); doc.setLineWidth(0.3); doc.line(PW - M - 10 * cm, PH - 14, PW - M, PH - 14); doc.setFontSize(7.5); doc.text("10 cm", PW - M - 5 * cm, PH - 15.5, { align: "center" }); }
+  doc.setFontSize(8); doc.setTextColor(90); doc.text("Trait plein = ligne de couture · pointillés = marge de couture 1 cm · flèche = droit fil. Patron à l'échelle 1:1 : fichier SVG (onglet Fiche technique).", M, PH - 9); doc.setTextColor(27, 29, 34);
+
+  // 6 · montage + étiquetage + suivi
+  head("Montage, étiquetage, contrôle");
+  const steps = dzSteps(st); let yy = 32; doc.setFontSize(9.5);
+  steps.forEach((s, i) => { const L = doc.splitTextToSize(s, 160); doc.setFont("helvetica", "bold"); doc.text(`${i + 1}.`, M, yy); doc.setFont("helvetica", "normal"); doc.text(L, M + 7, yy); yy += L.length * 4.4 + 1.8; });
+  const rx = 190; doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Étiquetage (UE)", rx, 32); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+  doc.text(doc.splitTextToSize("Composition en % par matière (règlement UE 1007/2011), symboles d'entretien ISO 3758, taille, pays de fabrication, référence et lot. Étiquette marque au milieu dos, étiquette composition dans la couture côté gauche.", 95), rx, 38);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Suivi des versions", rx, 66);
+  table(rx, 70, [["Version", 22], ["Date", 22], ["Changements", 51]], [[T.ver || "V1 · proto", date, "Création de la fiche"], ["", "", ""], ["", "", ""], ["", "", ""]]);
+  // pied de page sur toutes les pages
+  const N = doc.getNumberOfPages(); for (let i = 1; i <= N; i++) { doc.setPage(i); doc.setFontSize(7.5); doc.setTextColor(120); doc.text(`${ref} · page ${i}/${N} · document confidentiel`, PW - M, PH - 4, { align: "right" }); }
+  offerBlob(doc.output("blob"), `${ref}_fiche_technique.pdf`); uisYes(); note("Fiche technique prête");
+}
+/* Aperçu dans l'onglet : identité + tableau de mesures (taille de base) */
+function dzTpPanel(st) {
+  const T = dzTp(st), pom = dzPOM(st), base = T.base || "M";
+  return `<div class="w-sec">Identité du modèle</div>
+    <div class="dz-tp"><input class="dz-in" data-tp="name" placeholder="Nom (ex. Hoodie R-Ball)" value="${dzEsc(T.name)}" maxlength="40"><input class="dz-in" data-tp="ref" placeholder="${dzTpRef({ ...st, tp: { ...T, ref: "" } })}" value="${dzEsc(T.ref)}" maxlength="24">
+    <input class="dz-in" data-tp="season" placeholder="Saison (ex. FW26)" value="${dzEsc(T.season)}" maxlength="12"><input class="dz-in" data-tp="ver" placeholder="Version" value="${dzEsc(T.ver)}" maxlength="20"></div>
+    <div class="ir-chips">${DZ_SIZES.map(s => `<button class="w-chip" data-tpbase="${s}" aria-pressed="${base === s}">Base ${s}</button>`).join("")}</div>
+    <textarea class="dz-in wide" data-tp="notes" rows="2" placeholder="Notes pour l'usine (finitions, délavage, références de qualité…)">${dzEsc(T.notes)}</textarea>
+    <button class="w-pill dark" data-a="tp">Télécharger la fiche technique (PDF)</button>
+    <p class="sp-hint">6 pages A4 : vues devant/dos, mesures et gradation XS → XXL avec tolérances, nomenclature, placements des imprimés, pièces à couper, montage et étiquetage.</p>
+    <div class="w-sec">Mesures en taille ${base} <span>à plat, en cm, calculées depuis ton patron</span></div>
+    <table class="dz-pom">${pom.map(r => `<tr><td>${r.code}</td><td>${r.lab}</td><td>${dzFmt(r.val)}</td><td>±${dzFmtT(r.tol)}</td></tr>`).join("")}</table>`;
+}
+function dzTpBind(host) {
+  const st = DZ.st, T = dzTp(st);
+  host.querySelectorAll("[data-tp]").forEach(el => el.oninput = () => { T[el.dataset.tp] = el.value; dzSave(); });
+  host.querySelectorAll("[data-tpbase]").forEach(b => b.onclick = () => { T.base = b.dataset.tpbase; dzSave(); dzTabsRender(); });
+  const b = host.querySelector('[data-a="tp"]'); if (b) b.onclick = async () => { b.disabled = true; try { await dzTechPack(); } catch (e) { console.warn(e); wToast("La fiche n'a pas pu être créée : " + (e.message || e)); } b.disabled = false; };
+}
+const DZ_CSS4 = `
+.dz-tp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .dz-tp .dz-in, .dz textarea.dz-in { border: 1px solid rgba(27,29,34,.16); border-radius: 10px; padding: 7px 10px; font: 500 13px Inter, sans-serif; background: #fff; color: #1b1d22; box-sizing: border-box; width: 100%; }
+.dz textarea.dz-in { margin: 6px 0; resize: vertical; }
+.dz-pom { width: 100%; border-collapse: collapse; font: 500 12.5px Inter, sans-serif; color: #1b1d22; } .dz-pom td { padding: 5px 4px; border-bottom: 1px solid rgba(27,29,34,.08); } .dz-pom td:first-child { font-weight: 700; width: 20px; color: #6a6e79; } .dz-pom td:nth-child(3) { text-align: right; font-weight: 700; } .dz-pom td:last-child { text-align: right; color: #6a6e79; width: 44px; }`;
 /* =====================================================================
    Îlot STUDIO : un film écrit plan par plan, comme une agence de pub.
    Chaque plan est une phrase précise (« 3 s, gros plan de face, travelling lent vers la droite, lumière store,
